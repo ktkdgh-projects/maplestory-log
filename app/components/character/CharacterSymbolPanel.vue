@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SymbolInfo } from '#shared/types'
-import { findSymbolTable, symbolCost } from '#shared/data/symbol'
+import { findSymbolTable, reachableSymbolLevel, symbolCost } from '#shared/data/symbol'
 
 const props = defineProps<{ symbols: SymbolInfo[] }>()
 
@@ -17,6 +17,7 @@ const rows = computed(() => props.symbols
       maxLevel: maxLevelOf(symbol),
       shortName: symbol.name.split(':').at(-1)?.trim() ?? symbol.name,
       arcane: symbol.name.includes('아케인'),
+      reachable: reachableSymbolLevel(symbol.name, symbol.level, symbol.growth),
       cost: symbolCost(symbol.name, range.from, range.to, symbol.level, symbol.growth),
     }
   })
@@ -37,12 +38,15 @@ const totals = computed(() => {
     <template v-else>
       <CharacterRangeHeader :totals="totals" hint="손잡이를 끌어 심볼마다 구간을 정해요" @reset="ranges = initialRanges()" />
       <ul class="list stagger">
-        <li v-for="{ symbol, range, maxLevel, shortName, arcane, cost } in rows" :key="symbol.name" class="card" :class="{ arcane }">
+        <li v-for="{ symbol, range, maxLevel, shortName, arcane, reachable, cost } in rows" :key="symbol.name" class="card" :class="{ arcane }">
           <div class="top">
             <img :src="symbol.icon" alt="">
             <div class="title">
               <span class="ellipsis" :title="symbol.name">{{ shortName }}</span>
-              <small v-if="symbol.level < maxLevel">현재 Lv.{{ symbol.level }} · 성장치 {{ symbol.growth }}/{{ symbol.requireGrowth }}</small>
+              <small v-if="symbol.level < maxLevel">
+                현재 Lv.{{ symbol.level }} · 성장치 {{ symbol.growth }}/{{ symbol.requireGrowth }}
+                <span v-if="reachable > symbol.level" class="reachable">Lv.{{ reachable }} 가능</span>
+              </small>
             </div>
           </div>
           <div v-if="cost && symbol.level >= maxLevel" class="bottom">
@@ -126,6 +130,15 @@ const totals = computed(() => {
 }
 .meso {
   color: var(--gold);
+}
+.reachable {
+  margin-left: 4px;
+  padding: 0 6px;
+  background: rgb(127 217 154 / 0.15);
+  border: 1px solid var(--gain);
+  border-radius: 999px;
+  color: var(--gain);
+  font-size: 11px;
 }
 .done {
   color: var(--gain);

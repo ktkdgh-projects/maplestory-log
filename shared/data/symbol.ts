@@ -55,3 +55,16 @@ export function symbolCost(symbolName: string, from: number, to: number, current
   }
   return { meso, symbols: Math.max(symbols, 0) }
 }
+
+// 지금 모은 성장치로 메소만 내면 올라갈 수 있는 레벨. 성장치는 다음 레벨 요구량을 넘겨서도 쌓인다
+export function reachableSymbolLevel(symbolName: string, level: number, growth: number): number {
+  const found = findSymbolTable(symbolName)
+  if (!found) return level
+  let reached = level
+  let left = growth
+  while (reached < found.table.maxLevel && left >= found.table.growth[reached - 1]!) {
+    left -= found.table.growth[reached - 1]!
+    reached++
+  }
+  return reached
+}
