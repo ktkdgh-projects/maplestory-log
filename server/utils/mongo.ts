@@ -66,7 +66,6 @@ export interface ItemSheetDoc {
   title: string
   ocid: string | null
   characterName: string | null
-  folded: boolean
   excluded?: boolean
   order: number
   createdAt: Date
@@ -360,9 +359,10 @@ export async function useCollections() {
   }
 }
 
-export async function withCache<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+// fresh면 캐시를 건너뛰고 새로 받아 캐시를 바꿔 끼운다 (사용자가 최신화를 누른 경우)
+export async function withCache<T>(key: string, ttlMs: number, load: () => Promise<T>, fresh = false): Promise<T> {
   const { cache } = await useCollections()
-  const hit = await cache.findOne({ _id: key, expireAt: { $gt: new Date() } })
+  const hit = fresh ? null : await cache.findOne({ _id: key, expireAt: { $gt: new Date() } })
   if (hit) return hit.data as T
   const data = await load()
   await cache.updateOne({ _id: key }, { $set: { data, expireAt: new Date(Date.now() + ttlMs) } }, { upsert: true })

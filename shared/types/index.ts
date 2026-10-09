@@ -253,7 +253,6 @@ export interface ItemSheet {
   title: string
   ocid: string | null
   characterName: string | null
-  folded: boolean
   // 가계부에 넣지 않는 시트(예전에 산 장비 정리용). 장비 결산 손익에는 그대로 들어간다
   excluded: boolean
   rows: ItemRow[]

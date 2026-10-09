@@ -182,12 +182,12 @@ async function fetchDetail(apiKey: string, ocid: string): Promise<CharacterDetai
   }
 }
 
-export function getCharacterDetail(apiKey: string, ocid: string): Promise<CharacterDetail> {
+export function getCharacterDetail(apiKey: string, ocid: string, fresh = false): Promise<CharacterDetail> {
   return withCache(`detail:${ocid}:v${DETAIL_CACHE_VERSION}`, DETAIL_CACHE_MS, async () => {
     const detail = await fetchDetail(apiKey, ocid)
     await saveCharacter({ ocid, name: detail.name, world: detail.world, job: detail.job, level: detail.level, imageUrl: detail.imageUrl })
     // 장비 결산에서 직접 적은 장비에도 아이콘을 붙이려고 본 아이템을 사전에 모은다
     await collectCharacterIcons(apiKey, ocid, detail.presets.flat())
     return detail
-  })
+  }, fresh)
 }

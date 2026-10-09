@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import type { CharacterDetail } from '#shared/types'
 
-const props = defineProps<{ character: CharacterDetail }>()
+const props = defineProps<{ character: CharacterDetail, refreshing?: boolean, refreshError?: string }>()
+const emit = defineEmits<{ refresh: [] }>()
+
+const fetchedAgo = computed(() => {
+  const minutes = Math.floor((Date.now() - Date.parse(props.character.fetchedAt)) / 60_000)
+  return minutes < 1 ? '방금' : minutes < 60 ? `${minutes}분 전` : `${Math.floor(minutes / 60)}시간 전`
+})
 
 const best = computed(() => findBestPresetCombo(props.character))
 const gain = computed(() => {
@@ -13,7 +19,13 @@ const gain = computed(() => {
 <template>
   <GameWindow title="캐릭터 정보" :sub="character.world">
     <div class="head">
-      <h1 class="name">{{ character.name }}</h1>
+      <div class="name-row">
+        <h1 class="name">{{ character.name }}</h1>
+        <button type="button" class="refresh" :class="{ spinning: refreshing }" :disabled="refreshing" :title="refreshing ? '받는 중…' : `${fetchedAgo} 정보 · 누르면 바로 최신화`" aria-label="최신화" @click="emit('refresh')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" /></svg>
+        </button>
+      </div>
+      <p v-if="refreshError" class="form-error">{{ refreshError }}</p>
       <div class="badges">
         <span class="badge level">LV.{{ character.level }}</span>
         <span class="badge job">{{ character.job }}</span>
@@ -48,6 +60,49 @@ const gain = computed(() => {
 .head {
   display: grid;
   gap: 6px;
+}
+.name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 닉네임 옆에 붙는 작은 원형 아이콘 버튼. 받는 동안 아이콘이 돈다 */
+.refresh {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: rgb(242 193 78 / 0.1);
+  border: 1px solid rgb(242 193 78 / 0.35);
+  border-radius: 50%;
+  color: var(--gold);
+  cursor: pointer;
+  transition: background var(--fast) ease, border-color var(--fast) ease, transform var(--fast) var(--ease-spring);
+}
+.refresh:hover:not(:disabled) {
+  background: rgb(242 193 78 / 0.2);
+  border-color: var(--gold);
+  transform: rotate(-30deg);
+}
+.refresh:disabled {
+  cursor: wait;
+}
+.refresh svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.refresh.spinning svg {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { rotate: 360deg; }
 }
 .name {
   margin: 0;

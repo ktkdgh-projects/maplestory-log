@@ -25,7 +25,6 @@ export default defineEventHandler(async (event) => {
     title: parseText(body?.title, '시트 이름', !character) || character!.name,
     ocid: character?.ocid ?? null,
     characterName: character?.name ?? null,
-    folded: false,
     excluded: false,
     order: count,
     createdAt: new Date(),

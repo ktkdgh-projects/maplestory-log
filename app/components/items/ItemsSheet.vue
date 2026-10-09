@@ -154,7 +154,6 @@ const importEquipment = () => run(async () => {
   const { added } = await $fetch<{ added: number }>(`/api/items/sheets/${props.sheet.id}/import`, { method: 'POST' })
   notice.value = added ? `장비 ${added}개를 불러왔어요.` : '새로 불러올 장비가 없어요.'
 }, '')
-const toggleFold = () => run(() => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'PATCH', body: { folded: !props.sheet.folded } }))
 const rename = () => run(async () => {
   await $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'PATCH', body: { title: title.value } })
   renaming.value = false
@@ -166,7 +165,7 @@ async function removeSheet() {
 </script>
 
 <template>
-  <section class="sheet" :class="{ folded: sheet.folded }">
+  <section class="sheet">
     <header class="head">
       <form v-if="renaming" class="rename" @submit.prevent="rename">
         <input v-model="title" class="field-input" maxlength="40" aria-label="시트 이름">
@@ -176,7 +175,6 @@ async function removeSheet() {
       <template v-else>
         <h3 class="ellipsis">{{ sheet.title }}</h3>
         <span v-if="sheet.characterName" class="link-tag">{{ sheet.characterName }} 연결</span>
-        <span v-if="sheet.folded" class="fold-tag">접음</span>
         <button type="button" class="text-btn" @click="renaming = true">이름 바꾸기</button>
       </template>
       <div class="head-actions">
@@ -184,7 +182,6 @@ async function removeSheet() {
           {{ sheet.excluded ? '가계부 미반영' : '가계부 반영' }}
         </button>
         <button v-if="sheet.ocid" type="button" class="btn ghost compact" :disabled="busy" @click="importEquipment">현재 장비 불러오기</button>
-        <button type="button" class="btn compact" :class="sheet.folded ? 'ghost' : 'danger'" :disabled="busy" @click="toggleFold">{{ sheet.folded ? '접음 취소' : '캐릭터 접기' }}</button>
         <button v-if="!confirmDelete" type="button" class="btn ghost compact" @click="confirmDelete = true">시트 삭제</button>
         <template v-else>
           <span class="ask">시트와 가계부에 잡힌 금액이 같이 사라져요</span>
@@ -293,11 +290,13 @@ async function removeSheet() {
         </tfoot>
       </table>
     </div>
-    <form class="add" @submit.prevent="addRow">
-      <ItemsNameSearch v-model="newName" class="name-input" @pick="picked = $event" />
-      <button class="btn compact" :disabled="busy">+ 장비 추가</button>
-      <span class="muted hint">금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요</span>
-    </form>
+    <div class="bottom">
+      <slot name="tabs" />
+      <form class="add" @submit.prevent="addRow">
+        <ItemsNameSearch v-model="newName" class="name-input" @pick="picked = $event" />
+        <button class="btn compact" :disabled="busy" title="금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요">+ 장비 추가</button>
+      </form>
+    </div>
   </section>
 </template>
 
@@ -323,19 +322,12 @@ h3 {
   font-size: 22px;
   font-weight: 400;
 }
-.link-tag,
-.fold-tag {
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-}
 .link-tag {
+  padding: 1px 8px;
   border: 1px solid var(--api);
+  border-radius: 999px;
   color: var(--api);
-}
-.fold-tag {
-  background: var(--loss);
-  color: var(--bar);
+  font-size: 12px;
 }
 .text-btn {
   padding: 0;
@@ -371,17 +363,13 @@ h3 {
   font-size: 14px;
 }
 .table-wrap {
-  flex: 0 1 auto;
+  flex: 1;
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
   border: 1px solid var(--panel-line);
   border-radius: 8px;
   scrollbar-width: thin;
-}
-.folded .table-wrap {
-  opacity: 0.7;
-  filter: saturate(0.6);
 }
 /* 칸 너비를 고정해야 머리글·값·합계가 같은 세로줄에 선다 */
 table {
@@ -553,19 +541,23 @@ tfoot td {
   border-color: var(--loss);
   color: var(--loss);
 }
-/* 표 길이와 상관없이 추가 칸은 시트 맨 아래에 둔다 */
-.add {
+/* 엑셀처럼 시트 탭이 표 바로 아래에 붙도록 시트 사이 간격만큼 끌어올린다 */
+.bottom {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 14px;
+  margin-top: -8px;
+}
+.add {
+  display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
-  margin-top: auto;
+  margin-top: 8px;
+  margin-left: auto;
 }
 .add .name-input {
-  width: 320px;
-}
-.hint {
-  margin-left: auto;
-  font-size: 13px;
+  width: 240px;
 }
 </style>

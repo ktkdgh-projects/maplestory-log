@@ -4,26 +4,20 @@ import type { CharacterBrief, ItemSheet, ItemsResponse } from '#shared/types'
 const { me } = await useMe()
 const { data, error, refresh } = await useFetch<ItemsResponse>('/api/items', { immediate: !!me.value })
 
-// 탭을 끄는 동안 순서를 바로 바꾸고, 놓으면 저장한다
-const sheets = ref<ItemSheet[]>([])
-watch(() => data.value?.sheets, (value) => {
-  sheets.value = [...(value ?? [])]
-}, { immediate: true })
-const dragTab = ref<string | null>(null)
-function tabOver(index: number) {
-  const from = sheets.value.findIndex(s => s.id === dragTab.value)
-  if (from < 0 || from === index) return
-  const [moved] = sheets.value.splice(from, 1)
-  sheets.value.splice(index, 0, moved!)
-}
-async function tabDrop() {
-  dragTab.value = null
-  const ids = sheets.value.map(s => s.id)
-  if (ids.join() === (data.value?.sheets ?? []).map(s => s.id).join()) return
+const sheets = computed<ItemSheet[]>(() => data.value?.sheets ?? [])
+async function reorderSheets(ids: string[]) {
   await $fetch('/api/items/order', { method: 'PUT', body: { sheetIds: ids } }).catch((e) => {
     failure.value = errorMessage(e)
   })
   await refresh()
+}
+function selectSheet(id: string) {
+  activeId.value = id
+  creating.value = false
+}
+function toggleCreate() {
+  if (creating.value) creating.value = false
+  else openCreate()
 }
 const activeId = ref<string | null>(sheets.value[0]?.id ?? null)
 const active = computed(() => sheets.value.find(s => s.id === activeId.value) ?? null)
@@ -100,30 +94,10 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
       </div>
     </div>
 
-    <div class="tabs" role="tablist" aria-label="시트">
-      <button
-        v-for="(s, i) in sheets"
-        :key="s.id"
-        type="button"
-        role="tab"
-        class="tab"
-        :class="{ folded: s.folded, dragging: dragTab === s.id }"
-        draggable="true"
-        title="끌어서 순서 바꾸기"
-        @dragstart="dragTab = s.id"
-        @dragover.prevent="tabOver(i)"
-        @drop.prevent="tabDrop"
-        @dragend="dragTab = null"
-        :aria-selected="s.id === activeId && !creating"
-        @click="activeId = s.id; creating = false"
-      >
-        {{ s.title }}<small v-if="s.folded"> 접음</small>      </button>
-      <button type="button" class="tab add" :aria-selected="creating" @click="creating ? (creating = false) : openCreate()">+ 시트</button>
-    </div>
     <p v-if="error || failure" class="form-error">{{ failure || errorMessage(error) }}</p>
 
-    <Transition name="fade" mode="out-in">
-      <div v-if="creating" key="create" class="create">
+    <AppModal v-model="creating" title="시트 만들기" :width="760">
+      <div class="create">
         <div class="create-col">
           <h3>내 캐릭터로 만들기</h3>
           <p class="muted small">연결하면 지금 낀 장비를 아이콘과 함께 한 번에 불러올 수 있어요.</p>
@@ -137,13 +111,22 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
           <div><button class="btn" :disabled="busy">만들기</button></div>
         </form>
       </div>
-      <ItemsSheet v-else-if="active" :key="active.id" :sheet="active" @changed="refresh" @removed="onRemoved" />
+    </AppModal>
+
+    <Transition name="fade" mode="out-in">
+      <ItemsSheet v-if="active" :key="active.id" :sheet="active" @changed="refresh" @removed="onRemoved">
+        <template #tabs>
+          <ItemsSheetTabs :sheets="sheets" :active-id="activeId" :creating="creating" @select="selectSheet" @create="toggleCreate" @reorder="reorderSheets" />
+        </template>
+      </ItemsSheet>
       <div v-else key="empty" class="empty">
         <img src="/favicon.svg" alt="" width="48" height="48">
         <p class="muted">캐릭터별로 장비 구매가와 큐브·스타포스 비용을 정리해 보세요.</p>
         <button type="button" class="btn" @click="openCreate">+ 첫 시트 만들기</button>
       </div>
     </Transition>
+    <!-- 시트가 하나도 없을 때도 시트 탭은 아래에 둔다 -->
+    <ItemsSheetTabs v-if="!active" class="bottom-tabs" :sheets="sheets" :active-id="activeId" :creating="creating" @select="selectSheet" @create="toggleCreate" @reorder="reorderSheets" />
     </template>
   </GameWindow>
 </template>
@@ -158,51 +141,13 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  border-bottom: 2px solid var(--win-line);
-}
-.tab {
-  padding: 6px 16px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-bottom: 0;
-  border-radius: 6px 6px 0 0;
-  color: var(--sub);
-  font-family: var(--f-title);
-  font-size: 16px;
-  cursor: pointer;
-  transition: color var(--fast) ease, background var(--fast) ease;
-}
-.tab:hover {
-  color: var(--text);
-}
-.tab[aria-selected="true"] {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: var(--on-gold);
-}
-.tab.dragging {
-  outline: 1px dashed var(--gold);
-}
-.tab.folded {
-  text-decoration: line-through;
-  opacity: 0.7;
-}
-.tab small {
-  font-size: 11px;
-}
-.tab.add {
-  border-style: dashed;
+.bottom-tabs {
+  margin-top: auto;
 }
 .create {
   display: grid;
-  flex: 1;
   grid-template-columns: 1.4fr 1fr;
   gap: 16px;
-  min-height: 0;
 }
 .create-col {
   display: flex;

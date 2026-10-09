@@ -67,7 +67,6 @@ export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[], references: M
     title: doc.title,
     ocid: doc.ocid,
     characterName: doc.characterName,
-    folded: doc.folded,
     excluded: doc.excluded ?? false,
     rows: rows.filter(r => r.sheetId.equals(doc._id)).map(r => toItemRow(r, references.get(r._id.toHexString()), known)),
   }

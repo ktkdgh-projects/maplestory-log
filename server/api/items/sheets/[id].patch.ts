@@ -1,11 +1,10 @@
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const id = parseId(getRouterParam(event, 'id'))
-  const body = await readBody<{ title?: unknown, folded?: unknown, excluded?: unknown }>(event)
+  const body = await readBody<{ title?: unknown, excluded?: unknown }>(event)
 
-  const update: { title?: string, folded?: boolean, excluded?: boolean } = {}
+  const update: { title?: string, excluded?: boolean } = {}
   if (body?.title !== undefined) update.title = parseText(body.title, '시트 이름')
-  if (typeof body?.folded === 'boolean') update.folded = body.folded
   if (typeof body?.excluded === 'boolean') update.excluded = body.excluded
 
   const { itemSheets } = await useCollections()

@@ -20,6 +20,23 @@ watch(name, (value) => {
   if (value) execute()
 })
 
+// 최신화: 서버 캐시(1시간)를 건너뛰고 넥슨에서 바로 다시 받는다
+const refreshing = ref(false)
+const refreshError = ref('')
+async function refreshCharacter() {
+  refreshing.value = true
+  refreshError.value = ''
+  try {
+    character.value = await $fetch<CharacterDetail>(`/api/character/${encodeURIComponent(name.value)}`, { query: { fresh: '1' } })
+  }
+  catch (e) {
+    refreshError.value = errorMessage(e)
+  }
+  finally {
+    refreshing.value = false
+  }
+}
+
 useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그` : '메이플스토리로그' }))
 </script>
 
@@ -66,7 +83,7 @@ useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그`
 
     <div v-else-if="character" :key="character.ocid" class="board fit">
       <div class="column">
-        <CharacterProfile :character="character" />
+        <CharacterProfile :character="character" :refreshing="refreshing" :refresh-error="refreshError" @refresh="refreshCharacter" />
         <CharacterHighlights :character="character" />
       </div>
       <CharacterEquipment :presets="character.presets" :preset-no="character.presetNo" :extras="[character.title, character.android].filter(item => item !== null)" :image-url="character.imageUrl" :name="character.name">
