@@ -1,5 +1,5 @@
 import type { ObjectId } from 'mongodb'
-import type { SnapshotPoint } from '#shared/types'
+import type { SnapshotPoint, SnapshotsResponse } from '#shared/types'
 import type { JobDoc, SnapshotDoc } from './mongo'
 
 const MINUTE_MS = 60 * 1000
@@ -25,17 +25,27 @@ async function fetchSnapshot(apiKey: string, ocid: string, date: string): Promis
   }
 }
 
-// 오늘은 날짜 지정 조회가 안 되므로 실시간 값으로 진행 중인 하루를 만든다
-export async function fetchTodayPoint(apiKey: string, ocid: string): Promise<SnapshotPoint> {
-  const basic = await nexon.basic(apiKey, ocid)
-  const stat = await nexon.stat(apiKey, ocid)
-  return {
-    date: kstToday(),
-    level: basic.character_level,
-    exp: basic.character_exp,
-    expRate: Number(basic.character_exp_rate),
-    combatPower: combatPowerOf(stat),
-  }
+const LIVE_CACHE_MS = 10 * 60 * 1000
+
+// 오늘은 날짜 지정 조회가 안 되므로 실시간 값으로 진행 중인 하루를 만들고, 같은 응답의 캐릭터 정보와 함께 캐시한다. 키는 함수로 주면 캐시가 없을 때만 꺼낸다
+export function fetchLive(apiKey: string | (() => Promise<string>), ocid: string, fresh = false): Promise<{ character: NonNullable<SnapshotsResponse['character']>, today: SnapshotPoint }> {
+  return withCache(`live:${ocid}`, LIVE_CACHE_MS, async () => {
+    const key = typeof apiKey === 'function' ? await apiKey() : apiKey
+    const basic = await nexon.basic(key, ocid)
+    const stat = await nexon.stat(key, ocid)
+    const character = { ocid, name: basic.character_name ?? '', world: basic.world_name, job: basic.character_class, level: basic.character_level, imageUrl: characterImageUrl(basic.character_image) }
+    await saveCharacter(character)
+    return {
+      character,
+      today: {
+        date: kstToday(),
+        level: basic.character_level,
+        exp: basic.character_exp,
+        expRate: Number(basic.character_exp_rate),
+        combatPower: combatPowerOf(stat),
+      },
+    }
+  }, fresh)
 }
 
 async function missingDates(ocid: string, dates: string[]): Promise<string[]> {
@@ -61,24 +71,28 @@ export async function fillSnapshots(apiKey: string, ocid: string, dates: string[
   return missing.length - done
 }
 
-export async function enqueueSnapshotJobs(userId: ObjectId, ocid: string, dates: string[]) {
+// 빈 날 수를 돌려준다
+export async function enqueueSnapshotJobs(userId: ObjectId, ocid: string, dates: string[]): Promise<number> {
   const { jobs } = await useCollections()
   const missing = await missingDates(ocid, dates)
-  if (missing.length === 0) return
+  if (missing.length === 0) return 0
 
   const now = new Date()
-  await jobs.bulkWrite(missing.map(date => ({
-    updateOne: {
-      filter: { type: 'snapshot' as const, ocid, date },
-      update: { $setOnInsert: { userId, status: 'pending' as const, attempts: 0, runAt: now, lockedAt: null, error: null, createdAt: now } },
-      upsert: true,
-    },
-  })))
-  // 키를 다시 등록한 뒤라면 실패로 끝난 작업도 다시 시도한다
-  await jobs.updateMany(
-    { type: 'snapshot', ocid, date: { $in: missing }, status: 'failed' },
-    { $set: { userId, status: 'pending', attempts: 0, runAt: now, error: null } },
-  )
+  await Promise.all([
+    jobs.bulkWrite(missing.map(date => ({
+      updateOne: {
+        filter: { type: 'snapshot' as const, ocid, date },
+        update: { $setOnInsert: { userId, status: 'pending' as const, attempts: 0, runAt: now, lockedAt: null, error: null, createdAt: now } },
+        upsert: true,
+      },
+    }))),
+    // 키를 다시 등록한 뒤라면 실패로 끝난 작업도 다시 시도한다
+    jobs.updateMany(
+      { type: 'snapshot', ocid, date: { $in: missing }, status: 'failed' },
+      { $set: { userId, status: 'pending', attempts: 0, runAt: now, error: null } },
+    ),
+  ])
+  return missing.length
 }
 
 async function claimJob(filter: Record<string, unknown>): Promise<JobDoc | null> {
@@ -99,8 +113,10 @@ async function claimJob(filter: Record<string, unknown>): Promise<JobDoc | null>
 
 async function finishJob(job: JobDoc, result: string, startedAt: number, update: Partial<JobDoc>) {
   const { jobs, jobLogs } = await useCollections()
-  await jobs.updateOne({ _id: job._id }, { $set: { lockedAt: null, ...update } })
-  await jobLogs.insertOne({ at: new Date(), userId: job.userId, ocid: job.ocid, date: job.date, result, ms: Date.now() - startedAt })
+  await Promise.all([
+    jobs.updateOne({ _id: job._id }, { $set: { lockedAt: null, ...update } }),
+    jobLogs.insertOne({ at: new Date(), userId: job.userId, ocid: job.ocid, date: job.date, result, ms: Date.now() - startedAt }),
+  ])
 }
 
 const later = (ms: number) => new Date(Date.now() + ms)
@@ -109,6 +125,8 @@ export async function processSnapshotJobs(options: { budgetMs: number, userId?: 
   const { snapshots, jobs, users } = await useCollections()
   const deadline = Date.now() + options.budgetMs
   const skippedUsers: ObjectId[] = []
+  // 같은 사용자 작업이 이어지면 키를 매번 DB에서 꺼내 풀지 않는다
+  const keys = new Map<string, Promise<string>>()
   let processed = 0
 
   while (Date.now() < deadline) {
@@ -120,11 +138,14 @@ export async function processSnapshotJobs(options: { budgetMs: number, userId?: 
 
     const startedAt = Date.now()
     try {
-      const apiKey = await getUserApiKey(job.userId)
-      const snapshot = await fetchSnapshot(apiKey, job.ocid, job.date)
-      await snapshots.updateOne({ ocid: job.ocid, date: job.date }, { $set: { ...snapshot, fetchedAt: new Date() } }, { upsert: true })
-      await finishJob(job, snapshot.empty ? 'empty' : 'ok', startedAt, { status: 'done', error: null })
-      await users.updateOne({ _id: job.userId, keyStatus: 'rate_limited' }, { $set: { keyStatus: 'valid', keyStatusReason: null, keyCheckedAt: new Date() } })
+      const userKey = job.userId.toHexString()
+      if (!keys.has(userKey)) keys.set(userKey, getUserApiKey(job.userId))
+      const snapshot = await fetchSnapshot(await keys.get(userKey)!, job.ocid, job.date)
+      await Promise.all([
+        snapshots.updateOne({ ocid: job.ocid, date: job.date }, { $set: { ...snapshot, fetchedAt: new Date() } }, { upsert: true }),
+        finishJob(job, snapshot.empty ? 'empty' : 'ok', startedAt, { status: 'done', error: null }),
+        users.updateOne({ _id: job.userId, keyStatus: 'rate_limited' }, { $set: { keyStatus: 'valid', keyStatusReason: null, keyCheckedAt: new Date() } }),
+      ])
       processed++
     }
     catch (error) {

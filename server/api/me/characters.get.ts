@@ -1,5 +1,4 @@
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
-  const { characters } = await fetchAccountCharacters(await getUserApiKey(user._id))
-  return characters
+  return accountCharacters(user._id, () => getUserApiKey(user._id))
 })

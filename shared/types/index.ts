@@ -269,6 +269,8 @@ export interface EnhanceEvent {
   afterStar: number | null
   // 큐브 이름이나 '잠재능력 재설정' 같은 재설정 방식
   tool: string | null
+  // 에디셔널(아랫잠)에 쓴 큐브·재설정이면 true
+  additional: boolean
   grade: string | null
   options: string[]
   addOptions: string[]
@@ -276,11 +278,17 @@ export interface EnhanceEvent {
   meso: number | null
 }
 
-export interface EnhanceSummary {
-  starforce: { attempts: number, success: number, destroy: number }
+// 잠재(윗잠)와 에디셔널(아랫잠) 각각 큐브와 메소 재설정 횟수
+export interface PotentialCounts {
   cubes: number
   resets: number
-  meso: { starforce: number, potential: number }
+}
+
+export interface EnhanceSummary {
+  starforce: { attempts: number, success: number, destroy: number }
+  potential: PotentialCounts
+  additional: PotentialCounts
+  meso: { starforce: number, potential: number, additional: number }
   first: string | null
   last: string | null
 }
@@ -294,7 +302,6 @@ export interface EnhanceItem {
   potentialGrade: string | null
   additionalGrade: string | null
   summary: EnhanceSummary
-  events: EnhanceEvent[]
 }
 
 export interface EnhanceResponse {

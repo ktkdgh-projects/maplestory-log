@@ -69,16 +69,21 @@ export async function loadSession(event: H3Event) {
   const { sessions, users } = await useCollections()
   const tokenHash = sha256(token)
   const now = new Date()
-  const session = await sessions.findOne({
-    $or: [{ tokenHash }, { prevTokenHash: tokenHash, prevValidUntil: { $gt: now } }],
-    expiresAt: { $gt: now },
-  })
-  if (!session) {
+  // 모든 요청이 거치므로 세션과 사용자를 한 번에 가져온다
+  const [found] = await sessions.aggregate<SessionDoc & { users: UserDoc[] }>([
+    { $match: {
+      $or: [{ tokenHash }, { prevTokenHash: tokenHash, prevValidUntil: { $gt: now } }],
+      expiresAt: { $gt: now },
+    } },
+    { $limit: 1 },
+    { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'users' } },
+  ]).toArray()
+  if (!found) {
     clearSessionCookie(event)
     return
   }
 
-  const user = await users.findOne({ _id: session.userId })
+  const { users: [user], ...session } = found
   if (!user) {
     await sessions.deleteOne({ _id: session._id })
     clearSessionCookie(event)
@@ -100,13 +105,15 @@ export async function loadSession(event: H3Event) {
     setSessionCookie(event, nextToken, true)
   }
   else if (now.getTime() - session.lastUsedAt.getTime() > TOUCH_INTERVAL_MS) {
-    await sessions.updateOne({ _id: session._id }, {
-      $set: {
-        lastUsedAt: now,
-        ...(session.remember && { expiresAt: new Date(now.getTime() + REMEMBER_MS) }),
-      },
-    })
-    await users.updateOne({ _id: user._id }, { $set: { lastSeenAt: now } })
+    await Promise.all([
+      sessions.updateOne({ _id: session._id }, {
+        $set: {
+          lastUsedAt: now,
+          ...(session.remember && { expiresAt: new Date(now.getTime() + REMEMBER_MS) }),
+        },
+      }),
+      users.updateOne({ _id: user._id }, { $set: { lastSeenAt: now } }),
+    ])
   }
 
   event.context.session = session

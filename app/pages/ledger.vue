@@ -2,7 +2,7 @@
 import type { BossBoardResponse, LedgerResponse, LedgerSettings } from '#shared/types'
 import { BOSS_PRICE_DATE, bossPeriod } from '#shared/data/bosses'
 
-const TABS = [{ key: 'calendar', label: '달력' }, { key: 'bosses', label: '주간 보스' }, { key: 'setup', label: '보스 세팅' }] as const
+const TABS = [{ key: 'calendar', label: '달력' }, { key: 'bosses', label: '주간 보스' }] as const
 
 const { me } = await useMe()
 const today = kstToday()
@@ -11,18 +11,18 @@ const month = ref(today.slice(0, 7))
 const week = ref(bossPeriod('weekly', today))
 const selectedDate = ref(today)
 
-const { data, error, refresh } = await useFetch<LedgerResponse>('/api/ledger', {
-  query: { month },
-  immediate: !!me.value,
-})
-const { data: board, refresh: refreshBoard } = await useFetch<BossBoardResponse>('/api/ledger/bosses', {
-  query: { week },
-  immediate: !!me.value,
-})
-
-const { data: settings, refresh: refreshSettings } = await useFetch<LedgerSettings>('/api/ledger/settings', {
-  immediate: !!me.value,
-})
+// 셋을 차례로 기다리면 왕복이 세 번 쌓이므로 한꺼번에 보낸다
+const { getCachedData, revalidate } = useRevisitCache()
+const [
+  { data, error, refresh },
+  { data: board, refresh: refreshBoard },
+  { data: settings, refresh: refreshSettings },
+] = await Promise.all([
+  useFetch<LedgerResponse>('/api/ledger', { query: { month }, immediate: !!me.value, getCachedData }),
+  useFetch<BossBoardResponse>('/api/ledger/bosses', { query: { week }, immediate: !!me.value, getCachedData }),
+  useFetch<LedgerSettings>('/api/ledger/settings', { immediate: !!me.value, getCachedData }),
+])
+revalidate(refresh, refreshBoard, refreshSettings)
 const settingsOpen = ref(false)
 
 const summary = computed(() => summarizeLedger(data.value?.hunts ?? [], data.value?.clears ?? [], data.value?.items ?? [], data.value?.sales ?? []))
@@ -38,9 +38,6 @@ watch(month, (m) => {
 
 async function refreshAll() {
   await Promise.all([refresh(), refreshBoard(), refreshSettings()])
-}
-function goSetup() {
-  tab.value = 'setup'
 }
 
 useHead({ title: '메소 가계부 · 메이플스토리로그' })
@@ -116,9 +113,7 @@ useHead({ title: '메소 가계부 · 메이플스토리로그' })
         </div>
       </div>
 
-      <LedgerBossBoard v-else-if="tab === 'bosses'" key="bosses" :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" :week="week" :roster="board?.roster ?? []" :clears="board?.clears ?? []" @changed="refreshAll" @setup="goSetup" />
-
-      <LedgerBossRoster v-else key="setup" :roster="board?.roster ?? []" @saved="refreshBoard" />
+      <LedgerBossBoard v-else key="bosses" :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" :week="week" :roster="board?.roster ?? []" :clears="board?.clears ?? []" @changed="refreshAll" />
     </Transition>
   </GameWindow>
 </template>

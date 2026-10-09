@@ -2,7 +2,9 @@
 import type { CharacterBrief, ItemSheet, ItemsResponse } from '#shared/types'
 
 const { me } = await useMe()
-const { data, error, refresh } = await useFetch<ItemsResponse>('/api/items', { immediate: !!me.value })
+const { getCachedData, revalidate } = useRevisitCache()
+const { data, error, refresh } = await useFetch<ItemsResponse>('/api/items', { immediate: !!me.value, getCachedData })
+revalidate(refresh)
 
 const sheets = computed<ItemSheet[]>(() => data.value?.sheets ?? [])
 async function reorderSheets(ids: string[]) {

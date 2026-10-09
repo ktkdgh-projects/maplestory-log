@@ -10,7 +10,7 @@ export default defineEventHandler(async (event): Promise<UnionResponse> => {
   const ocid = getRouterParam(event, 'ocid')
   const apiKey = await getUserApiKey(user._id)
 
-  const { characters } = await fetchAccountCharacters(apiKey)
+  const characters = await accountCharacters(user._id, async () => apiKey)
   const owner = characters.find(c => c.ocid === ocid)
   if (!owner) throw createError({ statusCode: 403, message: '내 계정의 캐릭터만 유니온 목록을 볼 수 있어요.' })
 

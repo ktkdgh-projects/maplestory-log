@@ -1,4 +1,5 @@
 import type { CharacterBrief, CharacterDetail, EquipmentItem, ItemOption } from '#shared/types'
+import type { ObjectId } from 'mongodb'
 import type { CharacterDoc } from './mongo'
 import type { NexonItem, NexonItemOption } from './nexon'
 
@@ -28,6 +29,13 @@ export async function fetchAccountCharacters(apiKey: string): Promise<{ accountI
     .map(c => ({ ocid: c.ocid, name: c.character_name, world: c.world_name, job: c.character_class, level: c.character_level }))
     .sort((a, b) => b.level - a.level)
   return { accountId: list.account_list[0]?.account_id ?? null, characters }
+}
+
+const ACCOUNT_CACHE_MS = 10 * 60 * 1000
+
+// 계정 캐릭터 목록은 자주 안 바뀌어 사용자마다 잠시 캐시한다. 키는 캐시가 없을 때만 꺼낸다
+export function accountCharacters(userId: ObjectId, apiKey: () => Promise<string>): Promise<CharacterBrief[]> {
+  return withCache(`account:${userId.toHexString()}`, ACCOUNT_CACHE_MS, async () => (await fetchAccountCharacters(await apiKey())).characters)
 }
 
 export async function resolveOcid(apiKey: string, name: string): Promise<string> {
@@ -185,9 +193,11 @@ async function fetchDetail(apiKey: string, ocid: string): Promise<CharacterDetai
 export function getCharacterDetail(apiKey: string, ocid: string, fresh = false): Promise<CharacterDetail> {
   return withCache(`detail:${ocid}:v${DETAIL_CACHE_VERSION}`, DETAIL_CACHE_MS, async () => {
     const detail = await fetchDetail(apiKey, ocid)
-    await saveCharacter({ ocid, name: detail.name, world: detail.world, job: detail.job, level: detail.level, imageUrl: detail.imageUrl })
-    // 장비 결산에서 직접 적은 장비에도 아이콘을 붙이려고 본 아이템을 사전에 모은다
-    await collectCharacterIcons(apiKey, ocid, detail.presets.flat())
+    await Promise.all([
+      saveCharacter({ ocid, name: detail.name, world: detail.world, job: detail.job, level: detail.level, imageUrl: detail.imageUrl }),
+      // 장비 결산에서 직접 적은 장비에도 아이콘을 붙이려고 본 아이템을 사전에 모은다
+      collectCharacterIcons(apiKey, ocid, detail.presets.flat()),
+    ])
     return detail
   }, fresh)
 }

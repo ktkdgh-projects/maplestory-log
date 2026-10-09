@@ -15,14 +15,19 @@ const ocid = ref(me.value?.main?.ocid ?? '')
 const searchName = computed(() => (typeof route.query.name === 'string' ? route.query.name.trim() : ''))
 const own = computed(() => !searchName.value && !!me.value?.main)
 
-const { data: tracked, refresh: refreshTracked } = await useFetch<TrackedCharacter[]>('/api/growth/characters', {
-  default: () => [],
-  immediate: !!me.value?.main,
-})
+// 기록 요청을 먼저 보내 두고 캐릭터 목록을 기다려야 둘이 차례로 쌓이지 않는다
+const { getCachedData, revalidate } = useRevisitCache()
 const { data, error, refresh } = useFetch<SnapshotsResponse>(() => (searchName.value ? '/api/growth/search' : '/api/snapshots'), {
   query: computed(() => (searchName.value ? { name: searchName.value, days: range.value } : { days: range.value, ocid: ocid.value })),
   immediate: !!searchName.value || own.value,
+  getCachedData,
 })
+const { data: tracked, refresh: refreshTracked } = await useFetch<TrackedCharacter[]>('/api/growth/characters', {
+  default: () => [],
+  immediate: !!me.value?.main,
+  getCachedData,
+})
+revalidate(refresh, refreshTracked)
 
 const nameInput = ref('')
 function searchGrowth() {

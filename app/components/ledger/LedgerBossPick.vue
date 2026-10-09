@@ -28,12 +28,13 @@ const emit = defineEmits<{ difficulty: [difficulty: string], party: [delta: numb
         </button>
       </div>
     </div>
-    <div v-if="pick" class="info">
-      <b class="each">{{ formatShortNumber(crystalPrice(boss.id, pick.difficulty, pick.party) ?? 0) }}</b>
+    <!-- 고르기 전에도 자리를 잡아 두어야 고를 때 난이도 버튼이 줄바꿈되며 카드 크기가 바뀌지 않는다 -->
+    <div class="info" :class="{ empty: !pick }" :aria-hidden="!pick">
+      <b class="each">{{ pick ? formatShortNumber(crystalPrice(boss.id, pick.difficulty, pick.party) ?? 0) : '0' }}</b>
       <div class="party">
-        <button type="button" aria-label="파티 인원 줄이기" @click="emit('party', -1)">−</button>
-        <span>{{ pick.party }}인</span>
-        <button type="button" aria-label="파티 인원 늘리기" @click="emit('party', 1)">+</button>
+        <button type="button" aria-label="파티 인원 줄이기" :tabindex="pick ? 0 : -1" @click="emit('party', -1)">−</button>
+        <span>{{ pick?.party ?? 1 }}인</span>
+        <button type="button" aria-label="파티 인원 늘리기" :tabindex="pick ? 0 : -1" @click="emit('party', 1)">+</button>
       </div>
     </div>
   </div>
@@ -112,7 +113,14 @@ const emit = defineEmits<{ difficulty: [difficulty: string], party: [delta: numb
   flex: none;
   justify-items: end;
   gap: 2px;
+  /* 가격 글자 길이가 달라도 칸 너비가 같게 */
+  min-width: 68px;
+}
+.card.picked .info {
   animation: rise-in 0.25s var(--ease-out);
+}
+.info.empty {
+  visibility: hidden;
 }
 .each {
   color: var(--gold);

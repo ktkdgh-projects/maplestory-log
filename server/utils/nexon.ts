@@ -209,6 +209,7 @@ export interface NexonHistoryEvent {
   cube_type?: string
   potential_type?: string
   potential_option_grade?: string
+  additional_potential_option_grade?: string
   item_level?: number
   before_potential_option?: NexonOptionLine[]
   before_additional_potential_option?: NexonOptionLine[]

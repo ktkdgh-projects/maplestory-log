@@ -135,6 +135,8 @@ export interface HistorySyncDoc {
   // 가장 최근에 모은 지난날. 다음엔 이 다음 날부터 어제까지 모으고, 오늘은 매번 따로 다시 받는다
   newest: string | null
   done: boolean
+  // 오늘 기록을 마지막으로 받은 때
+  todayAt?: Date | null
   lockedAt: Date | null
   // 받는 필드가 늘면 올려서 처음부터 다시 받게 한다
   version?: number
@@ -324,11 +326,11 @@ async function ensureIndexes(db: Db) {
 // DB 이름은 연결 문자열 경로(…mongodb.net/<db>)에서 가져온다
 async function useDb(): Promise<Db> {
   const db = (await getClient()).db()
+  // 인덱스는 이미 있어서 확인만 하는 일이라, 서버가 깨어난 첫 요청이 기다리지 않게 뒤에서 돌린다
   globalForMongo.__mongoIndexes ??= ensureIndexes(db).catch((error) => {
     globalForMongo.__mongoIndexes = undefined
-    throw error
+    console.error('[mongo] 인덱스 확인 실패', error)
   })
-  await globalForMongo.__mongoIndexes
   return db
 }
 

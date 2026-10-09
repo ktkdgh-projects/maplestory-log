@@ -12,9 +12,11 @@ const { me } = await useMe()
 
 const name = computed(() => (typeof route.query.name === 'string' ? route.query.name.trim() : '') || me.value?.main?.name || '')
 
+// 서버가 1시간 캐시하므로 다시 들어오면 받아 둔 값을 그대로 쓴다. 새로 받으려면 최신화 버튼
+const { getCachedData } = useRevisitCache()
 const { data: character, error, status, execute } = useFetch<CharacterDetail>(
   () => `/api/character/${encodeURIComponent(name.value)}`,
-  { immediate: !!name.value, watch: false },
+  { immediate: !!name.value, watch: false, getCachedData },
 )
 watch(name, (value) => {
   if (value) execute()

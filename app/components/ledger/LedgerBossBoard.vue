@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { BossClear, BossRosterCharacter } from '#shared/types'
-import { WEEKLY_BOSS_LIMIT, bossOrder, bossPeriod, crystalPrice, findBoss, type BossDifficulty } from '#shared/data/bosses'
+import type { BossClear, BossPick, BossRosterCharacter, CharacterBrief } from '#shared/types'
+import { MAX_BOSS_CHARACTERS, WEEKLY_BOSS_LIMIT, bossOrder, bossPeriod, crystalPrice, findBoss, type BossDifficulty } from '#shared/data/bosses'
 
 const props = defineProps<{ week: string, roster: BossRosterCharacter[], clears: BossClear[], feeRate: number }>()
-const emit = defineEmits<{ changed: [], setup: [] }>()
+const emit = defineEmits<{ changed: [] }>()
 
 const today = kstToday()
 // 지난 주를 체크하면 그 주 마지막 날(수요일)에 잡은 걸로 남긴다
@@ -81,6 +81,30 @@ async function clearAll(characters: BossRosterCharacter[]) {
   }
 }
 
+// 그 주 주간 보스 체크를 한 번에 푼다. 물욕템을 적어 둔 기록도 같이 지워지므로 그때만 한 번 묻는다
+async function unclearAll(character: BossRosterCharacter) {
+  const key = `none:${character.ocid}`
+  if (busy.value) return
+  const weekly = clears.value.filter(c => c.ocid === character.ocid && c.period === props.week)
+  if (!weekly.length) return
+  if (weekly.some(c => c.loot.length) && !confirm(`${character.name}의 이번 주 체크를 모두 풀까요? 적어 둔 물욕템 기록도 같이 지워져요.`)) return
+  busy.value = key
+  failure.value = ''
+  const before = clears.value
+  clears.value = before.filter(c => !weekly.includes(c))
+  try {
+    await $fetch('/api/ledger/weekly-clears', { method: 'DELETE', body: { ocid: character.ocid, week: props.week } })
+    emit('changed')
+  }
+  catch (error) {
+    clears.value = before
+    failure.value = errorMessage(error)
+  }
+  finally {
+    busy.value = null
+  }
+}
+
 const lootOpen = ref(false)
 const lootClear = ref<BossClear | null>(null)
 function openLoot(clear: BossClear) {
@@ -115,6 +139,53 @@ async function toggle(character: BossRosterCharacter, pick: { bossId: string, di
     busy.value = null
   }
 }
+
+// 캐릭터를 누르면 그 줄 아래로 보스 세팅이 펼쳐진다. 고친 목록은 통째로 저장한다
+const openOcid = ref<string | null>(null)
+const toggleSetup = (ocid: string) => {
+  openOcid.value = openOcid.value === ocid ? null : ocid
+}
+async function saveRoster(characters: BossRosterCharacter[]) {
+  busy.value = 'roster'
+  failure.value = ''
+  try {
+    await $fetch('/api/ledger/roster', { method: 'PUT', body: { characters } })
+    emit('changed')
+  }
+  catch (error) {
+    failure.value = errorMessage(error)
+  }
+  finally {
+    busy.value = null
+  }
+}
+const setBosses = (ocid: string, bosses: BossPick[]) => saveRoster(props.roster.map(c => (c.ocid === ocid ? { ...c, bosses } : c)))
+// 복사할 땐 보고 있던 캐릭터의 고친 세팅도 같이 저장해야 다시 불러올 때 사라지지 않는다
+const copyBosses = (from: string, to: string, bosses: BossPick[]) => saveRoster(props.roster.map(c => (c.ocid === from || c.ocid === to ? { ...c, bosses: structuredClone(bosses) } : c)))
+async function removeCharacter(ocid: string) {
+  openOcid.value = null
+  await saveRoster(props.roster.filter(c => c.ocid !== ocid))
+}
+
+const pickerOpen = ref(false)
+const candidates = ref<CharacterBrief[] | null>(null)
+async function openPicker() {
+  pickerOpen.value = true
+  failure.value = ''
+  candidates.value ??= await $fetch<CharacterBrief[]>('/api/me/characters').catch((error) => {
+    failure.value = errorMessage(error)
+    pickerOpen.value = false
+    return null
+  })
+}
+async function addCharacter(ocid: string) {
+  const c = candidates.value?.find(x => x.ocid === ocid)
+  if (!c || props.roster.some(r => r.ocid === ocid)) return
+  pickerOpen.value = false
+  await saveRoster([...props.roster, { ...c, imageUrl: null, bosses: [] }])
+  // 막 추가한 캐릭터는 바로 보스를 고르게 펼쳐 둔다
+  openOcid.value = ocid
+}
 </script>
 
 <template>
@@ -132,23 +203,47 @@ async function toggle(character: BossRosterCharacter, pick: { bossId: string, di
 
     <div v-if="!roster.length" class="empty">
       <img src="/favicon.svg" alt="" width="44" height="44">
-      <p class="muted">주간 보스를 도는 캐릭터와 보스를 먼저 정해 주세요.</p>
-      <button type="button" class="btn" @click="emit('setup')">보스 세팅하기</button>
+      <p class="muted">주간 보스를 도는 캐릭터를 추가하고, 캐릭터를 눌러 보스를 골라 주세요.</p>
+      <button type="button" class="btn" :disabled="!!busy" @click="openPicker">+ 캐릭터 추가</button>
     </div>
 
     <ul v-else class="rows stagger">
-      <li v-for="r in rows" :key="r.character.ocid" class="row" :class="{ complete: r.complete }">
+      <li v-if="roster.length < MAX_BOSS_CHARACTERS" class="add-row">
+        <button type="button" class="add" :disabled="!!busy" @click="openPicker">+ 캐릭터 추가 ({{ roster.length }}/{{ MAX_BOSS_CHARACTERS }})</button>
+      </li>
+      <li v-for="r in rows" :key="r.character.ocid" class="row" :class="{ complete: r.complete, open: openOcid === r.character.ocid }">
         <div class="who">
-          <CharacterThumb v-if="r.character.imageUrl" :src="r.character.imageUrl" :height="56" crop="head" class="face" />
-          <div class="who-text">
-            <b class="ellipsis">{{ r.character.name }}</b>
-            <small class="ellipsis">{{ r.character.job }} · LV.{{ r.character.level }}</small>
-            <small><span :class="{ full: r.weeklyDone >= WEEKLY_BOSS_LIMIT }">{{ r.weeklyDone }}/{{ r.weeklyTotal }}</span> · <span class="gold">{{ formatShortNumber(r.earned) }}</span></small>
-          </div>
-          <span v-if="r.complete" class="done-stamp">다 잡음</span>
-          <button v-else-if="r.weeklyTotal" type="button" class="all-btn" :disabled="!!busy" :title="`${r.character.name}의 남은 주간 보스 ${r.weeklyTotal - r.weeklyDone}개를 한 번에 체크`" @click="clearAll([r.character])">
-            전부 잡음
+          <button
+            type="button"
+            class="who-main"
+            :aria-expanded="openOcid === r.character.ocid"
+            :title="`${r.character.name}의 보스 세팅 ${openOcid === r.character.ocid ? '접기' : '열기'}`"
+            @click="toggleSetup(r.character.ocid)"
+          >
+            <CharacterThumb v-if="r.character.imageUrl" :src="r.character.imageUrl" :height="56" crop="head" class="face" />
+            <span class="who-text">
+              <b class="ellipsis">{{ r.character.name }} <span class="caret" aria-hidden="true">▾</span></b>
+              <small class="ellipsis">{{ r.character.job }} · LV.{{ r.character.level }}</small>
+              <small><span :class="{ full: r.weeklyDone >= WEEKLY_BOSS_LIMIT }">{{ r.weeklyDone }}/{{ r.weeklyTotal }}</span> · <span class="gold">{{ formatShortNumber(r.earned) }}</span></small>
+            </span>
           </button>
+          <!-- 잡음·취소를 캐릭터 칸에 세로로 쌓아 보스 칸 너비를 줄이지 않는다 -->
+          <div v-if="r.weeklyTotal" class="acts">
+            <span v-if="r.complete" class="done-stamp">다 잡음</span>
+            <button v-else type="button" class="all-btn" :disabled="!!busy" :title="`${r.character.name}의 남은 주간 보스 ${r.weeklyTotal - r.weeklyDone}개를 한 번에 체크`" @click="clearAll([r.character])">
+              전부 잡음
+            </button>
+            <button
+              v-if="r.weeklyDone"
+              type="button"
+              class="none-btn"
+              :disabled="!!busy"
+              :title="`${r.character.name}의 이번 주 주간 보스 체크 ${r.weeklyDone}개를 한 번에 풀기`"
+              @click="unclearAll(r.character)"
+            >
+              전부 취소
+            </button>
+          </div>
         </div>
         <div class="chips">
           <div
@@ -189,10 +284,26 @@ async function toggle(character: BossRosterCharacter, pick: { bossId: string, di
               <template v-else>+물욕</template>
             </button>
           </div>
+          <button v-if="!r.bosses.length && openOcid !== r.character.ocid" type="button" class="hint" @click="toggleSetup(r.character.ocid)">보스를 아직 안 골랐어요 · 눌러서 고르기</button>
         </div>
+        <LedgerBossSetup
+          v-if="openOcid === r.character.ocid"
+          class="setup"
+          :character="r.character"
+          :others="roster.filter(c => c.ocid !== r.character.ocid)"
+          :busy="!!busy"
+          @save="setBosses(r.character.ocid, $event)"
+          @copy="(to, bosses) => copyBosses(r.character.ocid, to, bosses)"
+          @remove="removeCharacter(r.character.ocid)"
+          @close="openOcid = null"
+        />
       </li>
     </ul>
     <LedgerLootModal v-model="lootOpen" :clear="lootClear" :fee-rate="feeRate" @saved="emit('changed')" />
+    <AppModal v-model="pickerOpen" title="보스 도는 캐릭터 추가">
+      <p v-if="!candidates" class="muted">캐릭터 목록을 불러오는 중이에요…</p>
+      <CharacterPicker v-else :characters="candidates.filter(c => !roster.some(r => r.ocid === c.ocid))" :busy="!!busy" @pick="addCharacter" />
+    </AppModal>
   </div>
 </template>
 
@@ -258,6 +369,78 @@ async function toggle(character: BossRosterCharacter, pick: { bossId: string, di
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+.who-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: -4px;
+  padding: 4px;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--fast) ease;
+}
+.who-main:hover,
+.row.open .who-main {
+  background: rgb(242 193 78 / 0.08);
+}
+.caret {
+  display: inline-block;
+  color: var(--sub);
+  font-size: 12px;
+  transition: transform var(--fast) var(--ease-out), color var(--fast) ease;
+}
+.who-main:hover .caret {
+  color: var(--gold);
+}
+.row.open .caret {
+  color: var(--gold);
+  transform: rotate(180deg);
+}
+.setup {
+  grid-column: 1 / -1;
+  margin: 2px -12px -8px;
+}
+.row.open {
+  border-color: var(--gold);
+}
+.add-row {
+  display: grid;
+}
+.add {
+  min-height: 38px;
+  background: none;
+  border: 1px dashed var(--panel-line);
+  border-radius: 10px;
+  color: var(--sub);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color var(--fast) ease, color var(--fast) ease;
+}
+.add:hover:not(:disabled) {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.hint {
+  padding: 6px 10px;
+  background: none;
+  border: 1px dashed var(--panel-line);
+  border-radius: 8px;
+  color: var(--sub);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hint:hover {
+  border-color: var(--gold);
+  color: var(--gold);
 }
 .face {
   flex: none;
@@ -360,9 +543,7 @@ async function toggle(character: BossRosterCharacter, pick: { bossId: string, di
   box-shadow: inset 4px 0 0 var(--gain), 0 0 14px rgb(127 217 154 / 0.15);
 }
 .done-stamp {
-  flex: none;
   white-space: nowrap;
-  margin-left: auto;
   padding: 2px 8px;
   border: 2px solid var(--gain);
   border-radius: 6px;
@@ -376,8 +557,6 @@ async function toggle(character: BossRosterCharacter, pick: { bossId: string, di
   from { opacity: 0; transform: rotate(-8deg) scale(1.8); }
 }
 .all-btn {
-  flex: none;
-  margin-left: auto;
   padding: 4px 10px;
   background: rgb(127 217 154 / 0.12);
   border: 1px solid var(--gain);
@@ -388,6 +567,34 @@ async function toggle(character: BossRosterCharacter, pick: { bossId: string, di
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--fast) ease, transform var(--fast) var(--ease-out);
+}
+.acts {
+  display: grid;
+  flex: none;
+  justify-items: stretch;
+  gap: 4px;
+  margin-left: auto;
+  text-align: center;
+}
+.none-btn {
+  padding: 3px 10px;
+  background: rgb(255 138 122 / 0.08);
+  border: 1px solid color-mix(in srgb, var(--loss) 60%, transparent);
+  border-radius: 6px;
+  color: var(--loss);
+  font-family: var(--f-title);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--fast) ease, transform var(--fast) var(--ease-out);
+}
+.none-btn:hover:not(:disabled) {
+  background: rgb(255 138 122 / 0.2);
+  transform: translateY(-1px);
+}
+.none-btn:disabled {
+  cursor: wait;
+  opacity: 0.5;
 }
 .all-btn:hover:not(:disabled) {
   background: rgb(127 217 154 / 0.25);
