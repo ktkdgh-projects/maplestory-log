@@ -9,8 +9,8 @@ const ICONS = assetsByName(import.meta.glob<string>('~/assets/bosses/*.png', { e
 
 const hue = computed(() => BOSS_HUES[props.bossId] ?? 220)
 const icon = computed(() => ICONS[props.bossId])
-// 픽셀 아이콘은 정수 배율일 때만 또렷하다
-const iconSize = computed(() => Math.max(1, Math.floor(props.size / ICON_PX)) * ICON_PX)
+// 픽셀 아이콘은 정수 배율일 때만 또렷하다. 칸보다 조금 크면 가장자리만 잘리게 둔다
+const iconSize = computed(() => Math.max(1, Math.round(props.size / ICON_PX)) * ICON_PX)
 const fallback = computed(() => (findBoss(props.bossId)?.name ?? '?').replace(/\s/g, '').slice(0, 2))
 </script>
 

@@ -61,6 +61,9 @@ watch(() => data.value?.items, (items) => {
   if (items && !items.some(i => i.name === selected.value)) selected.value = items.find(i => i.events.length)?.name ?? items[0]?.name ?? null
 })
 
+// 기간 안에 지금 낀 장비에 쓴 메소 합계
+const spent = computed(() => (data.value?.items ?? []).reduce((sum, i) => ({ starforce: sum.starforce + i.summary.meso.starforce, potential: sum.potential + i.summary.meso.potential }), { starforce: 0, potential: 0 }))
+
 const formatAt = (iso: string) => new Date(iso).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 function starText(e: EnhanceEvent) {
@@ -84,6 +87,12 @@ function starText(e: EnhanceEvent) {
       </div>
       <span v-if="data?.syncing" class="sync">넥슨 기록 모으는 중<template v-if="data.syncedFrom"> · {{ formatMonthDay(data.syncedFrom) }}까지</template></span>
       <span class="muted note">기록에는 아이템 고유 번호가 없어서 같은 이름의 예전 장비 기록이 섞일 수 있어요</span>
+    </div>
+    <div v-if="data" class="spent">
+      <span>지금 낀 장비에 쓴 메소</span>
+      <span>잠재 재설정 <b>{{ formatKoreanNumber(spent.potential) }}</b></span>
+      <span title="스타포스 비용은 공식 발표가 없어 위키 공식으로 추정해요. MVP·PC방 할인과 파괴 복구 메소는 빠져 있어요">스타포스 <b>약 {{ formatKoreanNumber(spent.starforce) }}</b><small class="muted"> 추정</small></span>
+      <span class="muted small">큐브는 메소로 살 수 없어 개수만 세요</span>
     </div>
     <p v-if="failure || error" class="form-error">{{ failure || errorMessage(error) }}</p>
 
@@ -122,7 +131,7 @@ function starText(e: EnhanceEvent) {
           <div class="tile" style="--tone: var(--gold)">
             <span class="tile-label">스타포스 시도</span>
             <span class="tile-value">{{ item.summary.starforce.attempts }}</span>
-            <span class="tile-label">성공 {{ item.summary.starforce.success }} · <span class="loss">파괴 {{ item.summary.starforce.destroy }}</span></span>
+            <span class="tile-label">성공 {{ item.summary.starforce.success }} · <span class="loss">파괴 {{ item.summary.starforce.destroy }}</span><template v-if="item.summary.meso.starforce"> · 약 {{ formatShortNumber(item.summary.meso.starforce) }}</template></span>
           </div>
           <div class="tile" style="--tone: var(--calc)">
             <span class="tile-label">큐브</span>
@@ -131,6 +140,7 @@ function starText(e: EnhanceEvent) {
           <div class="tile" style="--tone: var(--api)">
             <span class="tile-label">잠재 재설정(메소)</span>
             <span class="tile-value">{{ item.summary.resets }}</span>
+            <span v-if="item.summary.meso.potential" class="tile-label">{{ formatKoreanNumber(item.summary.meso.potential) }}</span>
           </div>
         </div>
         <div class="kinds" role="tablist" aria-label="기록 종류">
@@ -141,7 +151,7 @@ function starText(e: EnhanceEvent) {
             <time>{{ formatAt(e.at) }}</time>
             <template v-if="e.kind === 'starforce'">
               <span class="what">{{ starText(e) }}</span>
-              <span class="result">{{ e.destroyed ? '파괴' : e.success ? '성공' : '실패' }}</span>
+              <span class="result">{{ e.destroyed ? '파괴' : e.success ? '성공' : '실패' }}<small v-if="e.meso" class="cost">{{ formatShortNumber(e.meso) }}</small></span>
             </template>
             <template v-else>
               <span class="what">
@@ -149,7 +159,7 @@ function starText(e: EnhanceEvent) {
                 <span v-if="e.options.length" class="opts">{{ e.options.join(' / ') }}</span>
                 <span v-if="e.addOptions.length" class="opts add">{{ e.addOptions.join(' / ') }}</span>
               </span>
-              <span class="result">{{ e.success ? `${e.grade} 등급 상승` : e.grade }}</span>
+              <span class="result">{{ e.success ? `${e.grade} 등급 상승` : e.grade }}<small v-if="e.meso" class="cost">{{ formatShortNumber(e.meso) }}</small></span>
             </template>
           </li>
           <li v-if="!events.length" class="muted empty">{{ data.syncing ? '아직 모으는 중이에요.' : days ? '이 기간엔 이 장비의 기록이 없어요.' : '이 장비의 기록이 없어요.' }}</li>
@@ -190,6 +200,35 @@ function starText(e: EnhanceEvent) {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+}
+.spent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+  color: var(--sub);
+  font-size: 13px;
+}
+.spent b {
+  color: var(--gold);
+  font-family: var(--f-title);
+  font-size: 16px;
+  font-weight: 400;
+}
+.spent .small {
+  margin-left: auto;
+  font-size: 12px;
+}
+.cost {
+  display: block;
+  color: var(--tip-line);
+  font-family: var(--f-body);
+  font-size: 11px;
+  text-align: right;
 }
 .loading {
   display: grid;

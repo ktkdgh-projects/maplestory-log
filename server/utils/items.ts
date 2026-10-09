@@ -1,5 +1,6 @@
 import type { ObjectId } from 'mongodb'
 import type { ItemRow, ItemSheet } from '#shared/types'
+import type { RowReference } from './itemFlows'
 import type { ItemRowDoc, ItemSheetDoc } from './mongo'
 
 const TEXT_MAX = 40
@@ -25,21 +26,28 @@ export function parseIdList(value: unknown): ObjectId[] {
   return value.map(v => parseId(typeof v === 'string' ? v : undefined))
 }
 
-function toItemRow(doc: ItemRowDoc): ItemRow {
+function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined): ItemRow {
   return {
     id: doc._id.toHexString(),
     part: doc.part,
     name: doc.name,
     icon: doc.icon,
     buy: doc.buy,
-    cost: doc.cost,
+    buyDate: doc.buyDate ?? null,
+    starforce: doc.starforce ?? 0,
+    starforceDate: doc.starforceDate ?? null,
+    potential: doc.potential ?? 0,
+    potentialDate: doc.potentialDate ?? null,
     sell: doc.sell,
+    sellDate: doc.sellDate ?? null,
     sellFee: doc.sellFee ?? DEFAULT_AUCTION_FEE,
     memo: doc.memo,
+    level: doc.level ?? null,
+    reference: reference ?? { starforce: 0, potential: 0 },
   }
 }
 
-export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[]): ItemSheet {
+export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[], references: Map<string, RowReference>): ItemSheet {
   return {
     id: doc._id.toHexString(),
     title: doc.title,
@@ -47,6 +55,6 @@ export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[]): ItemSheet {
     characterName: doc.characterName,
     folded: doc.folded,
     excluded: doc.excluded ?? false,
-    rows: rows.filter(r => r.sheetId.equals(doc._id)).map(toItemRow),
+    rows: rows.filter(r => r.sheetId.equals(doc._id)).map(r => toItemRow(r, references.get(r._id.toHexString()))),
   }
 }

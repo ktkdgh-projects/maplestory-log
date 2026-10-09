@@ -8,7 +8,8 @@ watch(() => route.query.name, (name) => {
 
 function search() {
   const name = input.value.trim()
-  if (name) navigateTo({ path: '/', query: { name } })
+  // 성장 페이지에서 검색하면 그 캐릭터의 성장 기록을, 나머지는 캐릭터 정보를 연다
+  if (name) navigateTo({ path: route.path === '/growth' ? '/growth' : '/', query: { name } })
 }
 </script>
 

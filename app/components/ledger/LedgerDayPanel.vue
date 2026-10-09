@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import type { BossClear, HuntEntry, ItemFlow } from '#shared/types'
+import type { BossClear, DropSale, HuntDrops, HuntEntry, ItemFlow } from '#shared/types'
 import { bossOrder, type BossDifficulty } from '#shared/data/bosses'
 
-const props = defineProps<{ date: string, hunts: HuntEntry[], clears: BossClear[], items: ItemFlow[] }>()
+const props = defineProps<{ date: string, hunts: HuntEntry[], clears: BossClear[], items: ItemFlow[], sales: DropSale[], stock: HuntDrops, feeRate: number }>()
 const emit = defineEmits<{ changed: [] }>()
 
-const editing = ref<string | 'new' | null>(null)
+const editing = ref<string | 'new' | 'sale' | null>(null)
 const busy = ref(false)
 const failure = ref('')
-const summary = computed(() => summarizeLedger(props.hunts, props.clears, props.items).total)
+const summary = computed(() => summarizeLedger(props.hunts, props.clears, props.items, props.sales).total)
 
 // 보스가 많으면 길게 늘어지므로 캐릭터별 한 줄로 묶고, 누르면 펼친다
 const openGroup = ref<string | null>(null)
@@ -60,8 +60,9 @@ function onSaved() {
     <div class="parts">
       <span><i class="dot dot-hunt" />사냥 {{ formatKoreanNumber(summary.huntMeso) }}</span>
       <span><i class="dot dot-boss" />보스 {{ formatKoreanNumber(summary.bossMeso) }}</span>
+      <span v-if="summary.saleMeso"><i class="dot dot-sale" />조각 판매 {{ formatKoreanNumber(summary.saleMeso) }}</span>
       <NuxtLink v-if="summary.itemSpent || summary.itemEarned" to="/items" class="item-link">
-        <i class="dot dot-item" />장비 <template v-if="summary.itemSpent">-{{ formatKoreanNumber(summary.itemSpent) }}</template><template v-if="summary.itemEarned"> +{{ formatKoreanNumber(summary.itemEarned) }}</template>
+        <i class="dot dot-item" />장비<template v-if="summary.itemBought"> 구매 -{{ formatKoreanNumber(summary.itemBought) }}</template><template v-if="summary.itemEnhanced"> 강화 -{{ formatKoreanNumber(summary.itemEnhanced) }}</template><template v-if="summary.itemEarned"> 판매 +{{ formatKoreanNumber(summary.itemEarned) }}</template>
       </NuxtLink>
     </div>
     <p v-if="failure" class="form-error">{{ failure }}</p>
@@ -91,6 +92,22 @@ function onSaved() {
           </div>
         </li>
         <li v-if="!hunts.length && editing !== 'new'" class="muted empty">사냥 기록이 없어요.</li>
+      </ul>
+    </section>
+
+    <section class="block">
+      <div class="block-head">
+        <h3>조각 판매 <small class="muted stock">보유 {{ Math.max(0, stock.fragments).toLocaleString('ko-KR') }}개</small></h3>
+        <button v-if="editing !== 'sale'" type="button" class="btn ghost compact" @click="editing = 'sale'">+ 판매 기록</button>
+      </div>
+      <LedgerSaleForm v-if="editing === 'sale'" :key="`sale-${date}`" :date="date" :fee-rate="feeRate" :stock="stock.fragments" @saved="onSaved" @cancel="editing = null" />
+      <ul v-if="sales.length" class="list">
+        <li v-for="s in sales" :key="s.id" class="sale">
+          <span><i class="dot dot-sale" />{{ s.count.toLocaleString('ko-KR') }}개 × {{ formatKoreanNumber(s.unitPrice) }}</span>
+          <small class="muted">수수료 {{ Math.round(s.fee * 100) }}%</small>
+          <b class="meso">+{{ formatKoreanNumber(dropSaleNet(s)) }}</b>
+          <button type="button" class="icon-btn danger" aria-label="지우기" :disabled="busy" @click="remove(`/api/ledger/sales/${s.id}`)">×</button>
+        </li>
       </ul>
     </section>
 
@@ -177,6 +194,28 @@ function onSaved() {
 }
 .dot-boss {
   background: var(--calc);
+}
+.dot-sale {
+  background: var(--gain);
+}
+.stock {
+  margin-left: 6px;
+  font-family: var(--f-body);
+  font-size: 12px;
+}
+.sale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-left: 3px solid var(--gain);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.sale small {
+  font-size: 12px;
 }
 .dot-item {
   background: var(--loss);

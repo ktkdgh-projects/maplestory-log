@@ -91,7 +91,7 @@ async function save() {
 <template>
   <div class="editor">
     <aside class="side">
-      <!-- 캐릭터가 늘어도 아래 월간 보스·저장 버튼이 밀리지 않게 목록만 따로 스크롤한다 -->
+      <!-- 캐릭터가 늘어도 아래 저장 버튼이 밀리지 않게 목록만 따로 스크롤한다 -->
       <div class="members">
         <ul class="roster">
           <li v-for="c in draft" :key="c.ocid">
@@ -105,18 +105,6 @@ async function save() {
         <button v-if="draft.length < MAX_BOSS_CHARACTERS" type="button" class="add" @click="picking ? (picking = false) : openPicker()">
           {{ picking ? '닫기' : `+ 캐릭터 추가 (${draft.length}/${MAX_BOSS_CHARACTERS})` }}
         </button>
-      </div>
-      <div class="monthly" :class="{ idle: !active || picking }">
-        <h4>월간 보스 <small class="muted">12개와 따로 세요</small></h4>
-        <LedgerBossPick
-          v-for="boss in MONTHLY"
-          :key="boss.id"
-          :boss="boss"
-          :pick="pickOf(boss.id)"
-          :locked="!active || picking"
-          @difficulty="setDifficulty(boss, $event)"
-          @party="setParty(boss.id, $event)"
-        />
       </div>
       <div class="save">
         <p v-if="notice" class="notice">{{ notice }}</p>
@@ -154,6 +142,20 @@ async function save() {
             :boss="boss"
             :pick="pickOf(boss.id)"
             :locked="locked(boss)"
+            @difficulty="setDifficulty(boss, $event)"
+            @party="setParty(boss.id, $event)"
+          />
+        </div>
+        <div class="monthly">
+          <div class="monthly-head">
+            <h4>월간 보스</h4>
+            <small class="muted">주간 12개와 따로 세요</small>
+          </div>
+          <LedgerBossPick
+            v-for="boss in MONTHLY"
+            :key="boss.id"
+            :boss="boss"
+            :pick="pickOf(boss.id)"
             @difficulty="setDifficulty(boss, $event)"
             @party="setParty(boss.id, $event)"
           />
@@ -267,7 +269,7 @@ async function save() {
 .main {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
 }
 .main-head {
@@ -318,31 +320,25 @@ h4 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows: repeat(var(--rows), auto);
   grid-auto-flow: column;
-  gap: 6px 10px;
+  gap: 3px 10px;
 }
+/* 제목 줄 아래에 카드를 두고, 카드는 주간 칸 하나와 같은 너비로 맞춘다 */
 .monthly {
   display: grid;
-  flex: none;
-  gap: 6px;
-  padding-top: 10px;
+  gap: 4px;
+  padding-top: 4px;
   border-top: 1px dashed var(--panel-line);
 }
-.monthly.idle {
-  opacity: 0.5;
+.monthly-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
-.monthly small {
+.monthly-head small {
   font-size: 12px;
 }
-/* 좁은 옆 칸에서는 가격·인원을 아래 줄로 내린다 */
-.monthly :deep(.card) {
-  flex-wrap: wrap;
-}
-.monthly :deep(.info) {
-  display: flex;
-  flex-basis: 100%;
-  align-items: center;
-  justify-content: space-between;
-  padding-left: 46px;
+.monthly > :deep(.card) {
+  width: calc((100% - 20px) / 3);
 }
 .picker {
   min-height: 0;

@@ -21,7 +21,6 @@ export default defineEventHandler(async (event) => {
     name: parseText(body?.name, '장비 이름'),
     icon: null,
     buy: 0,
-    cost: 0,
     sell: 0,
     sellFee: (await loadLedgerSettings(user._id)).feeRate,
     memo: null,

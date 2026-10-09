@@ -72,6 +72,7 @@ async function leave(path: string, body?: object) {
 const EXPORTS = [
   { label: '전체 JSON', format: 'json', table: null },
   { label: '사냥 CSV', format: 'csv', table: 'hunts' },
+  { label: '조각 판매 CSV', format: 'csv', table: 'sales' },
   { label: '보스 CSV', format: 'csv', table: 'clears' },
   { label: '장비 결산 CSV', format: 'csv', table: 'items' },
   { label: '강화 기록 CSV', format: 'csv', table: 'enhance' },

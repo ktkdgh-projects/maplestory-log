@@ -1,5 +1,5 @@
 import { MongoClient, type Db, type ObjectId } from 'mongodb'
-import type { BossLoot, BossRosterCharacter, EnhanceKind, HuntInput, ItemMoneyField, KeyStatus } from '#shared/types'
+import type { BossLoot, BossRosterCharacter, DropSaleInput, EnhanceKind, HuntInput, KeyStatus } from '#shared/types'
 
 export interface UserDoc {
   _id: ObjectId
@@ -80,24 +80,23 @@ export interface ItemRowDoc {
   name: string
   icon: string | null
   buy: number
-  cost: number
   sell: number
   // 판매가에 붙는 경매장 수수료율. 손익·가계부에는 수수료를 뺀 금액이 잡힌다
   sellFee?: number
   memo: string | null
+  buyDate?: string | null
+  sellDate?: string | null
+  level?: number | null
+  starforce?: number
+  starforceDate?: string | null
+  potential?: number
+  potentialDate?: string | null
   order: number
 }
 
-// 금액 칸을 고칠 때마다 늘거나 준 만큼 그날 날짜로 남겨 가계부 달력에 지출·수입으로 보여준다
-export interface ItemLogDoc {
+// 예전 방식(금액을 고친 날 기준) 장비 결산 기록. 지금은 구매일·판매일로 계산해서 더 쓰지 않고 탈퇴 때만 지운다
+interface LegacyItemLogDoc {
   userId: ObjectId
-  rowId: ObjectId
-  date: string
-  field: ItemMoneyField
-  delta: number
-  // 시트를 가계부 미반영으로 두면 그 시트 줄들의 기록이 가계부에서 빠진다
-  excluded?: boolean
-  at: Date
 }
 
 export interface EnhanceEventDoc {
@@ -115,6 +114,16 @@ export interface EnhanceEventDoc {
   grade: string | null
   options: string[]
   addOptions: string[]
+  // 쓴 메소 계산용. 이 필드가 생기기 전에 받은 기록은 다시 받으며 채운다
+  itemLevel?: number | null
+  // 재설정 전 등급(비용은 이 등급 기준)
+  beforeGrade?: string | null
+  protect?: boolean
+  superior?: boolean
+  // 주문서로 강화해 메소를 안 쓴 기록
+  scroll?: boolean
+  // 이벤트 비용 할인율 0~1
+  eventDiscount?: number
 }
 
 export interface HistorySyncDoc {
@@ -126,6 +135,8 @@ export interface HistorySyncDoc {
   newest: string | null
   done: boolean
   lockedAt: Date | null
+  // 받는 필드가 늘면 올려서 처음부터 다시 받게 한다
+  version?: number
 }
 
 // 사이트 전체 설정. _id 'collection' 하나만 쓴다
@@ -146,6 +157,12 @@ export interface LedgerSettingsDoc {
 }
 
 export interface HuntDoc extends HuntInput {
+  _id: ObjectId
+  userId: ObjectId
+  createdAt: Date
+}
+
+export interface DropSaleDoc extends DropSaleInput {
   _id: ObjectId
   userId: ObjectId
   createdAt: Date
@@ -268,16 +285,15 @@ async function ensureIndexes(db: Db) {
     db.collection('itemRows').createIndexes([
       { key: { userId: 1, sheetId: 1, order: 1 } },
     ]),
-    db.collection('itemLogs').createIndexes([
-      { key: { userId: 1, date: 1 } },
-      { key: { rowId: 1 } },
-    ]),
     db.collection('enhanceEvents').createIndexes([
       { key: { userId: 1, eventId: 1 }, unique: true },
       { key: { userId: 1, character: 1, item: 1, at: -1 } },
     ]),
     db.collection('hunts').createIndexes([
       { key: { userId: 1, date: -1 } },
+    ]),
+    db.collection('dropSales').createIndexes([
+      { key: { userId: 1, date: 1 } },
     ]),
     db.collection('bossRosters').createIndexes([
       { key: { userId: 1 }, unique: true },
@@ -318,12 +334,13 @@ export async function useCollections() {
     jobLogs: db.collection<JobLogDoc>('jobLogs'),
     itemSheets: db.collection<ItemSheetDoc>('itemSheets'),
     itemRows: db.collection<ItemRowDoc>('itemRows'),
-    itemLogs: db.collection<ItemLogDoc>('itemLogs'),
+    itemLogs: db.collection<LegacyItemLogDoc>('itemLogs'),
     enhanceEvents: db.collection<EnhanceEventDoc>('enhanceEvents'),
     historySync: db.collection<HistorySyncDoc>('historySync'),
     ledgerSettings: db.collection<LedgerSettingsDoc>('ledgerSettings'),
     appSettings: db.collection<AppSettingsDoc>('appSettings'),
     hunts: db.collection<HuntDoc>('hunts'),
+    dropSales: db.collection<DropSaleDoc>('dropSales'),
     bossRosters: db.collection<BossRosterDoc>('bossRosters'),
     bossClears: db.collection<BossClearDoc>('bossClears'),
     cache: db.collection<CacheDoc>('cache'),

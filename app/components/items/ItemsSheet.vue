@@ -66,8 +66,38 @@ async function run(action: () => Promise<unknown>, done = '') {
   }
 }
 
-const saveField = (row: ItemRow, field: 'buy' | 'cost' | 'sell', meso: number) => run(() => $fetch(`/api/items/rows/${row.id}`, { method: 'PATCH', body: { [field]: meso } }))
-const toggleFee = (row: ItemRow) => run(() => $fetch(`/api/items/rows/${row.id}`, { method: 'PATCH', body: { sellFee: row.sellFee === DEFAULT_AUCTION_FEE ? AUCTION_FEES[1].rate : DEFAULT_AUCTION_FEE } }))
+// 고친 값은 화면에 바로 반영하고 저장은 뒤에서 한다. 실패하면 원래 값으로 되돌린다
+// 연달아 고칠 때 앞선 새로고침이 옛 값을 잠깐 덮지 않도록, 저장이 다 끝난 뒤 한 번만 새로 불러온다
+let saving = 0
+async function patchRow(row: ItemRow, changes: Partial<ItemRow>) {
+  const index = rows.value.findIndex(r => r.id === row.id)
+  if (index < 0) return
+  const before = rows.value[index]!
+  rows.value[index] = { ...before, ...changes }
+  failure.value = ''
+  saving++
+  try {
+    await $fetch(`/api/items/rows/${row.id}`, { method: 'PATCH', body: changes })
+  }
+  catch (error) {
+    const now = rows.value.findIndex(r => r.id === row.id)
+    if (now >= 0) rows.value[now] = before
+    failure.value = errorMessage(error)
+  }
+  finally {
+    if (--saving === 0) emit('changed')
+  }
+}
+
+type MoneyField = 'buy' | 'starforce' | 'potential' | 'sell'
+const today = kstToday()
+// 서버와 같이, 날짜 없이 금액만 적으면 오늘 날짜로 잡는다
+const saveField = (row: ItemRow, field: MoneyField, meso: number) => patchRow(row, {
+  [field]: meso,
+  ...(meso && !row[`${field}Date`] && { [`${field}Date`]: today }),
+})
+const saveDate = (row: ItemRow, field: MoneyField, date: string | null) => patchRow(row, { [`${field}Date`]: date })
+const toggleFee = (row: ItemRow) => patchRow(row, { sellFee: row.sellFee === DEFAULT_AUCTION_FEE ? AUCTION_FEES[1].rate : DEFAULT_AUCTION_FEE })
 const toggleExcluded = () => run(() => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'PATCH', body: { excluded: !props.sheet.excluded } }))
 const removeRow = (row: ItemRow) => run(() => $fetch(`/api/items/rows/${row.id}`, { method: 'DELETE' }))
 const addRow = () => run(async () => {
@@ -112,7 +142,7 @@ async function removeSheet() {
         <button type="button" class="btn compact" :class="sheet.folded ? 'ghost' : 'danger'" :disabled="busy" @click="toggleFold">{{ sheet.folded ? '접음 취소' : '캐릭터 접기' }}</button>
         <button v-if="!confirmDelete" type="button" class="btn ghost compact" @click="confirmDelete = true">시트 삭제</button>
         <template v-else>
-          <span class="ask">시트와 가계부에 잡힌 금액이 지워져요</span>
+          <span class="ask">시트와 가계부에 잡힌 금액이 같이 사라져요</span>
           <button type="button" class="btn danger compact" :disabled="busy" @click="removeSheet">삭제</button>
           <button type="button" class="btn ghost compact" @click="confirmDelete = false">취소</button>
         </template>
@@ -131,6 +161,7 @@ async function removeSheet() {
           <col class="c-num">
           <col class="c-num">
           <col class="c-num">
+          <col class="c-num">
           <col class="c-fee">
           <col class="c-num">
           <col class="c-num">
@@ -144,7 +175,8 @@ async function removeSheet() {
             <th>부위</th>
             <th>장비</th>
             <th class="num">구매</th>
-            <th class="num">큐브·스타포스</th>
+            <th class="num" title="직접 적은 값이 가계부에 들어가요. 연결한 캐릭터의 강화 기록으로 센 값은 칸 아래에 참고로 보여줘요">스타포스</th>
+            <th class="num" title="메소 잠재 재설정 비용. 강화 기록으로 센 값은 공식 비용표 기준이라 그대로 써도 돼요">잠재</th>
             <th class="num">판매</th>
             <th class="center" title="경매장 판매 수수료. 대금을 받을 때 MVP 실버 이상·프리미엄 PC방이면 3%">수수료</th>
             <th class="num" title="판매가에서 수수료를 뺀 금액">받은 메소</th>
@@ -170,11 +202,10 @@ async function removeSheet() {
                 <span class="ellipsis" :title="row.name">{{ row.name }}</span>
               </div>
             </td>
-            <td class="num cell"><ItemsEokCell :value="row.buy" label="구매가" @save="saveField(row, 'buy', $event)" /></td>
-            <td class="num cell"><ItemsEokCell :value="row.cost" label="큐브·스타포스 비용" @save="saveField(row, 'cost', $event)" /></td>
-            <td class="num cell">
-              <ItemsEokCell :value="row.sell" label="판매가" @save="saveField(row, 'sell', $event)" />
-            </td>
+            <td class="num cell"><ItemsMoneyCell :value="row.buy" :date="row.buyDate" label="구매" @save="saveField(row, 'buy', $event)" @date="saveDate(row, 'buy', $event)" /></td>
+            <td class="num cell"><ItemsMoneyCell :value="row.starforce" :date="row.starforceDate" label="스타포스" :reference="row.reference.starforce" estimated @save="saveField(row, 'starforce', $event)" @date="saveDate(row, 'starforce', $event)" /></td>
+            <td class="num cell"><ItemsMoneyCell :value="row.potential" :date="row.potentialDate" label="잠재" :reference="row.reference.potential" @save="saveField(row, 'potential', $event)" @date="saveDate(row, 'potential', $event)" /></td>
+            <td class="num cell"><ItemsMoneyCell :value="row.sell" :date="row.sellDate" label="판매" @save="saveField(row, 'sell', $event)" @date="saveDate(row, 'sell', $event)" /></td>
             <td class="center">
               <button type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'MVP 실버 이상·PC방 3% → 누르면 5%' : '일반 5% → 누르면 MVP·PC방 3%'" @click="toggleFee(row)">
                 {{ Math.round(row.sellFee * 100) }}%
@@ -183,19 +214,20 @@ async function removeSheet() {
             <td class="num sell" :title="row.sell ? `${formatKoreanNumber(row.sell)} - 수수료 ${Math.round(row.sellFee * 100)}% = ${formatKoreanNumber(itemSellNet(row))}` : undefined">
               {{ row.sell ? formatEok(itemSellNet(row)) : '-' }}
             </td>
-            <td class="num invest">{{ row.buy + row.cost ? formatEok(row.buy + row.cost) : '-' }}</td>
+            <td class="num invest">{{ rowInvest(row) ? formatEok(rowInvest(row)) : '-' }}</td>
             <td class="num" :class="profitTone(itemProfit(row))">{{ itemProfit(row) === null ? '-' : formatEok(itemProfit(row)!) }}</td>
             <td class="center"><button type="button" class="icon-btn" :aria-label="`${row.name} 지우기`" :disabled="busy" @click="removeRow(row)">×</button></td>
           </tr>
           <tr v-if="!rows.length">
-            <td colspan="12" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
+            <td colspan="13" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
           </tr>
         </tbody>
         <tfoot>
           <tr>
             <td colspan="4" class="sum-label">합계 (억)</td>
             <td class="num">{{ formatEok(totals.buy) }}</td>
-            <td class="num">{{ formatEok(totals.cost) }}</td>
+            <td class="num">{{ formatEok(totals.starforce) }}</td>
+            <td class="num">{{ formatEok(totals.potential) }}</td>
             <td class="num">{{ formatEok(totals.sellGross) }}</td>
             <td />
             <td class="num sell">{{ formatEok(totals.sell) }}</td>
@@ -210,7 +242,7 @@ async function removeSheet() {
       <input v-model="newPart" class="field-input part-input" maxlength="40" placeholder="부위 (예: 반지)" aria-label="부위">
       <input v-model="newName" class="field-input" maxlength="40" placeholder="장비 이름" aria-label="장비 이름" required>
       <button class="btn compact" :disabled="busy">+ 장비 추가</button>
-      <span class="muted hint">금액 칸을 눌러 억 단위로 적어요 (예: 151.03)</span>
+      <span class="muted hint">금액 칸을 눌러 억 단위로 적어요 (예: 151.03). 가계부에는 칸 아래 날짜로 들어가요</span>
     </form>
   </section>
 </template>

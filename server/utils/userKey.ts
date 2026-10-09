@@ -1,3 +1,4 @@
+import type { H3Event } from 'h3'
 import type { ObjectId } from 'mongodb'
 import type { UserDoc } from './mongo'
 
@@ -9,6 +10,16 @@ export async function getUserApiKey(userId: ObjectId): Promise<string> {
     throw createError({ statusCode: 409, message: '등록된 키가 작동하지 않아요. 내 정보에서 새 키를 등록해 주세요.' })
   }
   return decryptApiKey(user.keyEnc)
+}
+
+// 로그인 없이 쓰는 검색: 로그인했으면 그 사람 키, 아니면 서버 키를 IP당 횟수를 제한해서 쓴다
+export async function searchApiKey(event: H3Event, bucket: string): Promise<string> {
+  const user = event.context.user
+  if (user) return getUserApiKey(user._id)
+  await rateLimit(event, bucket, 30, 60)
+  const apiKey = useRuntimeConfig().nexonApiKey
+  if (!apiKey) throw createError({ statusCode: 503, message: '지금은 로그인 없이 검색할 수 없어요.' })
+  return apiKey
 }
 
 export async function markKeyStatus(userId: ObjectId, status: UserDoc['keyStatus'], reason: string | null) {

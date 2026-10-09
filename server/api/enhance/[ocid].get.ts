@@ -1,6 +1,7 @@
-import type { EnhanceResponse } from '#shared/types'
+import type { EnhanceResponse, EnhanceSummary } from '#shared/types'
 
 const SYNC_BUDGET_MS = 6000
+const EMPTY_SUMMARY: EnhanceSummary = { starforce: { attempts: 0, success: 0, destroy: 0 }, cubes: 0, resets: 0, meso: { starforce: 0, potential: 0 }, first: null, last: null }
 
 export default defineEventHandler(async (event): Promise<EnhanceResponse> => {
   const user = requireUser(event)
@@ -20,23 +21,25 @@ export default defineEventHandler(async (event): Promise<EnhanceResponse> => {
     throw toHttpError(error)
   })
   const equipped = detail.presets[detail.presetNo - 1] ?? detail.presets[0] ?? []
-  const byItem = await eventsByItem(user._id, character.name, equipped.map(i => i.name), from)
+  // 스타포스 기록엔 장비 레벨이 없어 지금 낀 같은 이름 장비의 착용 레벨로 비용을 추정한다
+  const byItem = await eventsByItem(user._id, character.name, equipped.map(i => ({ name: i.name, level: i.requiredLevel || null })), from)
 
   const { historySync } = await useCollections()
   const sync = await historySync.findOne({ _id: user._id })
   return {
     character: { ...character, imageUrl: detail.imageUrl },
     items: equipped.map((item) => {
-      const events = byItem.get(item.name) ?? []
+      const found = byItem.get(item.name)
       return {
         slot: item.slot,
         name: item.name,
         icon: item.icon,
+        level: item.requiredLevel || null,
         starforce: item.starforce,
         potentialGrade: item.potentialGrade,
         additionalGrade: item.additionalGrade,
-        summary: summarize(events),
-        events,
+        summary: found?.summary ?? EMPTY_SUMMARY,
+        events: found?.events ?? [],
       }
     }),
     syncedFrom: sync?.oldest ?? null,

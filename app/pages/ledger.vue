@@ -25,7 +25,8 @@ const { data: settings, refresh: refreshSettings } = await useFetch<LedgerSettin
 })
 const settingsOpen = ref(false)
 
-const summary = computed(() => summarizeLedger(data.value?.hunts ?? [], data.value?.clears ?? [], data.value?.items ?? []))
+const summary = computed(() => summarizeLedger(data.value?.hunts ?? [], data.value?.clears ?? [], data.value?.items ?? [], data.value?.sales ?? []))
+const daySales = computed(() => (data.value?.sales ?? []).filter(s => s.date === selectedDate.value))
 const dayItems = computed(() => (data.value?.items ?? []).filter(i => i.date === selectedDate.value))
 const perHour = computed(() => mesoPerHour(summary.value.total.huntMeso, summary.value.total.minutes))
 const dayHunts = computed(() => (data.value?.hunts ?? []).filter(h => h.date === selectedDate.value))
@@ -90,22 +91,27 @@ useHead({ title: '메소 가계부 · 메이플스토리로그' })
             <span class="tile-value">{{ formatKoreanNumber(summary.total.huntMeso) }}</span>
             <span class="drop-list">
               <span v-for="d in HUNT_DROPS" :key="d.key"><i :style="{ background: d.color }" />{{ d.short }} <b>{{ summary.total[d.key].toLocaleString('ko-KR') }}</b></span>
+              <span v-if="summary.total.saleMeso" class="sold">조각 판매 <b>+{{ formatShortNumber(summary.total.saleMeso) }}</b></span>
             </span>
           </div>
           <div class="tile" style="--tone: var(--calc)">
-            <span class="tile-label">보스 결정석 · {{ summary.total.clears }}마리</span>
+            <span class="tile-label">보스 결정석</span>
             <span class="tile-value">{{ formatKoreanNumber(summary.total.bossMeso) }}</span>
+            <span class="drop-list">
+              <span>주간 <b>{{ formatShortNumber(summary.total.bossMeso - summary.total.bossMonthly) }}</b> · {{ summary.total.clears - summary.total.monthlyClears }}마리</span>
+              <span>월간 <b>{{ formatShortNumber(summary.total.bossMonthly) }}</b> · {{ summary.total.monthlyClears }}마리</span>
+            </span>
           </div>
           <NuxtLink to="/items" class="tile item-tile" style="--tone: var(--loss)">
             <span class="tile-label">장비 지출<template v-if="summary.total.itemEarned"> · 판매 +{{ formatShortNumber(summary.total.itemEarned) }}</template></span>
             <span class="tile-value">{{ formatKoreanNumber(summary.total.itemSpent) }}</span>
-            <span class="tile-label">장비 결산에서 적은 구매·강화 비용 →</span>
+            <span class="tile-label">구매 {{ formatShortNumber(summary.total.itemBought) }} · 강화 {{ formatShortNumber(summary.total.itemEnhanced) }} · 장비 결산 →</span>
           </NuxtLink>
         </div>
         <div class="split">
           <LedgerCalendar v-model="selectedDate" :month="month" :days="summary.days" />
           <div class="day-panel">
-            <LedgerDayPanel :date="selectedDate" :hunts="dayHunts" :clears="dayClears" :items="dayItems" @changed="refreshAll" />
+            <LedgerDayPanel :date="selectedDate" :hunts="dayHunts" :clears="dayClears" :items="dayItems" :sales="daySales" :stock="data?.stock ?? { fragments: 0, traces: 0 }" :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" @changed="refreshAll" />
           </div>
         </div>
       </div>
@@ -226,6 +232,9 @@ useHead({ title: '메소 가계부 · 메이플스토리로그' })
   margin-right: 5px;
   border-radius: 2px;
   transform: rotate(45deg);
+}
+.sold b {
+  color: var(--gain);
 }
 .drop-list b {
   font-family: var(--f-title);

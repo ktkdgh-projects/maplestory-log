@@ -6,18 +6,29 @@ const VIEWS = [{ key: 'field', label: '필드' }, { key: 'table', label: '날짜
 const POLL_MS = 3000
 
 const { me } = await useMe()
+const route = useRoute()
 const range = ref(14)
 const view = ref<typeof VIEWS[number]['key']>('field')
 const ocid = ref(me.value?.main?.ocid ?? '')
+
+// ?name=으로 들어오면 로그인 없이 그 캐릭터를 보고, 아니면 로그인한 사람의 추적 캐릭터를 본다
+const searchName = computed(() => (typeof route.query.name === 'string' ? route.query.name.trim() : ''))
+const own = computed(() => !searchName.value && !!me.value?.main)
 
 const { data: tracked, refresh: refreshTracked } = await useFetch<TrackedCharacter[]>('/api/growth/characters', {
   default: () => [],
   immediate: !!me.value?.main,
 })
-const { data, error, refresh } = useFetch<SnapshotsResponse>('/api/snapshots', {
-  query: { days: range, ocid },
-  immediate: !!me.value?.main,
+const { data, error, refresh } = useFetch<SnapshotsResponse>(() => (searchName.value ? '/api/growth/search' : '/api/snapshots'), {
+  query: computed(() => (searchName.value ? { name: searchName.value, days: range.value } : { days: range.value, ocid: ocid.value })),
+  immediate: !!searchName.value || own.value,
 })
+
+const nameInput = ref('')
+function searchGrowth() {
+  const name = nameInput.value.trim()
+  if (name) navigateTo({ path: '/growth', query: { name } })
+}
 
 const days = computed(() => toGrowthDays(data.value?.points ?? [], data.value?.today ?? null))
 const summary = computed(() => summarizeGrowth(days.value))
@@ -29,7 +40,7 @@ const selected = computed({
     picked.value = value
   },
 })
-watch([range, ocid], () => {
+watch([range, ocid, searchName], () => {
   picked.value = null
 })
 
@@ -45,23 +56,28 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
 </script>
 
 <template>
-  <GameWindow v-if="!me" title="성장 기록" accent="green">
-    <p class="muted">성장 기록은 API 키를 등록한 캐릭터만 매일 모을 수 있어요.</p>
-    <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
+  <GameWindow v-if="!searchName && !me?.main" title="성장 기록" accent="green">
+    <p class="muted">캐릭터 이름을 검색하면 로그인 없이 최근 성장 기록을 볼 수 있어요.</p>
+    <form class="search" role="search" @submit.prevent="searchGrowth">
+      <label for="growth-search" class="sr-only">캐릭터 이름</label>
+      <input id="growth-search" v-model="nameInput" class="field-input" maxlength="20" placeholder="캐릭터 이름" autocomplete="off" required>
+      <button class="btn">성장 기록 보기</button>
+    </form>
+    <p class="muted small">
+      <template v-if="!me">API 키를 등록하면 캐릭터를 6명까지 골라 매일 자동으로 모아요. <NuxtLink to="/login">키 등록하기</NuxtLink></template>
+      <template v-else>대표 캐릭터를 고르면 매일 자동으로 모아요. <NuxtLink to="/me">대표 캐릭터 고르기</NuxtLink></template>
+    </p>
   </GameWindow>
 
-  <GameWindow v-else-if="!me.main" title="성장 기록" accent="green">
-    <p class="muted">기록할 대표 캐릭터를 먼저 골라 주세요.</p>
-    <div><NuxtLink to="/me" class="btn">대표 캐릭터 고르기</NuxtLink></div>
-  </GameWindow>
-
-  <GameWindow v-else class="fit" :title="`${data?.character?.name ?? me.main.name}의 성장 기록`" accent="green" fill>
+  <GameWindow v-else class="fit" :title="`${data?.character?.name ?? (searchName || me?.main?.name)}의 성장 기록`" accent="green" fill>
     <template #sub>
       <span v-if="data?.pending">지난 기록 채우는 중 · {{ data.pending }}일 남음</span>
+      <span v-else-if="searchName">검색한 캐릭터 · 오늘은 실시간</span>
       <span v-else>매일 새벽 4시 저장 · 오늘은 실시간</span>
     </template>
 
-    <GrowthCharacterBar v-model="ocid" :tracked="tracked" :max="MAX_TRACKED_CHARACTERS" @changed="refreshTracked" />
+    <GrowthCharacterBar v-if="own" v-model="ocid" :tracked="tracked" :max="MAX_TRACKED_CHARACTERS" @changed="refreshTracked" />
+    <p v-else-if="me?.main" class="muted small"><NuxtLink to="/growth">← 내 캐릭터 성장 기록으로</NuxtLink></p>
 
     <div class="toolbar">
       <div class="group" role="group" aria-label="기간">
@@ -147,6 +163,15 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
 </template>
 
 <style scoped>
+.search {
+  display: flex;
+  gap: 6px;
+  max-width: 420px;
+}
+.small {
+  margin: 0;
+  font-size: 13px;
+}
 .toolbar {
   display: flex;
   flex-wrap: wrap;

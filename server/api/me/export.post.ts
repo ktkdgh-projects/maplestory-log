@@ -1,7 +1,7 @@
 import type { BossDifficulty } from '#shared/data/bosses'
 import { DIFFICULTY_LABELS, findBoss } from '#shared/data/bosses'
 
-const CSV_TABLES = ['hunts', 'clears', 'items', 'enhance'] as const
+const CSV_TABLES = ['hunts', 'sales', 'clears', 'items', 'enhance'] as const
 type CsvTable = typeof CSV_TABLES[number]
 
 function csvCell(value: unknown): string {
@@ -22,10 +22,11 @@ export default defineEventHandler(async (event) => {
   const table = CSV_TABLES.includes(body?.table as CsvTable) ? body!.table as CsvTable : null
   if (format === 'csv' && !table) throw createError({ statusCode: 400, message: '내보낼 표를 골라 주세요.' })
 
-  const { hunts, bossRosters, bossClears, itemSheets, itemRows, ledgerSettings, enhanceEvents } = await useCollections()
+  const { hunts, dropSales, bossRosters, bossClears, itemSheets, itemRows, ledgerSettings, enhanceEvents } = await useCollections()
   const userId = user._id
-  const [huntDocs, roster, clearDocs, sheetDocs, rowDocs, settings, enhanceDocs] = await Promise.all([
+  const [huntDocs, saleDocs, roster, clearDocs, sheetDocs, rowDocs, settings, enhanceDocs] = await Promise.all([
     hunts.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
+    dropSales.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
     bossRosters.findOne({ userId }),
     bossClears.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
     itemSheets.find({ userId }).sort({ order: 1 }).toArray(),
@@ -34,6 +35,7 @@ export default defineEventHandler(async (event) => {
     enhanceEvents.find({ userId }).sort({ at: 1 }).toArray(),
   ])
   const sheetOf = new Map(sheetDocs.map(s => [s._id.toHexString(), s]))
+  const references = await rowReferences(userId, sheetDocs, rowDocs)
   const date = kstToday()
 
   if (format === 'json') {
@@ -47,10 +49,11 @@ export default defineEventHandler(async (event) => {
       ledger: {
         settings: settings ? { feeRate: settings.feeRate, balanceDate: settings.balanceDate, balance: settings.balance } : null,
         hunts: huntDocs.map(toHuntEntry),
+        sales: saleDocs.map(toDropSale),
         roster: roster?.characters ?? [],
         clears: clearDocs.map(toBossClear),
       },
-      items: sheetDocs.map(s => toItemSheet(s, rowDocs.filter(r => r.sheetId.equals(s._id)))),
+      items: sheetDocs.map(s => toItemSheet(s, rowDocs, references)),
       enhance: enhanceDocs.map(({ userId: _u, _id, ...e }) => e),
     }
   }
@@ -60,15 +63,19 @@ export default defineEventHandler(async (event) => {
       ['날짜', '메소', '사냥 시간(분)', '조각', '주흔', '메모'],
       huntDocs.map(h => [h.date, h.meso, h.minutes, h.fragments, h.traces, h.memo]),
     ),
+    sales: () => toCsv(
+      ['날짜', '재료', '개수', '개당 가격', '수수료', '받은 메소'],
+      saleDocs.map(s => [s.date, s.item === 'fragments' ? '솔 에르다 조각' : s.item, s.count, s.unitPrice, s.fee, dropSaleNet(s)]),
+    ),
     clears: () => toCsv(
       ['날짜', '주기', '캐릭터', '보스', '난이도', '파티', '결정석 메소', '물욕템(이름:판매가:수수료)'],
       clearDocs.map(c => [c.date, c.period, c.name, findBoss(c.bossId)?.name ?? c.bossId, DIFFICULTY_LABELS[c.difficulty as BossDifficulty] ?? c.difficulty, c.party, c.meso, (c.loot ?? []).map(l => `${l.item}:${l.price}:${l.fee}`).join(' / ')]),
     ),
     items: () => toCsv(
-      ['시트', '부위', '장비', '구매', '큐브·스타포스', '판매', '수수료', '가계부 미반영', '메모'],
+      ['시트', '부위', '장비', '구매', '구매일', '스타포스', '스타포스 적은 날', '잠재', '잠재 적은 날', '판매', '판매일', '수수료', '가계부 미반영', '메모'],
       rowDocs.map((r) => {
         const sheet = sheetOf.get(r.sheetId.toHexString())
-        return [sheet?.title ?? '', r.part, r.name, r.buy, r.cost, r.sell, r.sellFee ?? '', sheet?.excluded ? 'Y' : '', r.memo]
+        return [sheet?.title ?? '', r.part, r.name, r.buy, r.buyDate, r.starforce ?? 0, r.starforceDate, r.potential ?? 0, r.potentialDate, r.sell, r.sellDate, r.sellFee ?? '', sheet?.excluded ? 'Y' : '', r.memo]
       }),
     ),
     enhance: () => toCsv(

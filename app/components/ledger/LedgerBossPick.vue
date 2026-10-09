@@ -8,7 +8,7 @@ const emit = defineEmits<{ difficulty: [difficulty: string], party: [delta: numb
 
 <template>
   <div class="card" :class="{ picked: pick, locked }" :style="pick ? { '--diff': DIFFICULTY_COLORS[pick.difficulty as BossDifficulty] } : undefined">
-    <LedgerBossEmblem :boss-id="boss.id" :size="50" />
+    <LedgerBossEmblem :boss-id="boss.id" :size="44" />
     <div class="body">
       <span class="name ellipsis" :title="boss.name">{{ boss.name }}</span>
       <div class="diffs">
@@ -46,7 +46,7 @@ const emit = defineEmits<{ difficulty: [difficulty: string], party: [delta: numb
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 4px 8px 4px 4px;
+  padding: 2px 8px 2px 3px;
   background: var(--panel);
   border: 1px solid var(--panel-line);
   border-radius: 10px;

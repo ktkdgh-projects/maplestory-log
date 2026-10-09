@@ -192,8 +192,16 @@ export interface NexonHistoryEvent {
   cube_type?: string
   potential_type?: string
   potential_option_grade?: string
+  item_level?: number
+  before_potential_option?: NexonOptionLine[]
+  before_additional_potential_option?: NexonOptionLine[]
   after_potential_option?: NexonOptionLine[]
   after_additional_potential_option?: NexonOptionLine[]
+  // 스타포스: '파괴 방지 적용'/'파괴 방지 미적용', '슈페리얼 장비 미해당' 같은 문장으로 온다
+  destroy_defence?: string
+  superior_item_flag?: string
+  upgrade_item?: string
+  starforce_event_list?: { cost_discount_rate?: string | null }[] | null
 }
 
 type NexonHistoryPage<K extends string> = { count: number, next_cursor: string | null } & Record<K, NexonHistoryEvent[]>

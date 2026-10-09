@@ -1,4 +1,4 @@
-import type { BossClear, BossLoot } from '#shared/types'
+import type { BossClear, BossLoot, DropSaleInput } from '#shared/types'
 
 // 경매장 판매 수수료. 출처: 넥슨 공식 가이드 「메이플 옥션」, 나무위키 「메이플스토리/거래 시스템」 (2026-10-09 확인)
 // 대금을 받을 때 MVP 실버 이상이거나 프리미엄 PC방이면 3%, 아니면 5%
@@ -23,6 +23,10 @@ export function lootNet(loot: BossLoot): number {
 // 경매장에 판 금액에서 수수료를 떼고 받은 메소
 export function afterFee(price: number, fee: number): number {
   return Math.floor(price * (1 - fee))
+}
+
+export function dropSaleNet(sale: Pick<DropSaleInput, 'count' | 'unitPrice' | 'fee'>): number {
+  return afterFee(sale.count * sale.unitPrice, sale.fee)
 }
 
 // 결정석 + 판 물욕템(수수료 뺀 금액)

@@ -22,6 +22,7 @@ const gain = computed(() => {
       <div class="meta">
         <span>유니온 <b class="union">{{ character.unionLevel?.toLocaleString('ko-KR') ?? '-' }}</b></span>
         <span>무릉도장 <b class="dojang">{{ character.dojangFloor ? `${character.dojangFloor}층` : '-' }}</b></span>
+        <NuxtLink :to="{ path: '/growth', query: { name: character.name } }" class="growth-link">성장 기록 →</NuxtLink>
       </div>
     </div>
     <div class="tile power" style="--tone: var(--gold)">
@@ -91,6 +92,16 @@ const gain = computed(() => {
   font-family: var(--f-title);
   font-size: 17px;
   font-weight: 400;
+}
+.growth-link {
+  margin-left: auto;
+  color: var(--gain);
+  font-family: var(--f-title);
+  font-size: 14px;
+  text-decoration: none;
+}
+.growth-link:hover {
+  text-decoration: underline;
 }
 .union {
   color: var(--calc);

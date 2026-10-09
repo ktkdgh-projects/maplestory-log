@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb'
-import type { BossClear, BossLoot, BossPick, BossRosterCharacter, HuntEntry, HuntInput } from '#shared/types'
+import type { BossClear, BossLoot, BossPick, BossRosterCharacter, DropSale, DropSaleInput, HuntEntry, HuntInput } from '#shared/types'
 import { MAX_BOSS_CHARACTERS, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, findBoss } from '#shared/data/bosses'
-import type { BossClearDoc, HuntDoc } from './mongo'
+import type { BossClearDoc, DropSaleDoc, HuntDoc } from './mongo'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const COUNT_MAX = 1e6
@@ -35,6 +35,28 @@ export function parseHuntInput(body: Record<string, unknown> | null | undefined)
 }
 
 export function toHuntEntry(doc: HuntDoc): HuntEntry {
+  const { _id, userId: _userId, createdAt: _createdAt, ...input } = doc
+  return { id: _id.toHexString(), ...input }
+}
+
+// 주문의 흔적은 거래가 안 돼서 조각만 팔 수 있다
+const SELLABLE_DROPS = ['fragments'] as const
+
+export function parseDropSale(body: Record<string, unknown> | null | undefined, defaultFee: number): DropSaleInput {
+  if (!SELLABLE_DROPS.includes(body?.item as typeof SELLABLE_DROPS[number])) throw fail('팔 수 있는 재료가 아니에요.')
+  const input = {
+    date: parseDate(body?.date),
+    item: body!.item as DropSaleInput['item'],
+    count: count(body?.count, '판 개수'),
+    unitPrice: count(body?.unitPrice, '개당 가격', MESO_MAX),
+    fee: isAuctionFee(body?.fee) ? body.fee : defaultFee,
+  }
+  if (!input.count || !input.unitPrice) throw fail('판 개수와 개당 가격을 적어 주세요.')
+  if (input.count * input.unitPrice > MESO_MAX) throw fail('판매 금액이 너무 커요.')
+  return input
+}
+
+export function toDropSale(doc: DropSaleDoc): DropSale {
   const { _id, userId: _userId, createdAt: _createdAt, ...input } = doc
   return { id: _id.toHexString(), ...input }
 }
@@ -85,17 +107,19 @@ export async function rememberFeeRate(userId: ObjectId, feeRate: number) {
 
 // 맞춘 금액은 그날 기록을 반영하기 전 보유 메소라서, 맞춘 날 기록부터 더하고 뺀다
 export async function currentBalance(userId: ObjectId, balanceDate: string, balance: number): Promise<number> {
-  const { hunts, bossClears, itemLogs } = await useCollections()
+  const { hunts, bossClears, dropSales } = await useCollections()
   const after = { $gte: balanceDate }
-  const [huntDocs, clearDocs, logDocs] = await Promise.all([
+  const [huntDocs, clearDocs, flows, saleDocs] = await Promise.all([
     hunts.find({ userId, date: after }, { projection: { meso: 1 } }).toArray(),
     bossClears.find({ userId, date: after }, { projection: { meso: 1, loot: 1 } }).toArray(),
-    itemLogs.find({ userId, date: after, excluded: { $ne: true } }, { projection: { field: 1, delta: 1 } }).toArray(),
+    itemFlows(userId, { from: balanceDate }),
+    dropSales.find({ userId, date: after }, { projection: { count: 1, unitPrice: 1, fee: 1 } }).toArray(),
   ])
   let total = balance
   for (const h of huntDocs) total += h.meso
   for (const c of clearDocs) total += clearMeso({ meso: c.meso, loot: lootOf(c) })
-  for (const l of logDocs) total += l.field === 'sell' ? l.delta : -l.delta
+  for (const f of flows) total += f.earned - f.bought - f.enhanced
+  for (const s of saleDocs) total += dropSaleNet(s)
   return total
 }
 

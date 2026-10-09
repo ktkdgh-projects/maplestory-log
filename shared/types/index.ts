@@ -190,21 +190,36 @@ export interface BossClear extends BossPick {
   loot: BossLoot[]
 }
 
+// 장비 결산에서 그날 가계부로 넘어오는 금액. 구매는 구매일, 강화 비용은 적은 날, 판매는 판매일
 export interface ItemFlow {
   date: string
-  spent: number
+  bought: number
+  enhanced: number
   earned: number
+}
+
+// 사냥에서 먹은 재료를 경매장에 판 기록. 개당 가격 × 개수에서 수수료를 떼고 수입으로 잡는다
+export interface DropSaleInput {
+  date: string
+  item: keyof HuntDrops
+  count: number
+  unitPrice: number
+  fee: number
+}
+
+export interface DropSale extends DropSaleInput {
+  id: string
 }
 
 export interface LedgerResponse {
   month: string
   hunts: HuntEntry[]
   clears: BossClear[]
-  // 장비 결산에서 구매·강화 비용을 올리거나 판매가를 적은 날의 합계
   items: ItemFlow[]
+  sales: DropSale[]
+  // 지금까지 먹은 개수 - 판 개수 (전체 기간)
+  stock: HuntDrops
 }
-
-export type ItemMoneyField = 'buy' | 'cost' | 'sell'
 
 export interface ItemRow {
   id: string
@@ -212,11 +227,21 @@ export interface ItemRow {
   name: string
   icon: string | null
   buy: number
-  cost: number
+  buyDate: string | null
+  // 직접 적은 강화 비용과 적은 날. 가계부에는 이 값만 넘어간다
+  starforce: number
+  starforceDate: string | null
+  potential: number
+  potentialDate: string | null
   sell: number
+  sellDate: string | null
   // 경매장 수수료율(5%·3%). 판매가에서 이만큼 떼고 손익·가계부에 잡는다
   sellFee: number
   memo: string | null
+  // 착용 레벨. 현재 장비 불러오기로 채운다(스타포스 참고값 계산용)
+  level: number | null
+  // 구매일 이후 강화 기록으로 센 참고값. 잠재 메소 재설정은 공식 비용표, 스타포스는 위키 공식 추정(할인·복구 비용 빠짐)
+  reference: { starforce: number, potential: number }
 }
 
 export interface ItemSheet {
@@ -244,12 +269,15 @@ export interface EnhanceEvent {
   grade: string | null
   options: string[]
   addOptions: string[]
+  // 이 시도에 쓴 메소. 잠재 메소 재설정은 공식 비용표, 스타포스는 위키 비용 공식 추정. 큐브·주문서는 null
+  meso: number | null
 }
 
 export interface EnhanceSummary {
   starforce: { attempts: number, success: number, destroy: number }
   cubes: number
   resets: number
+  meso: { starforce: number, potential: number }
   first: string | null
   last: string | null
 }
@@ -258,6 +286,7 @@ export interface EnhanceItem {
   slot: string
   name: string
   icon: string
+  level: number | null
   starforce: number
   potentialGrade: string | null
   additionalGrade: string | null

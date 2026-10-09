@@ -7,5 +7,6 @@ export default defineEventHandler(async (event): Promise<ItemsResponse> => {
     itemSheets.find({ userId: user._id }).sort({ order: 1, createdAt: 1 }).toArray(),
     itemRows.find({ userId: user._id }).sort({ order: 1 }).toArray(),
   ])
-  return { sheets: sheets.map(s => toItemSheet(s, rows)) }
+  const references = await rowReferences(user._id, sheets, rows)
+  return { sheets: sheets.map(s => toItemSheet(s, rows, references)) }
 })

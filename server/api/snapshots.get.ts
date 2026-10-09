@@ -20,7 +20,7 @@ export default defineEventHandler(async (event): Promise<SnapshotsResponse> => {
     await enqueueSnapshotJobs(user._id, ocid, dates)
     await processSnapshotJobs({ budgetMs: VISIT_BUDGET_MS, userId: user._id })
     // 오늘 값은 덤이라 실패해도 기록 화면은 그대로 보여준다
-    today = await withCache(`today:${ocid}`, TODAY_CACHE_MS, () => fetchTodayPoint(user._id, ocid)).catch((error) => {
+    today = await withCache(`today:${ocid}`, TODAY_CACHE_MS, async () => fetchTodayPoint(await getUserApiKey(user._id), ocid)).catch((error) => {
       console.warn('[snapshots] 오늘 값을 못 불러옴', redactApiKeys(String(error)))
       return null
     })

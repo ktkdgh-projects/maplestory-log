@@ -2,6 +2,9 @@
 const route = useRoute()
 const { me, refresh } = await useMe()
 
+// 메인에서 검색한 캐릭터를 보던 중이면 성장 페이지도 그 캐릭터로 연다
+const growthLink = computed(() => (typeof route.query.name === 'string' && route.query.name ? `/growth?name=${encodeURIComponent(route.query.name)}` : '/growth'))
+
 const keyBroken = computed(() => me.value?.keyStatus === 'invalid' || me.value?.keyStatus === 'deleted')
 
 async function logout() {
@@ -22,8 +25,7 @@ async function logout() {
         </NuxtLink>
         <HeaderSearch />
         <nav class="menu" aria-label="메뉴">
-          <MenuButton to="/" :active="route.path === '/'">캐릭터</MenuButton>
-          <MenuButton to="/growth">성장</MenuButton>
+          <MenuButton :to="growthLink">성장</MenuButton>
           <MenuButton to="/ledger">가계부</MenuButton>
           <MenuButton to="/items">장비 결산</MenuButton>
           <template v-if="me">

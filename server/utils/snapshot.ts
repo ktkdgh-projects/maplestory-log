@@ -26,8 +26,7 @@ async function fetchSnapshot(apiKey: string, ocid: string, date: string): Promis
 }
 
 // 오늘은 날짜 지정 조회가 안 되므로 실시간 값으로 진행 중인 하루를 만든다
-export async function fetchTodayPoint(userId: ObjectId, ocid: string): Promise<SnapshotPoint> {
-  const apiKey = await getUserApiKey(userId)
+export async function fetchTodayPoint(apiKey: string, ocid: string): Promise<SnapshotPoint> {
   const basic = await nexon.basic(apiKey, ocid)
   const stat = await nexon.stat(apiKey, ocid)
   return {
@@ -39,12 +38,32 @@ export async function fetchTodayPoint(userId: ObjectId, ocid: string): Promise<S
   }
 }
 
-export async function enqueueSnapshotJobs(userId: ObjectId, ocid: string, dates: string[]) {
-  const { snapshots, jobs } = await useCollections()
+async function missingDates(ocid: string, dates: string[]): Promise<string[]> {
+  const { snapshots } = await useCollections()
   const validDates = dates.filter(date => date >= NEXON_DATA_START_DATE)
   const existing = await snapshots.find({ ocid, date: { $in: validDates } }, { projection: { date: 1 } }).toArray()
   const have = new Set(existing.map(s => s.date))
-  const missing = validDates.filter(date => !have.has(date))
+  return validDates.filter(date => !have.has(date))
+}
+
+// 로그인 없이 검색한 캐릭터는 작업 대기열 없이 그 자리에서 최근 날부터 채운다. 남은 날 수를 돌려준다
+export async function fillSnapshots(apiKey: string, ocid: string, dates: string[], budgetMs: number): Promise<number> {
+  const { snapshots } = await useCollections()
+  const missing = (await missingDates(ocid, dates)).reverse()
+  const deadline = Date.now() + budgetMs
+  let done = 0
+  for (const date of missing) {
+    if (Date.now() >= deadline) break
+    const snapshot = await fetchSnapshot(apiKey, ocid, date)
+    await snapshots.updateOne({ ocid, date }, { $set: { ...snapshot, fetchedAt: new Date() } }, { upsert: true })
+    done++
+  }
+  return missing.length - done
+}
+
+export async function enqueueSnapshotJobs(userId: ObjectId, ocid: string, dates: string[]) {
+  const { jobs } = await useCollections()
+  const missing = await missingDates(ocid, dates)
   if (missing.length === 0) return
 
   const now = new Date()
