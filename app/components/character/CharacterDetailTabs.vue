@@ -42,6 +42,7 @@ const tab = ref<typeof TABS[number]>('헥사')
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
 .foot {

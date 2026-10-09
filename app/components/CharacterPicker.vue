@@ -38,7 +38,8 @@ const visible = computed(() => {
   gap: 6px;
   max-height: 360px;
   margin: 0;
-  padding: 0;
+  /* 마우스를 올리면 칸이 살짝 떠오르므로 스크롤 영역 위아래에 여유를 둬야 잘리지 않는다 */
+  padding: 4px 2px;
   overflow-y: auto;
   list-style: none;
 }

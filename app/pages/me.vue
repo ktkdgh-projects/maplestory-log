@@ -36,13 +36,16 @@ async function run(action: () => Promise<unknown>, done: string) {
   }
 }
 
+// 목록을 창 안에 펼치면 옆·아래 창이 눌려서 모달로 띄운다
 const characters = ref<CharacterBrief[] | null>(null)
-const loadCharacters = () => run(async () => {
-  characters.value = await $fetch<CharacterBrief[]>('/api/me/characters')
+const pickerOpen = ref(false)
+const openPicker = () => run(async () => {
+  characters.value ??= await $fetch<CharacterBrief[]>('/api/me/characters')
+  pickerOpen.value = true
 }, '')
 const pickMain = (ocid: string) => run(async () => {
   await $fetch('/api/me/main', { method: 'PUT', body: { ocid } })
-  characters.value = null
+  pickerOpen.value = false
   await refresh()
 }, '대표 캐릭터를 바꿨어요. 지난 기록을 채우기 시작해요.')
 
@@ -66,6 +69,23 @@ async function leave(path: string, body?: object) {
   }, '')
 }
 
+const EXPORTS = [
+  { label: '전체 JSON', format: 'json', table: null },
+  { label: '사냥 CSV', format: 'csv', table: 'hunts' },
+  { label: '보스 CSV', format: 'csv', table: 'clears' },
+  { label: '장비 결산 CSV', format: 'csv', table: 'items' },
+  { label: '강화 기록 CSV', format: 'csv', table: 'enhance' },
+] as const
+const exportKey = ref('')
+const download = (item: typeof EXPORTS[number]) => run(async () => {
+  const blob = await $fetch<Blob>('/api/me/export', { method: 'POST', body: { apiKey: exportKey.value, format: item.format, table: item.table }, responseType: 'blob' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `maplelog-${item.table ?? 'all'}-${kstToday()}.${item.format}`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}, '내려받았어요.')
+
 const confirmTarget = ref<'key' | 'account' | null>(null)
 const confirmKey = ref('')
 const confirmLabels = { key: '키 삭제', account: '탈퇴' }
@@ -85,7 +105,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
     <p v-if="failure" class="form-error" role="alert">{{ failure }}</p>
 
     <div class="board">
-      <GameWindow title="대표 캐릭터" accent="green" :fill="!!characters">
+      <GameWindow title="대표 캐릭터" accent="green">
         <div v-if="me.main" class="main">
           <div class="portrait">
             <CharacterSprite v-if="me.main.imageUrl" :src="me.main.imageUrl" :scale="0.9" />
@@ -94,14 +114,16 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
             <b class="name">{{ me.main.name }}</b>
             <div class="muted small">{{ me.main.world }} · {{ me.main.job }} · LV.{{ me.main.level }}</div>
           </div>
-          <button v-if="!characters" class="btn ghost" :disabled="busy" @click="loadCharacters">바꾸기</button>
+          <button class="btn ghost" :disabled="busy" @click="openPicker">바꾸기</button>
         </div>
         <template v-else>
           <p class="muted">아직 고르지 않았어요.</p>
-          <div v-if="!characters"><button class="btn" :disabled="busy" @click="loadCharacters">고르기</button></div>
+          <div><button class="btn" :disabled="busy" @click="openPicker">고르기</button></div>
         </template>
-        <CharacterPicker v-if="characters" class="picker" :characters="characters" :current-ocid="me.main?.ocid" :busy="busy" @pick="pickMain" />
       </GameWindow>
+      <AppModal v-model="pickerOpen" title="대표 캐릭터 고르기">
+        <CharacterPicker v-if="characters" :characters="characters" :current-ocid="me.main?.ocid" :busy="busy" @pick="pickMain" />
+      </AppModal>
 
       <GameWindow title="API 키">
         <dl class="kv">
@@ -138,7 +160,13 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <div><dt>가입</dt><dd>{{ formatDateTime(me.createdAt) }}</dd></div>
           <div><dt>수집 동의</dt><dd>{{ formatDateTime(me.consentAt) }}</dd></div>
         </dl>
-        <p class="muted small">가계부·강화 기록이 생기면 JSON·CSV 내보내기를 여기에 추가할 예정이에요.</p>
+        <div class="export">
+          <label for="export-key">내 기록 내려받기 (가계부·장비 결산·강화 기록) — 지금 등록된 API 키를 다시 입력해 주세요</label>
+          <input id="export-key" v-model="exportKey" class="field-input" type="password" autocomplete="off">
+          <div class="row">
+            <button v-for="item in EXPORTS" :key="item.label" type="button" class="btn ghost compact" :disabled="busy || !exportKey" @click="download(item)">{{ item.label }}</button>
+          </div>
+        </div>
 
         <div v-if="!confirmTarget" class="row">
           <button class="btn danger" :disabled="!me.keyLast4" @click="confirmTarget = 'key'">키만 삭제</button>
@@ -191,15 +219,21 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   gap: 14px;
 }
 .portrait {
-  display: grid;
+  position: relative;
   flex: none;
-  place-items: end center;
   width: 96px;
   height: 104px;
   overflow: hidden;
   background: radial-gradient(circle at 50% 60%, rgb(127 209 154 / 0.3), transparent 70%), var(--bar);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
+}
+/* 캐릭터 틀(110×120)이 칸보다 커서 칸 안 가운데 바닥에 발을 맞춰 세운다 */
+.portrait :deep(.sprite) {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  translate: -50% 0;
 }
 .main-info {
   flex: 1;
@@ -209,10 +243,6 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   font-family: var(--f-title);
   font-size: 26px;
   font-weight: 400;
-}
-.picker {
-  flex: 1;
-  min-height: 0;
 }
 .devices {
   display: grid;
@@ -243,11 +273,6 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   gap: 8px;
   min-width: 0;
 }
-.compact {
-  min-height: 36px;
-  padding: 0 12px;
-  font-size: 14px;
-}
 .tag {
   flex: none;
   padding: 1px 6px;
@@ -263,6 +288,14 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   border: 1px solid var(--gain);
   border-radius: 6px;
   color: var(--gain);
+}
+.export {
+  display: grid;
+  gap: 6px;
+}
+.export label {
+  color: var(--sub);
+  font-size: 13px;
 }
 .confirm {
   display: grid;

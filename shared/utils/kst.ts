@@ -10,6 +10,11 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
 }
 
+// 한국 날짜의 0시를 실제 시각(Date)으로
+export function kstDayStart(date: string): Date {
+  return new Date(Date.parse(`${date}T00:00:00Z`) - KST_OFFSET_MS)
+}
+
 export function kstYesterday(): string {
   return addDays(kstToday(), -1)
 }

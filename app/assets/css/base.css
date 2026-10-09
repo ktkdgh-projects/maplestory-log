@@ -133,6 +133,15 @@ body {
   font: inherit;
   transition: border-color var(--fast) ease, box-shadow var(--fast) ease;
 }
+/* 숫자 칸의 위아래 화살표는 쓰지 않는다 */
+.field-input[type="number"] {
+  appearance: textfield;
+}
+.field-input[type="number"]::-webkit-inner-spin-button,
+.field-input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
 .field-input:hover {
   border-color: var(--tip-line);
 }
@@ -180,6 +189,11 @@ body {
 }
 .btn.ghost:hover:not(:disabled) {
   border-color: var(--tip-line);
+}
+.btn.compact {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 15px;
 }
 .btn.danger {
   background: transparent;

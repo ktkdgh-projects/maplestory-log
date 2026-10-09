@@ -15,7 +15,7 @@ export default defineEventHandler(async (event): Promise<SnapshotsResponse> => {
 
   const dates = recentKstDates(range)
   let today: SnapshotPoint | null = null
-  if (user.keyStatus === 'valid') {
+  if (user.keyStatus === 'valid' && !(await isCollectionPaused())) {
     // Cron이 밀렸거나 처음 들어온 경우 빈 날을 접속한 김에 채운다. 남은 건 다음 요청이 이어받는다
     await enqueueSnapshotJobs(user._id, ocid, dates)
     await processSnapshotJobs({ budgetMs: VISIT_BUDGET_MS, userId: user._id })

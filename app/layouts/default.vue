@@ -24,8 +24,11 @@ async function logout() {
         <nav class="menu" aria-label="메뉴">
           <MenuButton to="/" :active="route.path === '/'">캐릭터</MenuButton>
           <MenuButton to="/growth">성장</MenuButton>
+          <MenuButton to="/ledger">가계부</MenuButton>
+          <MenuButton to="/items">장비 결산</MenuButton>
           <template v-if="me">
             <MenuButton to="/me">내 정보</MenuButton>
+            <MenuButton v-if="me.isAdmin" to="/admin">운영</MenuButton>
             <MenuButton @click="logout">로그아웃</MenuButton>
           </template>
           <MenuButton v-else to="/login">키 등록</MenuButton>
@@ -100,10 +103,12 @@ async function logout() {
 @keyframes sway {
   50% { rotate: 8deg; }
 }
+/* 가로 스크롤 영역은 세로로도 잘라서, 호버로 떠오르는 버튼과 그림자가 들어갈 여백을 안쪽에 두고 바깥은 그만큼 당긴다 */
 .menu {
   display: flex;
   gap: 6px;
-  margin-left: auto;
+  margin: -6px -4px -12px auto;
+  padding: 6px 4px 12px;
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
@@ -162,6 +167,7 @@ async function logout() {
   .wrap {
     min-height: 0;
     overflow: auto;
+    scrollbar-gutter: stable;
     padding-bottom: 16px;
   }
 }
@@ -170,8 +176,8 @@ async function logout() {
     font-size: 21px;
   }
   .menu {
-    width: 100%;
-    margin-left: 0;
+    width: calc(100% + 8px);
+    margin-left: -4px;
   }
   .menu > * {
     flex: 1;

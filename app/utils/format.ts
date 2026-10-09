@@ -14,6 +14,25 @@ export function formatKoreanNumber(value: number): string {
   return sign + (parts.join(' ') || '0')
 }
 
+// 슬롯처럼 좁은 칸용 짧은 표기: 1234567890 → "12.3억", 56780000 → "5,678만"
+export function formatShortNumber(value: number): string {
+  const abs = Math.abs(value)
+  const sign = value < 0 ? '-' : ''
+  for (const [unit, size] of KOREAN_UNITS) {
+    if (abs < size) continue
+    const n = abs / size
+    return sign + (n < 100 ? `${Math.floor(n * 10) / 10}${unit}` : `${Math.floor(n).toLocaleString('ko-KR')}${unit}`)
+  }
+  return sign + abs.toLocaleString('ko-KR')
+}
+
+export const EOK = 1e8
+
+// 엑셀에서 쓰던 방식 그대로 억 단위 소수 둘째 자리까지: 15103000000 → "151.03"
+export function formatEok(meso: number): string {
+  return (Math.round((meso / EOK) * 100) / 100).toLocaleString('ko-KR', { maximumFractionDigits: 2 })
+}
+
 export function formatSigned(value: number, format: (n: number) => string = formatKoreanNumber): string {
   return (value > 0 ? '+' : '') + format(value)
 }

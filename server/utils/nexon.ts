@@ -176,6 +176,49 @@ interface NexonDojang {
   dojang_best_floor: number | null
 }
 
+interface NexonOptionLine {
+  value: string
+  grade: string
+}
+
+export interface NexonHistoryEvent {
+  id: string
+  character_name: string
+  target_item: string
+  date_create: string
+  item_upgrade_result?: string
+  before_starforce_count?: number
+  after_starforce_count?: number
+  cube_type?: string
+  potential_type?: string
+  potential_option_grade?: string
+  after_potential_option?: NexonOptionLine[]
+  after_additional_potential_option?: NexonOptionLine[]
+}
+
+type NexonHistoryPage<K extends string> = { count: number, next_cursor: string | null } & Record<K, NexonHistoryEvent[]>
+
+const HISTORY_PAGE_SIZE = 1000
+
+// 하루치 기록이 한 쪽(1000건)을 넘으면 next_cursor로 이어 받는다
+async function historyOfDay<K extends string>(path: string, listKey: K, apiKey: string, date: string): Promise<NexonHistoryEvent[]> {
+  const events: NexonHistoryEvent[] = []
+  let page = await nexonGet<NexonHistoryPage<K>>(path, apiKey, { count: HISTORY_PAGE_SIZE, date })
+  events.push(...(page[listKey] ?? []))
+  while (page.next_cursor) {
+    page = await nexonGet<NexonHistoryPage<K>>(path, apiKey, { count: HISTORY_PAGE_SIZE, cursor: page.next_cursor })
+    events.push(...(page[listKey] ?? []))
+  }
+  return events
+}
+
+// 스타포스·큐브·잠재능력 재설정(메소) 기록. 계정 단위라 캐릭터 이름이 기록마다 들어 있다
+export const nexonHistory = {
+  starforce: (apiKey: string, date: string) => historyOfDay('/history/starforce', 'starforce_history', apiKey, date),
+  cube: (apiKey: string, date: string) => historyOfDay('/history/cube', 'cube_history', apiKey, date),
+  potential: (apiKey: string, date: string) => historyOfDay('/history/potential', 'potential_history', apiKey, date),
+}
+
 export const nexon = {
   characterList: (apiKey: string) => nexonGet<NexonCharacterList>('/character/list', apiKey),
   ocid: (apiKey: string, name: string) => nexonGet<{ ocid: string }>('/id', apiKey, { character_name: name }),

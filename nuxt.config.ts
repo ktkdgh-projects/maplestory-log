@@ -45,6 +45,8 @@ export default defineNuxtConfig({
     cronSecret: '',
     keyEncSecret: '',
     keyHashSecret: '',
+    // 관리자 넥슨 계정 id. 여러 명이면 쉼표로 구분 (NUXT_ADMIN_ACCOUNT_IDS)
+    adminAccountIds: '',
     public: {},
   },
 

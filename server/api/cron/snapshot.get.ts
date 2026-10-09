@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   if (!cronSecret || getHeader(event, 'authorization') !== `Bearer ${cronSecret}`) {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
+  if (await isCollectionPaused()) return { paused: true }
 
   const { users, userCharacters } = await useCollections()
   const yesterday = kstYesterday()

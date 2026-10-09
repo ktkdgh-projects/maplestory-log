@@ -87,6 +87,7 @@ const abilityPreset = ref(props.character.abilityPresetNo)
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
 /* 남는 높이를 칸들이 나눠 가져서 아래 여백 없이 채운다 */
