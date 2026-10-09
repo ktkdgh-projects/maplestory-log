@@ -1,8 +1,6 @@
-/* 색·폰트 토큰. 기획서 v3의 게임 창 테마 기준 */
 :root {
   color-scheme: dark;
 
-  /* 화면 바탕 · 창 */
   --page: #141828;
   --bar: #0e111c;
   --win: #232a42;
@@ -12,7 +10,6 @@
   --panel-line: #3a4366;
   --tip-line: #8a93b8;
 
-  /* 글자 · 강조 */
   --text: #e8ecf7;
   --sub: #a5aecb;
   --gold: #f2c14e;
@@ -21,13 +18,12 @@
   --loss: #ff8a7a;
   --exp: #e8d44d;
 
-  /* 데이터 출처 배지 */
+  /* SourceBadge 색: API · 계산 · 입력 · 불가 */
   --api: #7fb2ff;
   --calc: #b79cff;
   --input: #f2c14e;
   --none: #8a93b8;
 
-  /* 필드 */
   --sky-top: #4e7bcb;
   --sky-bot: #a7cbf2;
   --cloud: #f4f7ff;
@@ -36,7 +32,6 @@
   --dirt: #7a5536;
   --dirt-dark: #5c3f28;
 
-  /* 폰트 */
   --f-title: "Do Hyeon", "Nanum Gothic", system-ui, sans-serif;
   --f-body: "Nanum Gothic", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --f-pixel: "Silkscreen", ui-monospace, "Consolas", monospace;

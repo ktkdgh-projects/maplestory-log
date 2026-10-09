@@ -1,4 +1,3 @@
-<!-- 공통 레이아웃: 상단 메뉴 바 + 본문 + 출처 표기 -->
 <template>
   <div class="layout">
     <header class="menubar">

@@ -20,7 +20,7 @@ export default defineNuxtConfig({
     },
   },
 
-  // 서버 전용 값. 같은 이름의 NUXT_* 환경 변수가 실행 시 덮어쓴다 (.env.example 참고)
+  // 빈 값은 자리만 잡아둔 것. 실행 시 NUXT_NEXON_API_KEY → nexonApiKey 식으로 환경 변수가 채운다
   runtimeConfig: {
     nexonApiKey: '',
     mongoUri: '',
