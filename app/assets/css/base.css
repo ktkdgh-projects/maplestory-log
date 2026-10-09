@@ -1,0 +1,325 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 50% -200px, rgb(78 123 203 / 0.18), transparent 70%),
+    var(--page);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.65;
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--gold);
+  color: var(--on-gold);
+}
+
+/* 페이지 전환 (nuxt.config의 pageTransition: 'page') */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity var(--normal) var(--ease-out), transform var(--normal) var(--ease-out);
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--fast) ease, transform var(--fast) var(--ease-out);
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.stagger > * {
+  animation: rise-in 0.5s var(--ease-out) backwards;
+}
+.stagger > :nth-child(2) { animation-delay: 0.06s; }
+.stagger > :nth-child(3) { animation-delay: 0.12s; }
+.stagger > :nth-child(4) { animation-delay: 0.18s; }
+.stagger > :nth-child(5) { animation-delay: 0.24s; }
+.stagger > :nth-child(n + 6) { animation-delay: 0.3s; }
+
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--panel) 0%, var(--win-line) 50%, var(--panel) 100%) 0 0 / 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.page {
+  display: grid;
+  gap: 16px;
+}
+
+/* 넓은 화면에서 한 화면에 맞출 페이지. 레이아웃의 .wrap 높이를 채운다 */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .fit {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--bar);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  transition: border-color var(--fast) ease, box-shadow var(--fast) ease;
+}
+.field-input:hover {
+  border-color: var(--tip-line);
+}
+.field-input:focus {
+  border-color: var(--gold);
+  outline: none;
+  box-shadow: var(--glow);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 18px;
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  color: var(--on-gold);
+  font-family: var(--f-title);
+  font-size: 16px;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform var(--fast) var(--ease-out), box-shadow var(--fast) ease, filter var(--fast) ease, background var(--fast) ease;
+}
+.btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.3);
+  filter: brightness(1.06);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
+}
+.btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.btn.ghost {
+  background: var(--panel);
+  border-color: var(--panel-line);
+  color: var(--text);
+}
+.btn.ghost:hover:not(:disabled) {
+  border-color: var(--tip-line);
+}
+.btn.danger {
+  background: transparent;
+  border-color: var(--loss);
+  color: var(--loss);
+}
+.btn.danger:hover:not(:disabled) {
+  background: rgb(255 138 122 / 0.1);
+}
+
+.muted {
+  margin: 0;
+  color: var(--sub);
+}
+
+.footnote {
+  margin: 0;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.form-error {
+  margin: 0;
+  padding: 8px 12px;
+  background: rgb(255 138 122 / 0.08);
+  border: 1px solid rgb(255 138 122 / 0.4);
+  border-radius: 6px;
+  color: var(--loss);
+  font-size: 14px;
+  animation: rise-in 0.3s var(--ease-out);
+}
+
+.kv {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  font-size: 15px;
+}
+.kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  transition: background var(--fast) ease;
+}
+.kv > div:hover {
+  background: var(--panel);
+}
+.kv dt {
+  flex: none;
+  color: var(--sub);
+}
+.kv dd {
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tile {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tone, var(--tip-line)) 14%, var(--panel)), var(--panel));
+  border: 1px solid var(--panel-line);
+  border-left: 3px solid var(--tone, var(--tip-line));
+  border-radius: 8px;
+  transition: transform var(--fast) var(--ease-out), border-color var(--fast) ease;
+}
+.tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--tip-line);
+  border-left-color: var(--tone, var(--tip-line));
+}
+.tile-label {
+  color: var(--sub);
+  font-size: 13px;
+}
+.tile-value {
+  color: var(--tone, var(--text));
+  font-family: var(--f-title);
+  font-size: 22px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.gain {
+  color: var(--gain);
+}
+.loss {
+  color: var(--loss);
+}
+.warn {
+  color: var(--gold);
+}
+
+.prose {
+  display: grid;
+  gap: 12px;
+  max-width: 72ch;
+}
+.prose h2 {
+  margin: 8px 0 0;
+  color: var(--gold);
+  font-family: var(--f-title);
+  font-size: 19px;
+  font-weight: 400;
+}
+.prose p,
+.prose ol,
+.prose ul {
+  margin: 0;
+}
+.prose ol,
+.prose ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 20px;
+}
+.prose a {
+  color: var(--api);
+}
+.prose code {
+  padding: 0 5px;
+  background: var(--bar);
+  border: 1px solid var(--panel-line);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

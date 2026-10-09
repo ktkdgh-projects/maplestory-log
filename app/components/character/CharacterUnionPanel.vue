@@ -1,0 +1,191 @@
+<script setup lang="ts">
+import type { UnionResponse } from '#shared/types'
+
+const props = defineProps<{ ocid: string, world: string, unionLevel: number | null, unionGrade: string | null }>()
+
+const POLL_MS = 2500
+const TIERS: [string, string][] = [['슈프림', '#ff6b6b'], ['그랜드 마스터', '#ffcc33'], ['마스터', '#b46cff'], ['베테랑', '#5cb8ff'], ['노비스', '#9aa5c4']]
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V']
+
+const world = ref(props.world)
+const showHidden = ref(false)
+const { data, error, refresh } = useFetch<UnionResponse>(() => `/api/union/${props.ocid}`, { query: { world }, server: false, lazy: true })
+
+// 로그인 전이나 남의 캐릭터면 목록 없이 이 캐릭터 월드의 유니온 정보만 보여준다
+const unionGrade = computed(() => data.value?.unionGrade ?? (world.value === props.world ? props.unionGrade : null))
+const unionLevel = computed(() => data.value?.unionLevel ?? (world.value === props.world ? props.unionLevel : null))
+
+// 유니온 등급 그림은 API로 오지 않아서 등급 이름으로 직접 그린 엠블럼을 쓴다
+const grade = computed(() => {
+  const name = unionGrade.value ?? ''
+  const [tier, color] = TIERS.find(([t]) => name.startsWith(t)) ?? ['유니온', '#9aa5c4']
+  const step = Number(name.match(/(\d+)$/)?.[1] ?? 0)
+  return { tier, color, roman: ROMAN[step] ?? String(step) }
+})
+
+let timer: ReturnType<typeof setTimeout> | undefined
+watch(() => data.value?.pending, (pending) => {
+  clearTimeout(timer)
+  if (pending) timer = setTimeout(refresh, POLL_MS)
+})
+onBeforeUnmount(() => clearTimeout(timer))
+
+const visibleWorlds = computed(() => data.value?.worlds.filter(w => w.active || showHidden.value || w.name === world.value) ?? [])
+const hiddenCount = computed(() => data.value?.worlds.filter(w => !w.active).length ?? 0)
+
+const totalLevel = computed(() => data.value?.members.reduce((sum, m) => sum + m.level, 0) ?? 0)
+</script>
+
+<template>
+  <div class="union">
+    <div v-if="data && (visibleWorlds.length > 1 || hiddenCount)" class="worlds" role="group" aria-label="월드">
+      <MenuButton v-for="w in visibleWorlds" :key="w.name" :active="world === w.name" :class="{ closed: !w.active }" @click="world = w.name">{{ w.name }} <small>{{ w.active ? w.count : '종료' }}</small></MenuButton>
+      <button v-if="hiddenCount" type="button" class="toggle" @click="showHidden = !showHidden">{{ showHidden ? '종료된 월드 숨기기' : `종료된 월드 ${hiddenCount}개 보기` }}</button>
+    </div>
+    <div class="head" :style="{ '--tone': grade.color }">
+      <div class="emblem" aria-hidden="true">
+        <span>{{ grade.roman }}</span>
+      </div>
+      <div class="head-info">
+        <span class="grade">{{ unionGrade ?? '유니온 정보 없음' }}</span>
+        <span class="level">Lv.{{ unionLevel?.toLocaleString('ko-KR') ?? '-' }}</span>
+        <span v-if="data" class="muted small">{{ data.world }} · 캐릭터 {{ data.members.length }}명 · 레벨 합 {{ totalLevel.toLocaleString('ko-KR') }}</span>
+      </div>
+    </div>
+
+    <p v-if="error" class="muted small">{{ errorMessage(error, '로그인하면 내 계정 캐릭터 목록을 볼 수 있어요.') }}</p>
+    <p v-else-if="!data" class="muted small">캐릭터 목록을 불러오는 중이에요…</p>
+    <template v-else>
+      <p v-if="data.pending" class="muted small">캐릭터 이미지를 불러오는 중 · {{ data.pending }}명 남음</p>
+      <ul class="members stagger">
+        <li v-for="m in data.members" :key="m.ocid" :class="{ me: m.ocid === ocid }">
+          <div class="face">
+            <CharacterThumb v-if="m.imageUrl" :src="m.imageUrl" :height="104" />
+            <span v-else class="skeleton" />
+          </div>
+          <b class="ellipsis">{{ m.name }}</b>
+          <span class="muted ellipsis">Lv.{{ m.level }} · {{ m.job }}</span>
+        </li>
+      </ul>
+    </template>
+  </div>
+</template>
+
+<style scoped>
+.union {
+  display: grid;
+  gap: 12px;
+}
+.worlds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.worlds .menu-btn {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+.worlds small {
+  opacity: 0.7;
+  font-size: 11px;
+}
+.worlds .closed {
+  opacity: 0.6;
+}
+.toggle {
+  padding: 0 10px;
+  background: none;
+  border: 1px dashed var(--panel-line);
+  border-radius: 6px;
+  color: var(--sub);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.toggle:hover {
+  color: var(--text);
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tone) 18%, var(--panel)), var(--panel));
+  border: 1px solid var(--panel-line);
+  border-radius: 10px;
+}
+.emblem {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 60px;
+  height: 66px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 85%, #fff), color-mix(in srgb, var(--tone) 60%, #000));
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  filter: drop-shadow(0 0 8px var(--tone));
+}
+.emblem span {
+  color: #fff;
+  font-family: var(--f-title);
+  font-size: 22px;
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.4);
+}
+.head-info {
+  display: grid;
+  min-width: 0;
+}
+.grade {
+  color: var(--tone);
+  font-family: var(--f-title);
+  font-size: 19px;
+}
+.level {
+  font-family: var(--f-title);
+  font-size: 24px;
+}
+.small {
+  font-size: 13px;
+}
+.members {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.members li {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+  font-size: 13px;
+  text-align: center;
+}
+.members li.me {
+  border-color: var(--gold);
+  box-shadow: var(--glow);
+}
+.members li > * {
+  max-width: 100%;
+}
+.members .muted {
+  font-size: 11px;
+}
+.face {
+  width: 100%;
+  height: 104px;
+  overflow: hidden;
+}
+.face .skeleton {
+  display: block;
+  margin: 20px auto 0;
+  width: 48px;
+  height: 64px;
+}
+</style>
