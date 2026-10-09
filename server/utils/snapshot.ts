@@ -1,4 +1,5 @@
 import type { ObjectId } from 'mongodb'
+import type { SnapshotPoint } from '#shared/types'
 import type { JobDoc, SnapshotDoc } from './mongo'
 
 const MINUTE_MS = 60 * 1000
@@ -21,6 +22,20 @@ async function fetchSnapshot(apiKey: string, ocid: string, date: string): Promis
     expRate: Number(basic.character_exp_rate),
     combatPower: combatPowerOf(stat),
     data: { name: basic.character_name, world: basic.world_name, job: basic.character_class, imageUrl: characterImageUrl(basic.character_image) },
+  }
+}
+
+// 오늘은 날짜 지정 조회가 안 되므로 실시간 값으로 진행 중인 하루를 만든다
+export async function fetchTodayPoint(userId: ObjectId, ocid: string): Promise<SnapshotPoint> {
+  const apiKey = await getUserApiKey(userId)
+  const basic = await nexon.basic(apiKey, ocid)
+  const stat = await nexon.stat(apiKey, ocid)
+  return {
+    date: kstToday(),
+    level: basic.character_level,
+    exp: basic.character_exp,
+    expRate: Number(basic.character_exp_rate),
+    combatPower: combatPowerOf(stat),
   }
 }
 

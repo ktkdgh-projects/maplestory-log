@@ -1,11 +1,11 @@
 <script setup lang="ts">
-const props = withDefaults(defineProps<{ src: string, height?: number }>(), { height: 104 })
+// crop: body는 발끝을 바닥에 맞춰 전신, head는 얼굴을 가운데에 맞춰 작은 칸용
+const props = withDefaults(defineProps<{ src: string, height?: number, crop?: 'body' | 'head' }>(), { height: 104, crop: 'body' })
 
-// 원본 크기 그대로 두고 몸통 기준점을 틀 가운데·바닥에서 조금 띄운 자리에 맞춘다
 const FOOT_MARGIN = 6
 
 const broken = ref(false)
-const top = computed(() => props.height - FOOT_MARGIN - CHARACTER_FOOT_Y)
+const top = computed(() => (props.crop === 'head' ? props.height / 2 - CHARACTER_HEAD_Y : props.height - FOOT_MARGIN - CHARACTER_FOOT_Y))
 </script>
 
 <template>

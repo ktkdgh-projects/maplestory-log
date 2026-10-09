@@ -7,16 +7,17 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
 
-  const { users } = await useCollections()
+  const { users, userCharacters } = await useCollections()
   const yesterday = kstYesterday()
   const activeUsers = await users.find(
     { keyStatus: { $in: ['valid', 'rate_limited'] }, mainOcid: { $ne: null }, lastSeenAt: { $gt: new Date(Date.now() - ACTIVE_WITHIN_MS) } },
-    { projection: { _id: 1, mainOcid: 1 } },
+    { projection: { _id: 1 } },
   ).toArray()
 
-  for (const user of activeUsers) {
-    await enqueueSnapshotJobs(user._id, user.mainOcid!, [yesterday])
+  const tracked = await userCharacters.find({ userId: { $in: activeUsers.map(u => u._id) } }).toArray()
+  for (const t of tracked) {
+    await enqueueSnapshotJobs(t.userId, t.ocid, [yesterday])
   }
   const { processed } = await processSnapshotJobs({ budgetMs: CRON_BUDGET_MS })
-  return { date: yesterday, users: activeUsers.length, processed }
+  return { date: yesterday, users: activeUsers.length, characters: tracked.length, processed }
 })

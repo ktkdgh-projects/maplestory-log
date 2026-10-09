@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import type { SnapshotsResponse } from '#shared/types'
+import type { SnapshotsResponse, TrackedCharacter } from '#shared/types'
 
 const RANGES = [7, 14, 30]
+const VIEWS = [{ key: 'field', label: '필드' }, { key: 'table', label: '날짜별 표' }] as const
 const POLL_MS = 3000
 
 const { me } = await useMe()
 const range = ref(14)
+const view = ref<typeof VIEWS[number]['key']>('field')
+const ocid = ref(me.value?.main?.ocid ?? '')
+
+const { data: tracked, refresh: refreshTracked } = await useFetch<TrackedCharacter[]>('/api/growth/characters', {
+  default: () => [],
+  immediate: !!me.value?.main,
+})
 const { data, error, refresh } = useFetch<SnapshotsResponse>('/api/snapshots', {
-  query: { days: range },
+  query: { days: range, ocid },
   immediate: !!me.value?.main,
 })
 
-const days = computed(() => toGrowthDays(data.value?.points ?? []))
+const days = computed(() => toGrowthDays(data.value?.points ?? [], data.value?.today ?? null))
 const summary = computed(() => summarizeGrowth(days.value))
 // 고르지 않았으면 마지막 날. 서버 렌더링에서도 같은 값이 나오도록 watch 대신 computed로 둔다
 const picked = ref<number | null>(null)
@@ -21,7 +29,7 @@ const selected = computed({
     picked.value = value
   },
 })
-watch(range, () => {
+watch([range, ocid], () => {
   picked.value = null
 })
 
@@ -37,12 +45,12 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
 </script>
 
 <template>
-  <GameWindow v-if="!me" title="성장 기록">
+  <GameWindow v-if="!me" title="성장 기록" accent="green">
     <p class="muted">성장 기록은 API 키를 등록한 캐릭터만 매일 모을 수 있어요.</p>
     <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
   </GameWindow>
 
-  <GameWindow v-else-if="!me.main" title="성장 기록">
+  <GameWindow v-else-if="!me.main" title="성장 기록" accent="green">
     <p class="muted">기록할 대표 캐릭터를 먼저 골라 주세요.</p>
     <div><NuxtLink to="/me" class="btn">대표 캐릭터 고르기</NuxtLink></div>
   </GameWindow>
@@ -50,18 +58,18 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
   <GameWindow v-else class="fit" :title="`${data?.character?.name ?? me.main.name}의 성장 기록`" accent="green" fill>
     <template #sub>
       <span v-if="data?.pending">지난 기록 채우는 중 · {{ data.pending }}일 남음</span>
+      <span v-else>매일 새벽 4시 저장 · 오늘은 실시간</span>
     </template>
 
+    <GrowthCharacterBar v-model="ocid" :tracked="tracked" :max="MAX_TRACKED_CHARACTERS" @changed="refreshTracked" />
+
     <div class="toolbar">
-      <div class="ranges" role="group" aria-label="기간">
-        <MenuButton v-for="r in RANGES" :key="r" :active="range === r" @click="range = r">
-          {{ r }}일
-        </MenuButton>
+      <div class="group" role="group" aria-label="기간">
+        <MenuButton v-for="r in RANGES" :key="r" :active="range === r" @click="range = r">{{ r }}일</MenuButton>
       </div>
-      <p class="sources">
-        <SourceBadge type="api" /> 날짜별 스냅샷
-        <SourceBadge type="calc" /> 증가량 · 예상일
-      </p>
+      <div class="group" role="group" aria-label="보기">
+        <MenuButton v-for="v in VIEWS" :key="v.key" :active="view === v.key" @click="view = v.key">{{ v.label }}</MenuButton>
+      </div>
     </div>
 
     <p v-if="error" class="form-error">{{ errorMessage(error) }}</p>
@@ -70,33 +78,70 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
     </p>
 
     <template v-else>
-      <GrowthField v-model="selected" :days="days" :image-url="data?.character?.imageUrl ?? null" />
-      <GrowthExpRoad v-model="selected" :days="days" />
+      <Transition name="fade" mode="out-in">
+        <div v-if="view === 'field'" key="field" class="stage">
+          <GrowthField v-model="selected" :days="days" :image-url="data?.character?.imageUrl ?? null" />
+          <GrowthExpRoad v-model="selected" :days="days" />
+          <GrowthPowerChart v-model="selected" :days="days" />
+        </div>
+        <GrowthTable v-else key="table" v-model="selected" :days="days" />
+      </Transition>
 
       <div v-if="summary" class="summary stagger">
-        <div class="tile" style="--tone: var(--exp)">
-          <span class="tile-label">기간 경험치</span>
-          <span class="tile-value">{{ formatSigned(summary.totalPercent, n => `${n.toFixed(2)}%`) }}</span>
-          <span class="tile-label">{{ formatSigned(summary.totalExp) }}</span>
-        </div>
-        <div class="tile" style="--tone: var(--api)">
-          <span class="tile-label">다음 레벨업 예상</span>
-          <span class="tile-value">{{ summary.levelUpDate ? formatMonthDay(summary.levelUpDate) : '-' }}</span>
-          <span class="tile-label">최근 7일 평균 기준</span>
-        </div>
-        <div class="tile" style="--tone: var(--calc)">
-          <span class="tile-label">최고의 날</span>
-          <span class="tile-value">{{ summary.bestDay ? formatMonthDay(summary.bestDay.date) : '-' }}</span>
-          <span v-if="summary.bestDay?.gainExp" class="tile-label">{{ formatSigned(summary.bestDay.gainExp) }}</span>
-        </div>
-        <div class="tile" style="--tone: var(--gain)">
-          <span class="tile-label">전투력 변화</span>
-          <span class="tile-value" :class="{ gain: (summary.combatPowerChange ?? 0) > 0, loss: (summary.combatPowerChange ?? 0) < 0 }">
-            {{ summary.combatPowerChange === null ? '-' : formatSigned(summary.combatPowerChange) }}
-          </span>
-        </div>
+        <HoverInfo title="기간 경험치" align="left">
+          <div class="tile" style="--tone: var(--exp)">
+            <span class="tile-label">기간 경험치</span>
+            <span class="tile-value">{{ formatSignedPercent(summary.totalPercent) }}</span>
+            <span class="tile-label">{{ formatSigned(summary.totalExp) }} · 레벨업 {{ summary.levelUpDays.length }}번</span>
+          </div>
+          <template #info>
+            <span>하루 평균 {{ summary.averagePercent.toFixed(2) }}%</span>
+            <span>경험치를 얻은 날 {{ summary.activeDays }}일 / {{ summary.trackedDays }}일</span>
+            <span v-for="d in summary.levelUpDays" :key="d.date" class="gain">{{ dayLabel(d) }} LV.{{ d.level }} 달성</span>
+          </template>
+        </HoverInfo>
+        <HoverInfo title="다음 레벨업 예상">
+          <div class="tile" style="--tone: var(--api)">
+            <span class="tile-label">다음 레벨업 예상</span>
+            <span class="tile-value">{{ summary.levelUpDate ? formatMonthDay(summary.levelUpDate) : '-' }}</span>
+            <span class="tile-label">최근 7일 평균 기준</span>
+          </div>
+          <template #info>
+            <span>남은 경험치 {{ summary.remainingPercent.toFixed(2) }}%<template v-if="summary.remainingExp !== null"> ({{ formatKoreanNumber(summary.remainingExp) }})</template></span>
+            <span>최근 7일 하루 평균 {{ summary.averageExp ? formatKoreanNumber(summary.averageExp) : '-' }}</span>
+            <span class="muted">사냥량이 그대로라고 가정한 날짜예요</span>
+          </template>
+        </HoverInfo>
+        <HoverInfo title="경험치 많이 얻은 날">
+          <div class="tile" style="--tone: var(--calc)">
+            <span class="tile-label">최고의 날</span>
+            <span class="tile-value">{{ summary.bestDay ? formatMonthDay(summary.bestDay.date) : '-' }}</span>
+            <span v-if="summary.bestDay?.gainExp" class="tile-label">{{ formatSigned(summary.bestDay.gainExp) }}</span>
+          </div>
+          <template #info>
+            <span v-for="(d, rank) in summary.topDays" :key="d.date">{{ rank + 1 }}위 {{ formatMonthDay(d.date) }} · {{ formatSigned(d.gainExp!) }} ({{ formatSignedPercent(d.gainPercent ?? 0) }})</span>
+            <span v-if="!summary.topDays.length" class="muted">아직 경험치를 얻은 날이 없어요</span>
+          </template>
+        </HoverInfo>
+        <HoverInfo title="전투력 변화" align="right">
+          <div class="tile" style="--tone: var(--gain)">
+            <span class="tile-label">전투력 변화</span>
+            <span class="tile-value" :class="{ gain: (summary.combatPowerChange ?? 0) > 0, loss: (summary.combatPowerChange ?? 0) < 0 }">
+              {{ summary.combatPowerChange === null ? '-' : formatSigned(summary.combatPowerChange) }}
+            </span>
+            <span class="tile-label sources">
+              <SourceBadge type="api" /><span>스냅샷</span>
+              <SourceBadge type="calc" /><span>증가량·예상일</span>
+            </span>
+          </div>
+          <template #info>
+            <span v-if="summary.combatPowerFirst !== null && summary.combatPowerLast !== null">{{ formatKoreanNumber(summary.combatPowerFirst) }} → {{ formatKoreanNumber(summary.combatPowerLast) }}</span>
+            <span v-if="summary.strongest">최고 {{ formatKoreanNumber(summary.strongest.combatPower) }} ({{ dayLabel(summary.strongest) }})</span>
+            <span v-if="summary.weakest">최저 {{ formatKoreanNumber(summary.weakest.combatPower) }} ({{ dayLabel(summary.weakest) }})</span>
+            <span class="muted">그날 장착한 세팅 기준이라 프리셋을 바꾸면 오르내려요</span>
+          </template>
+        </HoverInfo>
       </div>
-
     </template>
   </GameWindow>
 </template>
@@ -109,23 +154,36 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
   align-items: center;
   gap: 8px;
 }
-.ranges {
+.group {
   display: flex;
   gap: 6px;
 }
+.stage {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
 .summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 .sources {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--sub);
-  font-size: 13px;
+  gap: 4px;
+  line-height: 1;
+}
+.sources :deep(.badge) {
+  height: 16px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+.sources :deep(.badge.calc) {
+  margin-left: 4px;
 }
 .tile-value.gain {
   color: var(--gain);

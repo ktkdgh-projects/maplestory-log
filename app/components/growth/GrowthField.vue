@@ -54,19 +54,22 @@ watch(selected, () => centerSelected('smooth'))
         :key="d.date"
         type="button"
         class="platform"
+        :class="{ today: d.isToday }"
         :style="{ left: `${xOf(i)}%`, height: `${heights[i]}px`, animationDelay: `${i * 30}ms` }"
         :aria-pressed="selected === i"
         :aria-label="`${formatMonthDay(d.date)} 선택`"
         @click="selected = i"
       >
-        <span>{{ Number(d.date.slice(8)) }}</span>
+        <i v-if="d.levelUp" class="flag" aria-label="레벨업">UP</i>
+        <span>{{ d.isToday ? '오늘' : Number(d.date.slice(8)) }}</span>
       </button>
 
       <div v-if="day" class="bubble" :style="{ left: `${bubbleX}%` }">
         <Transition name="fade" mode="out-in">
           <div :key="day.date">
-            <b>{{ formatMonthDay(day.date) }} · LV.{{ day.level }}</b>
-            <div>EXP {{ day.expRate.toFixed(3) }}% <span v-if="day.gainPercent !== null" class="gain">{{ formatSigned(day.gainPercent, n => `${n.toFixed(2)}%`) }}</span></div>
+            <b>{{ day.isToday ? '오늘 (실시간)' : formatMonthDay(day.date) }} · LV.{{ day.level }}</b>
+            <div v-if="day.levelUp" class="level-up">레벨업! LV.{{ day.level - 1 }} → {{ day.level }}</div>
+            <div>EXP {{ day.expRate.toFixed(3) }}% <span v-if="day.gainPercent !== null" class="gain">{{ formatSignedPercent(day.gainPercent) }}</span></div>
             <div v-if="day.gainExp !== null">경험치 {{ formatSigned(day.gainExp) }}</div>
             <div v-if="day.combatPower !== null">전투력 {{ formatKoreanNumber(day.combatPower) }}</div>
           </div>
@@ -74,7 +77,7 @@ watch(selected, () => centerSelected('smooth'))
       </div>
 
       <div class="walker" :class="{ hop: hopping }" :style="{ left: `${x}%`, bottom: `${standY}px` }">
-        <CharacterSprite v-if="imageUrl" :src="imageUrl" :scale="1.6" :flip="facingRight" />
+        <CharacterSprite v-if="imageUrl" :src="imageUrl" :scale="2" :flip="facingRight" />
       </div>
     </FieldScene>
   </div>
@@ -84,7 +87,7 @@ watch(selected, () => centerSelected('smooth'))
 .scroll {
   display: flex;
   flex: 1;
-  min-height: 300px;
+  min-height: 240px;
   overflow-x: auto;
   border-radius: 10px;
 }
@@ -133,6 +136,34 @@ watch(selected, () => centerSelected('smooth'))
 .platform[aria-pressed="true"] span {
   color: var(--exp);
 }
+.platform.today {
+  background: repeating-linear-gradient(180deg, var(--grass) 0 5px, var(--dirt) 5px 100%);
+  border: 1px dashed var(--gold);
+  border-bottom: 0;
+  animation: rise-platform 0.6s var(--ease-spring) backwards, pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% { box-shadow: 0 0 12px rgb(242 193 78 / 0.55); }
+}
+.platform.today span {
+  color: var(--gold);
+  font-family: var(--f-title);
+  font-size: 12px;
+}
+.flag {
+  position: absolute;
+  top: -20px;
+  padding: 0 4px;
+  background: var(--gain);
+  border: 1px solid #2e6b3b;
+  border-radius: 3px;
+  color: #0e2614;
+  font-family: var(--f-pixel);
+  font-size: 9px;
+  font-style: normal;
+  line-height: 14px;
+  animation: bob 1.8s ease-in-out infinite;
+}
 .walker {
   position: absolute;
   z-index: 3;
@@ -171,5 +202,9 @@ watch(selected, () => centerSelected('smooth'))
 }
 .gain {
   margin-left: 4px;
+}
+.level-up {
+  color: var(--gain);
+  font-family: var(--f-title);
 }
 </style>

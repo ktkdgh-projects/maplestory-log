@@ -18,6 +18,10 @@ export function formatSigned(value: number, format: (n: number) => string = form
   return (value > 0 ? '+' : '') + format(value)
 }
 
+export function formatSignedPercent(value: number): string {
+  return formatSigned(value, n => `${n.toFixed(2)}%`)
+}
+
 export function formatMonthDay(date: string): string {
   const [, month, day] = date.split('-')
   return `${Number(month)}/${Number(day)}`

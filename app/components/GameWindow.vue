@@ -87,4 +87,9 @@ withDefaults(defineProps<{ title: string, sub?: string, accent?: 'gold' | 'blue'
   flex-direction: column;
   min-height: 0;
 }
+@media (max-width: 480px) {
+  .win-sub {
+    display: none;
+  }
+}
 </style>

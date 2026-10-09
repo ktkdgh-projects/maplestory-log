@@ -1,5 +1,3 @@
-const INITIAL_BACKFILL_DAYS = 30
-
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const { ocid } = await readBody<{ ocid?: unknown }>(event)
@@ -9,15 +7,8 @@ export default defineEventHandler(async (event) => {
   const character = characters.find(c => c.ocid === ocid)
   if (!character) throw createError({ statusCode: 403, message: '내 계정의 캐릭터만 대표로 고를 수 있어요.' })
 
-  const { users, userCharacters } = await useCollections()
-  await saveCharacter(character)
-  await userCharacters.updateMany({ userId: user._id }, { $set: { isMain: false } })
-  await userCharacters.updateOne(
-    { userId: user._id, ocid },
-    { $set: { isMain: true }, $setOnInsert: { trackedSince: new Date() } },
-    { upsert: true },
-  )
+  const { users } = await useCollections()
+  await trackCharacter(user._id, character, true)
   await users.updateOne({ _id: user._id }, { $set: { mainOcid: ocid } })
-  await enqueueSnapshotJobs(user._id, ocid, recentKstDates(INITIAL_BACKFILL_DAYS))
   return { ok: true }
 })

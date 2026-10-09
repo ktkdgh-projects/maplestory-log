@@ -116,8 +116,14 @@ export interface SnapshotPoint {
   combatPower: number | null
 }
 
+export interface TrackedCharacter extends CharacterBrief {
+  imageUrl: string | null
+  isMain: boolean
+}
+
 export interface SnapshotsResponse {
   character: (CharacterBrief & { imageUrl: string | null }) | null
   points: SnapshotPoint[]
+  today: SnapshotPoint | null
   pending: number
 }

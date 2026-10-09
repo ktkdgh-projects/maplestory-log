@@ -13,6 +13,7 @@ async function logout() {
 
 <template>
   <div class="layout">
+    <AppBackground />
     <header class="menubar">
       <div class="menubar-in">
         <NuxtLink to="/" class="logo">

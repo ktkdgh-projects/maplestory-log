@@ -2,7 +2,7 @@ const KST_OFFSET_MS = 9 * 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // UTC로 도는 서버에서도 한국 날짜가 나오도록 오프셋을 더한 뒤 UTC 기준으로 자른다
-function kstToday(): string {
+export function kstToday(): string {
   return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0, 10)
 }
 
