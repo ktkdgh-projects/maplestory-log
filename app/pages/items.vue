@@ -78,7 +78,7 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
     <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
   </GameWindow>
 
-  <GameWindow v-else class="fit" title="장비 결산" :sub="mode === 'sheets' ? '판매는 경매장 수수료를 뺀 금액으로 계산해요' : '스타포스·큐브·잠재 재설정 기록 (넥슨 API)'" accent="red" fill>
+  <GameWindow v-else class="fit" title="장비 결산" :sub="mode === 'sheets' ? '판매는 경매장 수수료를 뺀 금액으로 계산해요' : '스타포스·큐브·잠재 재설정 기록'" accent="red" fill>
     <div class="modes" role="tablist" aria-label="장비 결산 보기">
       <MenuButton v-for="m in MODES" :key="m.key" role="tab" :active="mode === m.key" :aria-selected="mode === m.key" @click="mode = m.key">{{ m.label }}</MenuButton>
     </div>
@@ -87,7 +87,7 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
     <template v-else>
     <div class="overview stagger">
       <div class="tile" style="--tone: var(--gold)">
-        <span class="tile-label">전체 들인 메소 (구매 + 강화)</span>
+        <span class="tile-label">전체 들인 메소</span>
         <span class="tile-value">{{ formatKoreanNumber(totals.invest) }}</span>
       </div>
       <div class="tile" style="--tone: var(--gain)">
@@ -95,7 +95,7 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
         <span class="tile-value">{{ formatKoreanNumber(totals.sell) }}</span>
       </div>
       <div class="tile" style="--tone: var(--loss)">
-        <span class="tile-label">손익 (판매한 장비 {{ totals.sold }}개)</span>
+        <span class="tile-label">손익 · 판매 {{ totals.sold }}개</span>
         <span class="tile-value" :class="profitTone(totals.sold ? totals.net : null)">{{ totals.sold ? formatSigned(totals.net) : '-' }}</span>
       </div>
     </div>

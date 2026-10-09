@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
         roster: roster?.characters ?? [],
         clears: clearDocs.map(toBossClear),
       },
-      items: sheetDocs.map(s => toItemSheet(s, rowDocs, references)),
+      items: sheetDocs.map(s => toItemSheet(s, rowDocs, references, new Map())),
       enhance: enhanceDocs.map(({ userId: _u, _id, ...e }) => e),
     }
   }
@@ -72,10 +72,10 @@ export default defineEventHandler(async (event) => {
       clearDocs.map(c => [c.date, c.period, c.name, findBoss(c.bossId)?.name ?? c.bossId, DIFFICULTY_LABELS[c.difficulty as BossDifficulty] ?? c.difficulty, c.party, c.meso, (c.loot ?? []).map(l => `${l.item}:${l.price}:${l.fee}`).join(' / ')]),
     ),
     items: () => toCsv(
-      ['시트', '부위', '장비', '구매', '구매일', '스타포스', '스타포스 적은 날', '잠재', '잠재 적은 날', '판매', '판매일', '수수료', '가계부 미반영', '메모'],
+      ['시트', '부위', '장비', '구매', '구매일', '스타포스', '스타포스 적은 날', '잠재', '잠재 적은 날', '판매', '판매일', '수수료', '가계부 미반영', '줄 제외', '메모'],
       rowDocs.map((r) => {
         const sheet = sheetOf.get(r.sheetId.toHexString())
-        return [sheet?.title ?? '', r.part, r.name, r.buy, r.buyDate, r.starforce ?? 0, r.starforceDate, r.potential ?? 0, r.potentialDate, r.sell, r.sellDate, r.sellFee ?? '', sheet?.excluded ? 'Y' : '', r.memo]
+        return [sheet?.title ?? '', r.part, r.name, r.buy, r.buyDate, r.starforce ?? 0, r.starforceDate, r.potential ?? 0, r.potentialDate, r.sell, r.sellDate, r.sellFee ?? '', sheet?.excluded ? 'Y' : '', r.excluded ? 'Y' : '', r.memo]
       }),
     ),
     enhance: () => toCsv(

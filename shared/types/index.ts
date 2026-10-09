@@ -228,6 +228,8 @@ export interface ItemRow {
   icon: string | null
   buy: number
   buyDate: string | null
+  // 조각·심볼처럼 여러 번 나눠 사는 줄의 구매 내역. buy는 그 합계, buyDate는 가장 이른 날
+  purchases: ItemPurchase[]
   // 직접 적은 강화 비용과 적은 날. 가계부에는 이 값만 넘어간다
   starforce: number
   starforceDate: string | null
@@ -238,6 +240,8 @@ export interface ItemRow {
   // 경매장 수수료율(5%·3%). 판매가에서 이만큼 떼고 손익·가계부에 잡는다
   sellFee: number
   memo: string | null
+  // 예전에 산 장비처럼 들인 메소·손익·가계부에서 뺄 줄
+  excluded: boolean
   // 착용 레벨. 현재 장비 불러오기로 채운다(스타포스 참고값 계산용)
   level: number | null
   // 구매일 이후 강화 기록으로 센 참고값. 잠재 메소 재설정은 공식 비용표, 스타포스는 위키 공식 추정(할인·복구 비용 빠짐)
@@ -300,6 +304,19 @@ export interface EnhanceResponse {
   // 기록은 어제부터 거꾸로 모으므로 여기까지 모였다는 날짜
   syncedFrom: string | null
   syncing: boolean
+}
+
+export interface ItemPurchase {
+  date: string
+  amount: number
+}
+
+export interface ItemIcon {
+  name: string
+  icon: string
+  kind: 'equipment' | 'pet' | 'cash' | 'symbol' | 'etc'
+  // 장비 결산 부위 칸에 들어갈 이름 (반지, 펫, 기타 …)
+  part: string
 }
 
 export interface ItemsResponse {

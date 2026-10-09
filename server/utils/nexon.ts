@@ -120,6 +120,23 @@ interface NexonItemEquipment {
   title: { title_name: string, title_icon: string, title_description: string | null } | null
 }
 
+// 펫 1~3, 월드 공유 펫 1~3마다 같은 이름의 필드가 붙어 온다 (pet_1_name, world_share_pet_1_icon …)
+type NexonPetEquipment = Record<string, unknown>
+
+interface NexonCashItem {
+  cash_item_equipment_part: string
+  cash_item_name: string
+  cash_item_icon: string
+}
+
+interface NexonCashItemEquipment {
+  cash_item_equipment_base: NexonCashItem[] | null
+  cash_item_equipment_preset_1: NexonCashItem[] | null
+  cash_item_equipment_preset_2: NexonCashItem[] | null
+  cash_item_equipment_preset_3: NexonCashItem[] | null
+  additional_cash_item_equipment_base: NexonCashItem[] | null
+}
+
 interface NexonSymbolEquipment {
   symbol: {
     symbol_name: string
@@ -241,6 +258,8 @@ export const nexon = {
   setEffect: (apiKey: string, ocid: string) => nexonGet<NexonSetEffect>('/character/set-effect', apiKey, { ocid }),
   union: (apiKey: string, ocid: string) => nexonGet<NexonUnion>('/user/union', apiKey, { ocid }),
   dojang: (apiKey: string, ocid: string) => nexonGet<NexonDojang>('/character/dojang', apiKey, { ocid }),
+  petEquipment: (apiKey: string, ocid: string) => nexonGet<NexonPetEquipment>('/character/pet-equipment', apiKey, { ocid }),
+  cashItemEquipment: (apiKey: string, ocid: string) => nexonGet<NexonCashItemEquipment>('/character/cashitem-equipment', apiKey, { ocid }),
 }
 
 // 넥슨이 붙여 주는 모션 옵션(예: wmotion=W02) 중에는 그림을 못 만들어 빈 대체 이미지가 오는 경우가 있어 기본 모션으로 쓴다

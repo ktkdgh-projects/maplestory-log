@@ -10,9 +10,11 @@ export default defineEventHandler(async (event) => {
   if (!sheet) throw createError({ statusCode: 404, message: '시트를 찾을 수 없어요.' })
   if (!sheet.ocid) throw createError({ statusCode: 400, message: '캐릭터를 연결한 시트만 장비를 불러올 수 있어요.' })
 
-  const equipment = await nexon.itemEquipment(await getUserApiKey(user._id), sheet.ocid).catch((error) => {
+  const apiKey = await getUserApiKey(user._id)
+  const equipment = await nexon.itemEquipment(apiKey, sheet.ocid).catch((error) => {
     throw toHttpError(error)
   })
+  await collectCharacterIcons(apiKey, sheet.ocid, equipment.item_equipment.map(i => ({ name: i.item_name, icon: i.item_icon, slot: i.item_equipment_slot })))
   const existing = await itemRows.find({ userId: user._id, sheetId: id }, { projection: { name: 1, level: 1 } }).toArray()
   const have = new Set(existing.map(r => r.name))
   const fresh = equipment.item_equipment.filter(item => !have.has(item.item_name))

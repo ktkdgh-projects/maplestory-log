@@ -24,7 +24,7 @@ const showReference = computed(() => !!props.reference && Math.round(props.refer
         기록 {{ estimated ? '약 ' : '' }}{{ formatEok(reference!) }}
       </button>
       <label v-if="value" class="date" :title="`${label} 날짜 · 가계부에 이 날로 잡혀요`">
-        <span>{{ date ? formatMonthDay(date) : '날짜' }}</span>
+        <span>{{ date ? formatShortDate(date) : '날짜' }}</span>
         <input type="date" :value="date ?? ''" :max="today" :aria-label="`${label} 날짜`" @click="($event.target as HTMLInputElement).showPicker?.()" @change="emit('date', ($event.target as HTMLInputElement).value || null)">
       </label>
     </div>

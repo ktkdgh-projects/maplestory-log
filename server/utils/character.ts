@@ -4,7 +4,7 @@ import type { NexonItem, NexonItemOption } from './nexon'
 
 const DETAIL_CACHE_MS = 60 * 60 * 1000
 // 응답 모양을 바꾸면 올려서 예전 캐시를 안 쓰게 한다
-const DETAIL_CACHE_VERSION = 11
+const DETAIL_CACHE_VERSION = 15
 const STAT_NAMES = ['전투력', '최소 스탯공격력', '최대 스탯공격력', '데미지', '보스 몬스터 데미지', '최종 데미지', '방어율 무시', '크리티컬 확률', '크리티컬 데미지', '공격력', '마력', '일반 몬스터 데미지', '속성 내성 무시', '상태이상 추가 데미지', 'STR', 'DEX', 'INT', 'LUK', 'HP', 'MP', '방어력', '상태이상 내성', '스탠스', '이동속도', '점프력', '공격 속도', '아이템 드롭률', '메소 획득량', '추가 경험치 획득', '버프 지속시간', '재사용 대기시간 감소 (초)', '재사용 대기시간 감소 (%)', '재사용 대기시간 미적용', '스타포스', '아케인포스', '어센틱포스']
 
 export async function saveCharacter({ imageUrl, ...character }: Omit<CharacterDoc, 'updatedAt' | 'imageUrl'> & { imageUrl?: string }) {
@@ -186,6 +186,8 @@ export function getCharacterDetail(apiKey: string, ocid: string): Promise<Charac
   return withCache(`detail:${ocid}:v${DETAIL_CACHE_VERSION}`, DETAIL_CACHE_MS, async () => {
     const detail = await fetchDetail(apiKey, ocid)
     await saveCharacter({ ocid, name: detail.name, world: detail.world, job: detail.job, level: detail.level, imageUrl: detail.imageUrl })
+    // 장비 결산에서 직접 적은 장비에도 아이콘을 붙이려고 본 아이템을 사전에 모은다
+    await collectCharacterIcons(apiKey, ocid, detail.presets.flat())
     return detail
   })
 }

@@ -46,6 +46,12 @@ export function formatMonthDay(date: string): string {
   return `${Number(month)}/${Number(day)}`
 }
 
+// 몇 해 전 날짜도 구분되게 연도까지 짧게: 2026-06-19 → 26/6/19
+export function formatShortDate(date: string): string {
+  const [y, m, d] = date.split('-')
+  return `${y!.slice(2)}/${Number(m)}/${Number(d)}`
+}
+
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'medium', timeStyle: 'short' })
 }

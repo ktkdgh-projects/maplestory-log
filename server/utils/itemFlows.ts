@@ -34,18 +34,21 @@ export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], ro
   return result
 }
 
-// 장비 결산에서 가계부로 넘어오는 날별 금액. 직접 적은 값만 쓰고, 가계부 미반영 시트는 뺀다
+// 장비 결산에서 가계부로 넘어오는 날별 금액. 직접 적은 값만 쓰고, 가계부 미반영 시트와 제외한 줄은 뺀다
 export async function itemFlows(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlow[]> {
   const { itemSheets, itemRows } = await useCollections()
   const sheets = await itemSheets.find({ userId, excluded: { $ne: true } }, { projection: { _id: 1 } }).toArray()
   if (!sheets.length) return []
-  const rows = await itemRows.find({ userId, sheetId: { $in: sheets.map(s => s._id) } }).toArray()
+  const rows = await itemRows.find({ userId, sheetId: { $in: sheets.map(s => s._id) }, excluded: { $ne: true } }).toArray()
 
   const inRange = (date: string | null | undefined): date is string => !!date && (!range.from || date >= range.from) && (!range.to || date <= range.to)
   const days = new Map<string, ItemFlow>()
   const day = (date: string) => days.get(date) ?? days.set(date, { date, bought: 0, enhanced: 0, earned: 0 }).get(date)!
   for (const row of rows) {
-    if (row.buy && inRange(row.buyDate)) day(row.buyDate).bought += row.buy
+    if (row.purchases?.length) {
+      for (const p of row.purchases) if (inRange(p.date)) day(p.date).bought += p.amount
+    }
+    else if (row.buy && inRange(row.buyDate)) day(row.buyDate).bought += row.buy
     if (row.starforce && inRange(row.starforceDate)) day(row.starforceDate).enhanced += row.starforce
     if (row.potential && inRange(row.potentialDate)) day(row.potentialDate).enhanced += row.potential
     if (row.sell && inRange(row.sellDate)) day(row.sellDate).earned += afterFee(row.sell, row.sellFee ?? DEFAULT_AUCTION_FEE)

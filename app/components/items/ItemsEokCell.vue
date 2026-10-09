@@ -13,6 +13,16 @@ async function start() {
   await nextTick()
   input.value?.select()
 }
+// 엔터로 저장하면 같은 열의 아래 줄(Shift면 위 줄) 칸을 바로 입력 상태로 연다
+async function commitAndMove(event: KeyboardEvent) {
+  const td = input.value?.closest('td')
+  const tr = td?.parentElement
+  commit()
+  if (!td || !tr) return
+  const next = (event.shiftKey ? tr.previousElementSibling : tr.nextElementSibling) as HTMLTableRowElement | null
+  await nextTick()
+  next?.cells[td.cellIndex]?.querySelector<HTMLButtonElement>('button.cell')?.click()
+}
 function commit() {
   if (!editing.value) return
   editing.value = false
@@ -31,7 +41,7 @@ function commit() {
     class="cell-input"
     inputmode="decimal"
     :aria-label="`${label} (억)`"
-    @keydown.enter.prevent="commit"
+    @keydown.enter.prevent="commitAndMove"
     @keydown.esc="editing = false"
     @blur="commit"
   >

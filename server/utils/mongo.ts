@@ -1,5 +1,5 @@
 import { MongoClient, type Db, type ObjectId } from 'mongodb'
-import type { BossLoot, BossRosterCharacter, DropSaleInput, EnhanceKind, HuntInput, KeyStatus } from '#shared/types'
+import type { BossLoot, BossRosterCharacter, DropSaleInput, EnhanceKind, HuntInput, ItemIcon, ItemPurchase, KeyStatus } from '#shared/types'
 
 export interface UserDoc {
   _id: ObjectId
@@ -85,8 +85,10 @@ export interface ItemRowDoc {
   sellFee?: number
   memo: string | null
   buyDate?: string | null
+  purchases?: ItemPurchase[]
   sellDate?: string | null
   level?: number | null
+  excluded?: boolean
   starforce?: number
   starforceDate?: string | null
   potential?: number
@@ -213,6 +215,15 @@ interface JobLogDoc {
   date: string
   result: string
   ms: number
+}
+
+// 넥슨 API에서 본 아이템 이름 → 아이콘. 직접 추가한 장비 결산 줄에 아이콘을 붙일 때 쓴다
+interface ItemIconDoc {
+  _id: string
+  icon: string
+  kind: ItemIcon['kind']
+  part?: string
+  updatedAt: Date
 }
 
 interface CacheDoc {
@@ -343,6 +354,7 @@ export async function useCollections() {
     dropSales: db.collection<DropSaleDoc>('dropSales'),
     bossRosters: db.collection<BossRosterDoc>('bossRosters'),
     bossClears: db.collection<BossClearDoc>('bossClears'),
+    itemIcons: db.collection<ItemIconDoc>('itemIcons'),
     cache: db.collection<CacheDoc>('cache'),
     rateLimits: db.collection<RateLimitDoc>('rateLimits'),
   }

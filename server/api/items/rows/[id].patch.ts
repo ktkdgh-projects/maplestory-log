@@ -21,6 +21,13 @@ export default defineEventHandler(async (event) => {
   for (const key of ['buyDate', 'starforceDate', 'potentialDate', 'sellDate'] as const) {
     if (body?.[key] !== undefined) update[key] = body[key] ? parseDate(body[key]) : null
   }
+  if (typeof body?.excluded === 'boolean') update.excluded = body.excluded
+  // 여러 번 나눠 산 줄은 내역이 기준이고, 구매가·구매일은 그 합계·가장 이른 날로 맞춘다
+  if (body?.purchases !== undefined) {
+    update.purchases = parsePurchases(body.purchases)
+    update.buy = update.purchases.reduce((sum, p) => sum + p.amount, 0)
+    update.buyDate = update.purchases[0]?.date ?? null
+  }
   if (body?.sellFee !== undefined) {
     if (!isAuctionFee(body.sellFee)) throw createError({ statusCode: 400, message: '수수료를 골라 주세요.' })
     update.sellFee = body.sellFee

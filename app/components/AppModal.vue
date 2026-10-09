@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ title: string }>()
+withDefaults(defineProps<{ title: string, width?: number }>(), { width: 560 })
 const open = defineModel<boolean>({ required: true })
 
 function onKey(event: KeyboardEvent) {
@@ -16,7 +16,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="open" class="backdrop" @click.self="open = false">
-        <section class="modal" role="dialog" aria-modal="true" :aria-label="title">
+        <section class="modal" role="dialog" aria-modal="true" :aria-label="title" :style="{ width: `min(${width}px, 100%)` }">
           <header class="head">
             <span class="dot" aria-hidden="true" />
             <h2>{{ title }}</h2>
@@ -43,7 +43,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   backdrop-filter: blur(3px);
 }
 .modal {
-  width: min(560px, 100%);
   max-height: calc(100dvh - 32px);
   overflow: hidden;
   display: flex;

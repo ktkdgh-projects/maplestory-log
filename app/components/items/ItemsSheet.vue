@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ItemRow, ItemSheet } from '#shared/types'
+import type { ItemIcon, ItemPurchase, ItemRow, ItemSheet } from '#shared/types'
 
 const props = defineProps<{ sheet: ItemSheet }>()
 const emit = defineEmits<{ changed: [], removed: [] }>()
@@ -7,8 +7,9 @@ const emit = defineEmits<{ changed: [], removed: [] }>()
 const busy = ref(false)
 const failure = ref('')
 const notice = ref('')
-const newPart = ref('')
 const newName = ref('')
+// 자동완성에서 고른 아이템. 저장 전 임시 줄에도 아이콘·부위가 바로 보이게 한다
+const picked = ref<ItemIcon | null>(null)
 const renaming = ref(false)
 const title = ref(props.sheet.title)
 const confirmDelete = ref(false)
@@ -21,11 +22,15 @@ watch(() => props.sheet.id, () => {
   title.value = props.sheet.title
 })
 
-// 끄는 동안 화면 순서를 바로 바꾸고, 놓으면 서버에 저장한다
+let saving = 0
 const rows = ref<ItemRow[]>([...props.sheet.rows])
+// 저장 중에 도착한 새로고침 결과는 방금 고친 값보다 옛것일 수 있어 버린다. 저장이 다 끝나면 다시 불러온다
 watch(() => props.sheet.rows, (value) => {
+  if (saving > 0) return
   rows.value = [...value]
 })
+
+// 끄는 동안 화면 순서를 바로 바꾸고, 놓으면 서버에 저장한다
 const dragId = ref<string | null>(null)
 function dragStart(id: string, event: DragEvent) {
   dragId.value = id
@@ -68,25 +73,37 @@ async function run(action: () => Promise<unknown>, done = '') {
 
 // 고친 값은 화면에 바로 반영하고 저장은 뒤에서 한다. 실패하면 원래 값으로 되돌린다
 // 연달아 고칠 때 앞선 새로고침이 옛 값을 잠깐 덮지 않도록, 저장이 다 끝난 뒤 한 번만 새로 불러온다
-let saving = 0
-async function patchRow(row: ItemRow, changes: Partial<ItemRow>) {
-  const index = rows.value.findIndex(r => r.id === row.id)
-  if (index < 0) return
-  const before = rows.value[index]!
-  rows.value[index] = { ...before, ...changes }
+async function saveInBackground(save: () => Promise<unknown>, undo: () => void) {
   failure.value = ''
   saving++
   try {
-    await $fetch(`/api/items/rows/${row.id}`, { method: 'PATCH', body: changes })
+    await save()
   }
   catch (error) {
-    const now = rows.value.findIndex(r => r.id === row.id)
-    if (now >= 0) rows.value[now] = before
+    undo()
     failure.value = errorMessage(error)
   }
   finally {
     if (--saving === 0) emit('changed')
   }
+}
+
+// 새로 추가한 줄은 서버 id를 받기 전까지 임시 id라 고칠 수 없다
+const PENDING_PREFIX = 'pending-'
+const isPending = (row: ItemRow) => row.id.startsWith(PENDING_PREFIX)
+
+function patchRow(row: ItemRow, changes: Partial<ItemRow>) {
+  const index = rows.value.findIndex(r => r.id === row.id)
+  if (index < 0 || isPending(row)) return
+  const before = rows.value[index]!
+  rows.value[index] = { ...before, ...changes }
+  return saveInBackground(
+    () => $fetch(`/api/items/rows/${row.id}`, { method: 'PATCH', body: changes }),
+    () => {
+      const now = rows.value.findIndex(r => r.id === row.id)
+      if (now >= 0) rows.value[now] = before
+    },
+  )
 }
 
 type MoneyField = 'buy' | 'starforce' | 'potential' | 'sell'
@@ -96,15 +113,43 @@ const saveField = (row: ItemRow, field: MoneyField, meso: number) => patchRow(ro
   [field]: meso,
   ...(meso && !row[`${field}Date`] && { [`${field}Date`]: today }),
 })
+const savePurchases = (row: ItemRow, purchases: ItemPurchase[]) => patchRow(row, {
+  purchases,
+  buy: purchases.reduce((sum, p) => sum + p.amount, 0),
+  buyDate: purchases[0]?.date ?? null,
+})
 const saveDate = (row: ItemRow, field: MoneyField, date: string | null) => patchRow(row, { [`${field}Date`]: date })
 const toggleFee = (row: ItemRow) => patchRow(row, { sellFee: row.sellFee === DEFAULT_AUCTION_FEE ? AUCTION_FEES[1].rate : DEFAULT_AUCTION_FEE })
 const toggleExcluded = () => run(() => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'PATCH', body: { excluded: !props.sheet.excluded } }))
-const removeRow = (row: ItemRow) => run(() => $fetch(`/api/items/rows/${row.id}`, { method: 'DELETE' }))
-const addRow = () => run(async () => {
-  await $fetch('/api/items/rows', { method: 'POST', body: { sheetId: props.sheet.id, part: newPart.value, name: newName.value } })
-  newPart.value = ''
+function removeRow(row: ItemRow) {
+  if (isPending(row)) return
+  const before = [...rows.value]
+  rows.value = rows.value.filter(r => r.id !== row.id)
+  saveInBackground(() => $fetch(`/api/items/rows/${row.id}`, { method: 'DELETE' }), () => {
+    rows.value = before
+  })
+}
+function addRow() {
+  const name = newName.value.trim()
+  if (!name) return
+  const known = picked.value?.name === name ? picked.value : null
+  const pendingId = `${PENDING_PREFIX}${Date.now()}`
+  rows.value.push({
+    id: pendingId, part: known?.part ?? '', name, icon: known?.icon ?? null, memo: null, level: null, excluded: false,
+    buy: 0, buyDate: null, purchases: [], starforce: 0, starforceDate: null, potential: 0, potentialDate: null,
+    sell: 0, sellDate: null, sellFee: DEFAULT_AUCTION_FEE, reference: { starforce: 0, potential: 0 },
+  })
   newName.value = ''
-})
+  picked.value = null
+  saveInBackground(async () => {
+    const { id } = await $fetch<{ id: string }>('/api/items/rows', { method: 'POST', body: { sheetId: props.sheet.id, name } })
+    const row = rows.value.find(r => r.id === pendingId)
+    if (row) row.id = id
+  }, () => {
+    rows.value = rows.value.filter(r => r.id !== pendingId)
+    newName.value = name
+  })
+}
 const importEquipment = () => run(async () => {
   const { added } = await $fetch<{ added: number }>(`/api/items/sheets/${props.sheet.id}/import`, { method: 'POST' })
   notice.value = added ? `장비 ${added}개를 불러왔어요.` : '새로 불러올 장비가 없어요.'
@@ -135,7 +180,7 @@ async function removeSheet() {
         <button type="button" class="text-btn" @click="renaming = true">이름 바꾸기</button>
       </template>
       <div class="head-actions">
-        <button type="button" class="exclude" :class="{ on: sheet.excluded }" :aria-pressed="sheet.excluded" :disabled="busy" :title="sheet.excluded ? '누르면 이 시트의 구매·강화·판매 금액을 가계부에 넣어요' : '누르면 이 시트의 금액을 가계부에서 모두 빼요 (예전에 산 장비 정리용)'" @click="toggleExcluded">
+        <button type="button" class="exclude" :class="{ on: sheet.excluded }" :aria-pressed="sheet.excluded" :disabled="busy" :title="sheet.excluded ? '누르면 이 시트의 구매·강화·판매 금액을 가계부에 넣어요' : '누르면 이 시트의 금액을 가계부에서 모두 빼요'" @click="toggleExcluded">
           {{ sheet.excluded ? '가계부 미반영' : '가계부 반영' }}
         </button>
         <button v-if="sheet.ocid" type="button" class="btn ghost compact" :disabled="busy" @click="importEquipment">현재 장비 불러오기</button>
@@ -166,6 +211,7 @@ async function removeSheet() {
           <col class="c-num">
           <col class="c-num">
           <col class="c-num">
+          <col class="c-include">
           <col class="c-remove">
         </colgroup>
         <thead>
@@ -182,6 +228,7 @@ async function removeSheet() {
             <th class="num" title="판매가에서 수수료를 뺀 금액">받은 메소</th>
             <th class="num">들인 메소</th>
             <th class="num" title="받은 메소 - 들인 메소. 판매가를 적은 장비만 계산해요">손익</th>
+            <th class="center" title="제외한 장비는 합계·손익과 가계부에서 빠져요">합계</th>
             <th />
           </tr>
         </thead>
@@ -189,7 +236,7 @@ async function removeSheet() {
           <tr
             v-for="(row, i) in rows"
             :key="row.id"
-            :class="{ dragging: dragId === row.id }"
+            :class="{ dragging: dragId === row.id, pending: isPending(row) }"
             @dragover.prevent="dragOver(i)"
             @drop.prevent="dropRow"
           >
@@ -202,7 +249,10 @@ async function removeSheet() {
                 <span class="ellipsis" :title="row.name">{{ row.name }}</span>
               </div>
             </td>
-            <td class="num cell"><ItemsMoneyCell :value="row.buy" :date="row.buyDate" label="구매" @save="saveField(row, 'buy', $event)" @date="saveDate(row, 'buy', $event)" /></td>
+            <td class="num cell">
+              <ItemsPurchaseCell v-if="isMultiPurchase(row)" :name="row.name" :purchases="row.purchases" @save="savePurchases(row, $event)" />
+              <ItemsMoneyCell v-else :value="row.buy" :date="row.buyDate" label="구매" @save="saveField(row, 'buy', $event)" @date="saveDate(row, 'buy', $event)" />
+            </td>
             <td class="num cell"><ItemsMoneyCell :value="row.starforce" :date="row.starforceDate" label="스타포스" :reference="row.reference.starforce" estimated @save="saveField(row, 'starforce', $event)" @date="saveDate(row, 'starforce', $event)" /></td>
             <td class="num cell"><ItemsMoneyCell :value="row.potential" :date="row.potentialDate" label="잠재" :reference="row.reference.potential" @save="saveField(row, 'potential', $event)" @date="saveDate(row, 'potential', $event)" /></td>
             <td class="num cell"><ItemsMoneyCell :value="row.sell" :date="row.sellDate" label="판매" @save="saveField(row, 'sell', $event)" @date="saveDate(row, 'sell', $event)" /></td>
@@ -216,15 +266,20 @@ async function removeSheet() {
             </td>
             <td class="num invest">{{ rowInvest(row) ? formatEok(rowInvest(row)) : '-' }}</td>
             <td class="num" :class="profitTone(itemProfit(row))">{{ itemProfit(row) === null ? '-' : formatEok(itemProfit(row)!) }}</td>
+            <td class="center">
+              <button type="button" class="exclude row-exclude" :class="{ on: row.excluded }" :aria-pressed="row.excluded" :title="row.excluded ? '누르면 합계·손익·가계부에 다시 넣어요' : '누르면 이 장비를 합계·손익·가계부에서 빼요'" @click="patchRow(row, { excluded: !row.excluded })">
+                {{ row.excluded ? '제외' : '포함' }}
+              </button>
+            </td>
             <td class="center"><button type="button" class="icon-btn" :aria-label="`${row.name} 지우기`" :disabled="busy" @click="removeRow(row)">×</button></td>
           </tr>
           <tr v-if="!rows.length">
-            <td colspan="13" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
+            <td colspan="14" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
           </tr>
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="4" class="sum-label">합계 (억)</td>
+            <td colspan="4" class="sum-label">합계</td>
             <td class="num">{{ formatEok(totals.buy) }}</td>
             <td class="num">{{ formatEok(totals.starforce) }}</td>
             <td class="num">{{ formatEok(totals.potential) }}</td>
@@ -233,16 +288,15 @@ async function removeSheet() {
             <td class="num sell">{{ formatEok(totals.sell) }}</td>
             <td class="num invest">{{ formatEok(totals.invest) }}</td>
             <td class="num" :class="profitTone(totals.sold ? totals.net : null)" :title="`판매한 ${totals.sold}개 기준`">{{ totals.sold ? formatEok(totals.net) : '-' }}</td>
-            <td />
+            <td colspan="2" />
           </tr>
         </tfoot>
       </table>
     </div>
     <form class="add" @submit.prevent="addRow">
-      <input v-model="newPart" class="field-input part-input" maxlength="40" placeholder="부위 (예: 반지)" aria-label="부위">
-      <input v-model="newName" class="field-input" maxlength="40" placeholder="장비 이름" aria-label="장비 이름" required>
+      <ItemsNameSearch v-model="newName" class="name-input" @pick="picked = $event" />
       <button class="btn compact" :disabled="busy">+ 장비 추가</button>
-      <span class="muted hint">금액 칸을 눌러 억 단위로 적어요 (예: 151.03). 가계부에는 칸 아래 날짜로 들어가요</span>
+      <span class="muted hint">금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요</span>
     </form>
   </section>
 </template>
@@ -250,6 +304,7 @@ async function removeSheet() {
 <style scoped>
 .sheet {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 8px;
   min-height: 0;
@@ -316,7 +371,7 @@ h3 {
   font-size: 14px;
 }
 .table-wrap {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
@@ -340,6 +395,7 @@ table {
 .c-part { width: 92px; }
 .c-num { width: 104px; }
 .c-fee { width: 72px; }
+.c-include { width: 64px; }
 .c-remove { width: 40px; }
 th,
 td {
@@ -368,6 +424,11 @@ tbody tr {
 }
 tbody tr:hover {
   background: rgb(255 255 255 / 0.03);
+}
+/* 저장 중인 새 줄은 서버 id를 받을 때까지 흐리게 */
+tbody tr.pending {
+  opacity: 0.55;
+  pointer-events: none;
 }
 tbody tr.dragging {
   background: rgb(242 193 78 / 0.1);
@@ -452,6 +513,10 @@ td.cell {
   cursor: pointer;
   transition: background var(--fast) ease, border-color var(--fast) ease, color var(--fast) ease;
 }
+.row-exclude {
+  min-height: 0;
+  padding: 2px 10px;
+}
 .exclude.on {
   background: var(--bar);
   border-color: var(--panel-line);
@@ -488,18 +553,16 @@ tfoot td {
   border-color: var(--loss);
   color: var(--loss);
 }
+/* 표 길이와 상관없이 추가 칸은 시트 맨 아래에 둔다 */
 .add {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  margin-top: auto;
 }
-.add .field-input {
-  width: 220px;
-  min-height: 36px;
-}
-.add .part-input {
-  width: 130px;
+.add .name-input {
+  width: 320px;
 }
 .hint {
   margin-left: auto;

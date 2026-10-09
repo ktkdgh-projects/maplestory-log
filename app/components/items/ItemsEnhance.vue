@@ -138,7 +138,7 @@ function starText(e: EnhanceEvent) {
             <span class="tile-value">{{ item.summary.cubes }}</span>
           </div>
           <div class="tile" style="--tone: var(--api)">
-            <span class="tile-label">잠재 재설정(메소)</span>
+            <span class="tile-label">잠재 재설정</span>
             <span class="tile-value">{{ item.summary.resets }}</span>
             <span v-if="item.summary.meso.potential" class="tile-label">{{ formatKoreanNumber(item.summary.meso.potential) }}</span>
           </div>
