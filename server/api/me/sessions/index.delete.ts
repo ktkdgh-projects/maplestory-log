@@ -1,3 +1,6 @@
-export default defineEventHandler(() => {
-  throw createError({ statusCode: 501, statusMessage: 'Not Implemented' })
+export default defineEventHandler(async (event) => {
+  const user = requireUser(event)
+  await revokeSessions(user._id)
+  clearSessionCookie(event)
+  return { ok: true }
 })
