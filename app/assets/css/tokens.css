@@ -1,0 +1,72 @@
+/* 색·폰트 토큰. 기획서 v3의 게임 창 테마 기준 */
+:root {
+  color-scheme: dark;
+
+  /* 화면 바탕 · 창 */
+  --page: #141828;
+  --bar: #0e111c;
+  --win: #232a42;
+  --win-line: #4b5578;
+  --title: #2f3757;
+  --panel: #1a1f33;
+  --panel-line: #3a4366;
+  --tip-line: #8a93b8;
+
+  /* 글자 · 강조 */
+  --text: #e8ecf7;
+  --sub: #a5aecb;
+  --gold: #f2c14e;
+  --on-gold: #2a2110;
+  --gain: #7fd99a;
+  --loss: #ff8a7a;
+  --exp: #e8d44d;
+
+  /* 데이터 출처 배지 */
+  --api: #7fb2ff;
+  --calc: #b79cff;
+  --input: #f2c14e;
+  --none: #8a93b8;
+
+  /* 필드 */
+  --sky-top: #4e7bcb;
+  --sky-bot: #a7cbf2;
+  --cloud: #f4f7ff;
+  --hill: #6faf73;
+  --grass: #5db86a;
+  --dirt: #7a5536;
+  --dirt-dark: #5c3f28;
+
+  /* 폰트 */
+  --f-title: "Do Hyeon", "Nanum Gothic", system-ui, sans-serif;
+  --f-body: "Nanum Gothic", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-pixel: "Silkscreen", ui-monospace, "Consolas", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
