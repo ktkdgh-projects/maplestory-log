@@ -4,7 +4,8 @@ const CONTENT_SECURITY_POLICY = [
   `script-src 'self' 'unsafe-inline'`,
   `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
   `font-src 'self' https://fonts.gstatic.com`,
-  `img-src 'self' data: https://open.api.nexon.com`,
+  // lwi.nexon.com: 썬데이 메이플 공지 본문 이미지
+  `img-src 'self' data: https://open.api.nexon.com https://lwi.nexon.com`,
   `connect-src 'self'`,
   `frame-ancestors 'none'`,
   `base-uri 'self'`,
