@@ -1,42 +1,13 @@
 <script setup lang="ts">
-const route = useRoute()
-const { me, refresh } = await useMe()
-
-// 메인에서 검색한 캐릭터를 보던 중이면 성장 페이지도 그 캐릭터로 연다
-const growthLink = computed(() => (typeof route.query.name === 'string' && route.query.name ? `/growth?name=${encodeURIComponent(route.query.name)}` : '/growth'))
+const { me } = await useMe()
 
 const keyBroken = computed(() => me.value?.keyStatus === 'invalid' || me.value?.keyStatus === 'deleted')
-
-async function logout() {
-  await $fetch('/api/auth/logout', { method: 'POST' })
-  await refresh()
-  await navigateTo('/')
-}
 </script>
 
 <template>
   <div class="layout">
     <AppBackground />
-    <header class="menubar">
-      <div class="menubar-in">
-        <NuxtLink to="/" class="logo">
-          <img src="/favicon.svg" alt="" width="30" height="30">
-          <span>메이플스토리로그</span>
-        </NuxtLink>
-        <HeaderSearch />
-        <nav class="menu" aria-label="메뉴">
-          <MenuButton :to="growthLink">성장</MenuButton>
-          <MenuButton to="/ledger">가계부</MenuButton>
-          <MenuButton to="/items">장비 결산</MenuButton>
-          <template v-if="me">
-            <MenuButton to="/me">내 정보</MenuButton>
-            <MenuButton v-if="me.isAdmin" to="/admin">운영</MenuButton>
-            <MenuButton @click="logout">로그아웃</MenuButton>
-          </template>
-          <MenuButton v-else to="/login">키 등록</MenuButton>
-        </nav>
-      </div>
-    </header>
+    <AppHeader />
 
     <Transition name="fade">
       <div v-if="keyBroken" class="banner" role="alert">
@@ -56,6 +27,7 @@ async function logout() {
         <NuxtLink to="/privacy">개인정보처리방침</NuxtLink>
       </nav>
     </footer>
+    <AppTabbar />
   </div>
 </template>
 
@@ -64,56 +36,6 @@ async function logout() {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
-}
-.menubar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: linear-gradient(90deg, rgb(14 17 28 / 0.9), rgb(35 30 60 / 0.9));
-  border-bottom: 2px solid var(--win-line);
-  backdrop-filter: blur(10px);
-}
-.menubar-in {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-  max-width: var(--page-width);
-  margin: 0 auto;
-  padding: 8px 20px;
-}
-.logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: linear-gradient(90deg, #ffb347, var(--gold));
-  background-clip: text;
-  color: transparent;
-  font-family: var(--f-title);
-  font-size: 25px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.logo img {
-  transform-origin: 50% 90%;
-  transition: transform var(--normal) var(--ease-spring);
-  animation: sway 4s ease-in-out infinite;
-}
-.logo:hover img {
-  transform: rotate(-18deg) scale(1.15);
-}
-@keyframes sway {
-  50% { rotate: 8deg; }
-}
-/* 가로 스크롤 영역은 세로로도 잘라서, 호버로 떠오르는 버튼과 그림자가 들어갈 여백을 안쪽에 두고 바깥은 그만큼 당긴다 */
-.menu {
-  display: flex;
-  gap: 6px;
-  margin: -6px -4px -12px auto;
-  padding: 6px 4px 12px;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 .banner {
   padding: 10px 16px;
@@ -172,18 +94,15 @@ async function logout() {
     scrollbar-gutter: stable;
     padding-bottom: 16px;
   }
+  /* 한 화면에 맞추는 페이지(.fit)가 아니면 창이 화면 높이에 맞춰 줄어들며 잘리지 않고, 본문이 스크롤된다 */
+  .wrap > :not(.fit) {
+    flex-shrink: 0;
+  }
 }
-@media (max-width: 520px) {
-  .logo {
-    font-size: 21px;
-  }
-  .menu {
-    width: calc(100% + 8px);
-    margin-left: -4px;
-  }
-  .menu > * {
-    flex: 1;
-    padding: 0 8px;
+/* 하단 탭바에 가리지 않게 아래를 비운다 */
+@media (max-width: 640px) {
+  .layout {
+    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
   }
 }
 </style>

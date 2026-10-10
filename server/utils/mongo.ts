@@ -239,6 +239,18 @@ interface RateLimitDoc {
   expireAt: Date
 }
 
+// 넥슨 이벤트 공지는 진행 중인 것만 와서, 지난 썬데이 메이플을 보여주려고 처음 본 공지를 남겨 둔다
+export interface SundayDoc {
+  _id: number
+  title: string
+  url: string
+  image: string | null
+  start: Date
+  end: Date
+  publishedAt: Date
+  effects?: string[]
+}
+
 // 서버리스 인스턴스와 dev HMR 재로드 사이에서 연결을 재사용하려고 전역에 둔다
 const globalForMongo = globalThis as typeof globalThis & {
   __mongoClient?: Promise<MongoClient>
@@ -358,6 +370,7 @@ export async function useCollections() {
     itemIcons: db.collection<ItemIconDoc>('itemIcons'),
     cache: db.collection<CacheDoc>('cache'),
     rateLimits: db.collection<RateLimitDoc>('rateLimits'),
+    sundays: db.collection<SundayDoc>('sundays'),
   }
 }
 

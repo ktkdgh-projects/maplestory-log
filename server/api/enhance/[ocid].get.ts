@@ -34,6 +34,8 @@ export default defineEventHandler(async (event): Promise<EnhanceResponse> => {
       starforce: item.starforce,
       potentialGrade: item.potentialGrade,
       additionalGrade: item.additionalGrade,
+      potentials: item.potentials,
+      additionalPotentials: item.additionalPotentials,
       summary: summaries.get(item.name) ?? emptySummary(),
     })),
     syncedFrom: sync?.oldest ?? null,

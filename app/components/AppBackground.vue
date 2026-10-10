@@ -2,11 +2,9 @@
 const STAR_COUNT = 46
 const LEAF_COUNT = 8
 
-// 새로고침마다 별 배치가 바뀌면 서버·브라우저 렌더 결과가 달라지므로 고정된 의사난수로 흩뿌린다
-const seeded = (n: number) => {
-  const x = Math.sin(n * 9301 + 49297) * 233280
-  return x - Math.floor(x)
-}
+// 새로고침마다 별 배치가 바뀌면 서버·브라우저 렌더 결과가 달라지므로 고정된 의사난수로 흩뿌린다.
+// Math.sin은 서버와 브라우저의 끝자리 소수가 달라 정수 연산 난수를 쓴다
+const seeded = (n: number) => seededRandom(n * 7919 + 1)()
 const stars = Array.from({ length: STAR_COUNT }, (_, i) => ({
   left: `${seeded(i) * 100}%`,
   top: `${seeded(i + 100) * 62}%`,

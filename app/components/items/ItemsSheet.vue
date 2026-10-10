@@ -292,9 +292,9 @@ async function removeSheet() {
     </div>
     <div class="bottom">
       <slot name="tabs" />
-      <form class="add" @submit.prevent="addRow">
+      <!-- 입력칸 하나뿐이라 엔터만 누르면 이 시트에 추가된다 -->
+      <form class="add" title="금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요" @submit.prevent="busy || addRow()">
         <ItemsNameSearch v-model="newName" class="name-input" @pick="picked = $event" />
-        <button class="btn compact" :disabled="busy" title="금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요">+ 장비 추가</button>
       </form>
     </div>
   </section>
@@ -558,6 +558,6 @@ tfoot td {
   margin-left: auto;
 }
 .add .name-input {
-  width: 240px;
+  width: 300px;
 }
 </style>

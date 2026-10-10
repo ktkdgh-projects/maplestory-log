@@ -15,7 +15,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
-  css: ['~/assets/css/tokens.css', '~/assets/css/base.css'],
+  css: ['~/assets/css/tokens.css', '~/assets/css/base.css', '~/assets/css/calc.css'],
 
   app: {
     pageTransition: { name: 'page', mode: 'out-in' },

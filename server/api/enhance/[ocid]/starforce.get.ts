@@ -1,7 +1,7 @@
-import type { EnhanceEvent } from '#shared/types'
+import type { StarforceDetail } from '#shared/types'
 
-// 장비 하나의 강화 기록 목록. 고른 장비만 따로 받아 첫 화면 응답을 가볍게 한다
-export default defineEventHandler(async (event): Promise<EnhanceEvent[]> => {
+// 장비 하나의 스타포스 기록을 ★ 구간별·날짜별로 묶어 돌려준다
+export default defineEventHandler(async (event): Promise<StarforceDetail> => {
   const user = requireUser(event)
   const query = getQuery(event)
   const item = typeof query.item === 'string' ? query.item.trim() : ''
@@ -10,5 +10,5 @@ export default defineEventHandler(async (event): Promise<EnhanceEvent[]> => {
   const from = query.from ? parseDate(query.from) : null
 
   const character = await ownCharacter(user._id, getRouterParam(event, 'ocid'), () => getUserApiKey(user._id))
-  return itemEvents(user._id, character.name, item, level, from)
+  return starforceDetail(user._id, character.name, item, level, from)
 })

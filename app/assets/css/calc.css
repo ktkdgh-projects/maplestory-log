@@ -1,0 +1,370 @@
+/* 계산기 공통: 왼쪽 입력, 오른쪽 결과. 이름이 다른 화면 클래스와 겹치지 않게 calc- 를 붙인다 */
+.calc-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.calc-layout > * {
+  min-width: 0;
+}
+/* 입력은 주제별 구역(장비·목표·옵션…)으로 나누고, 구역마다 제목 한 줄 + 칸들 */
+.calc-inputs {
+  display: grid;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 12px;
+}
+.calc-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border-bottom: 1px solid var(--panel-line);
+}
+.calc-section:last-child {
+  border-bottom: 0;
+}
+.calc-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+  font-family: var(--f-title);
+  font-size: 15px;
+  font-weight: 400;
+}
+.calc-section-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--calc);
+  border-radius: 2px;
+  box-shadow: 0 0 6px var(--calc);
+}
+.calc-section-title small {
+  margin-left: auto;
+  color: var(--sub);
+  font-family: var(--f-body);
+  font-size: 11.5px;
+}
+.calc-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.calc-label {
+  color: var(--sub);
+  font-size: 12px;
+}
+.calc-inputs .field-input {
+  min-height: 36px;
+  font-size: 14px;
+}
+.calc-load {
+  display: grid;
+  gap: 6px;
+}
+.calc-load .field-input {
+  border-color: rgb(183 156 255 / 0.5);
+  background: rgb(183 156 255 / 0.07);
+}
+.calc-load-label {
+  color: var(--calc);
+  font-size: 12px;
+}
+.calc-hint {
+  margin: 0;
+  color: var(--sub);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.calc-unit {
+  position: relative;
+}
+.calc-unit .field-input {
+  width: 100%;
+  padding-right: 34px;
+  text-align: right;
+}
+.calc-unit::after {
+  content: attr(data-unit);
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--sub);
+  font-size: 12px;
+  translate: 0 -50%;
+  pointer-events: none;
+}
+.calc-seg {
+  display: inline-flex;
+  justify-self: start;
+  max-width: 100%;
+  overflow-x: auto;
+  background: #141a30;
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+  scrollbar-width: none;
+}
+.calc-seg button {
+  padding: 6px 12px;
+  background: none;
+  border: 0;
+  border-right: 1px solid var(--panel-line);
+  color: var(--sub);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.calc-seg button:last-child {
+  border-right: 0;
+}
+.calc-seg button[aria-pressed="true"] {
+  background: var(--calc);
+  color: #1b1430;
+  font-weight: 700;
+}
+.calc-seg.small button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+/* 칸 너비를 다 쓰는 세그먼트: 버튼을 같은 너비로 나눈다 */
+.calc-seg.wide {
+  display: flex;
+  justify-self: stretch;
+}
+.calc-seg.wide button {
+  flex: 1;
+}
+.calc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* 칩을 같은 너비 격자로: 줄이 바뀌어도 하나만 덩그러니 남지 않게 --cols로 칸 수를 정한다 */
+.calc-chips.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+}
+.calc-chips.grid .calc-chip {
+  width: 100%;
+  min-width: 0;
+  padding: 0 4px;
+}
+.calc-chip {
+  height: 30px;
+  padding: 0 12px;
+  background: rgb(255 255 255 / 0.02);
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  color: var(--sub);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--fast) ease, color var(--fast) ease;
+}
+.calc-chip:hover:not(:disabled) {
+  border-color: var(--tip-line);
+  color: var(--text);
+}
+.calc-chip[aria-pressed="true"] {
+  background: rgb(242 193 78 / 0.12);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.calc-chip:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+/* − 숫자 + . 칸 너비를 꽉 채워 두 개를 나란히 둘 때 크기가 같게 */
+.calc-stepper {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  align-items: center;
+  overflow: hidden;
+  background: #141a30;
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+}
+.calc-stepper button {
+  height: 38px;
+  background: none;
+  border: 0;
+  color: var(--sub);
+  font-size: 18px;
+  cursor: pointer;
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+.calc-stepper button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.05);
+  color: var(--text);
+}
+.calc-stepper button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.calc-stepper input {
+  width: 100%;
+  height: 38px;
+  background: none;
+  border: 0;
+  border-inline: 1px solid var(--panel-line);
+  color: var(--gold);
+  font-family: var(--f-title);
+  font-size: 20px;
+  text-align: center;
+  appearance: textfield;
+}
+.calc-stepper input::-webkit-inner-spin-button,
+.calc-stepper input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+.calc-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: 0;
+  color: var(--sub);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.calc-fold:hover {
+  color: var(--text);
+}
+/* 출처 줄은 결과가 짧아도 맨 아래에 붙게 세로 flex로 쌓는다 */
+.calc-result {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(180deg, rgb(183 156 255 / 0.08), var(--panel) 40%);
+  border: 1px solid var(--win-line);
+  border-radius: 12px;
+}
+.calc-goal {
+  margin: 0;
+  color: var(--sub);
+  font-family: var(--f-title);
+  font-size: 17px;
+}
+.calc-goal b {
+  color: var(--text);
+  font-weight: 400;
+}
+.calc-goal span {
+  color: var(--text);
+  font-size: 20px;
+}
+.calc-say {
+  margin: 0;
+  font-family: var(--f-title);
+  font-size: 22px;
+  line-height: 1.55;
+}
+.calc-say em {
+  color: var(--gold);
+  font-size: 30px;
+  font-style: normal;
+}
+.calc-say .s2 {
+  color: var(--sub);
+  font-size: 18px;
+}
+.calc-say .s2 em {
+  color: var(--text);
+  font-size: 22px;
+}
+.calc-say .s2 em.bad {
+  color: var(--loss);
+}
+.calc-caption {
+  color: var(--sub);
+  font-size: 12px;
+}
+.calc-nums {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.calc-num {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  background: rgb(255 255 255 / 0.02);
+  border: 1px solid var(--panel-line);
+  border-radius: 10px;
+}
+.calc-num small {
+  color: var(--sub);
+  font-size: 12px;
+}
+.calc-num b {
+  font-family: var(--f-title);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+.calc-empty {
+  margin: 0;
+  padding: 30px 0;
+  text-align: center;
+}
+.calc-src {
+  display: flex;
+  margin-top: auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  color: var(--sub);
+  font-size: 12px;
+}
+/* 한 화면에 맞추는 넓은 화면: 왼쪽 입력만 스크롤되고 오른쪽 결과는 고정 */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .calc-layout {
+    align-items: stretch;
+    overflow: hidden;
+  }
+  .calc-inputs {
+    align-content: start;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+  .calc-result {
+    position: static;
+    gap: 12px;
+    padding: 16px 18px;
+  }
+  .calc-num {
+    padding: 8px 12px;
+  }
+  .calc-num b {
+    font-size: 20px;
+  }
+}
+@media (max-width: 900px) {
+  .calc-layout {
+    grid-template-columns: 1fr;
+  }
+  /* 휴대폰에선 결과를 위로 올린다 */
+  .calc-result {
+    position: static;
+    order: -1;
+  }
+}

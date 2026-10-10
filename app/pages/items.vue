@@ -62,9 +62,6 @@ async function onRemoved() {
   activeId.value = sheets.value[0]?.id ?? null
 }
 
-const MODES = [{ key: 'sheets', label: '장비 결산' }, { key: 'enhance', label: '강화 기록' }] as const
-const mode = ref<typeof MODES[number]['key']>('sheets')
-
 useHead({ title: '장비 결산 · 메이플스토리로그' })
 </script>
 
@@ -74,13 +71,7 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
     <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
   </GameWindow>
 
-  <GameWindow v-else class="fit" title="장비 결산" :sub="mode === 'sheets' ? '판매는 경매장 수수료를 뺀 금액으로 계산해요' : '스타포스·큐브·잠재 재설정 기록'" accent="red" fill>
-    <div class="modes" role="tablist" aria-label="장비 결산 보기">
-      <MenuButton v-for="m in MODES" :key="m.key" role="tab" :active="mode === m.key" :aria-selected="mode === m.key" @click="mode = m.key">{{ m.label }}</MenuButton>
-    </div>
-
-    <ItemsEnhance v-if="mode === 'enhance'" />
-    <template v-else>
+  <GameWindow v-else class="fit" title="장비 결산" sub="판매는 경매장 수수료를 뺀 금액으로 계산해요" accent="red" fill>
     <div class="overview stagger">
       <div class="tile" style="--tone: var(--gold)">
         <span class="tile-label">전체 들인 메소</span>
@@ -129,15 +120,10 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
     </Transition>
     <!-- 시트가 하나도 없을 때도 시트 탭은 아래에 둔다 -->
     <ItemsSheetTabs v-if="!active" class="bottom-tabs" :sheets="sheets" :active-id="activeId" :creating="creating" @select="selectSheet" @create="toggleCreate" @reorder="reorderSheets" />
-    </template>
   </GameWindow>
 </template>
 
 <style scoped>
-.modes {
-  display: flex;
-  gap: 6px;
-}
 .overview {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

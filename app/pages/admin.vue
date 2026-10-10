@@ -40,6 +40,8 @@ useHead({ title: '운영 · 메이플스토리로그' })
         <button type="button" class="btn" :class="data.paused ? '' : 'danger'" :disabled="busy" @click="setPaused(!data.paused)">{{ data.paused ? '수집 다시 시작' : '수집 멈추기' }}</button>
       </div>
 
+      <AdminSundayEffects />
+
       <div class="tiles stagger">
         <div class="tile" style="--tone: var(--gold)">
           <span class="tile-label">전체 사용자</span>

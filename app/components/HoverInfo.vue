@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// align: 창 가장자리 칸은 카드가 잘리지 않게 그쪽 끝에 붙인다
-withDefaults(defineProps<{ title: string, align?: 'left' | 'center' | 'right' }>(), { align: 'center' })
+// align: 창 가장자리 칸은 카드가 잘리지 않게 그쪽 끝에 붙인다. below: 창 맨 위 줄처럼 위가 막힌 곳은 아래로 띄운다
+withDefaults(defineProps<{ title: string, align?: 'left' | 'center' | 'right', below?: boolean }>(), { align: 'center' })
 </script>
 
 <template>
   <div class="hover-info" tabindex="0">
     <slot />
-    <div class="card" :class="align" role="tooltip">
+    <div class="card" :class="[align, { below }]" role="tooltip">
       <b>{{ title }}</b>
       <slot name="info" />
     </div>
@@ -72,6 +72,20 @@ withDefaults(defineProps<{ title: string, align?: 'left' | 'center' | 'right' }>
   left: auto;
   right: 26px;
   translate: 0 0;
+}
+.card.below {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+.card.below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--tip-line);
+}
+/* 아래로 뜨는 카드는 작은 아이콘에 붙는 경우라 화살표를 아이콘 가운데로 */
+.card.below.left::after {
+  left: 10px;
 }
 .hover-info:hover .card.left,
 .hover-info:hover .card.right,
