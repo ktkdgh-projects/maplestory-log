@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CharacterBrief, SessionInfo } from '#shared/types'
+import { MVP_DISCOUNTS } from '#shared/data/starforce'
 
 const { me, refresh } = await useMe()
 if (!me.value) await navigateTo('/login')
@@ -48,6 +49,22 @@ const pickMain = (ocid: string) => run(async () => {
   pickerOpen.value = false
   await refresh()
 }, '대표 캐릭터를 바꿨어요. 지난 기록을 채우기 시작해요.')
+
+// 누르는 즉시 칩을 바꾸고 저장한다. 실패하면 원래대로
+const mvp = ref(me.value?.mvpDiscount ?? 0)
+async function pickMvp(rate: number) {
+  const before = mvp.value
+  mvp.value = rate
+  failure.value = ''
+  try {
+    await $fetch('/api/me/mvp', { method: 'PUT', body: { rate } })
+    await refresh()
+  }
+  catch (error) {
+    mvp.value = before
+    failure.value = errorMessage(error)
+  }
+}
 
 const newKey = ref('')
 const replaceKey = () => run(async () => {
@@ -121,6 +138,12 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <p class="muted">아직 고르지 않았어요.</p>
           <div><button class="btn" :disabled="busy" @click="openPicker">고르기</button></div>
         </template>
+        <div class="mvp">
+          <span class="mvp-label">MVP 등급 · 스타포스 비용 할인 <small>강화 기록 비용·계산기에 써요</small></span>
+          <div class="mvp-chips" role="group" aria-label="MVP 등급">
+            <button v-for="d in MVP_DISCOUNTS" :key="d.label" type="button" :aria-pressed="mvp === d.rate" :disabled="busy" @click="pickMvp(d.rate)">{{ d.label }}</button>
+          </div>
+        </div>
       </GameWindow>
       <AppModal v-model="pickerOpen" title="대표 캐릭터 고르기">
         <CharacterPicker v-if="characters" :characters="characters" :current-ocid="me.main?.ocid" :busy="busy" @pick="pickMain" />
@@ -235,6 +258,47 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   bottom: 10px;
   left: 50%;
   translate: -50% 0;
+}
+.mvp {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--panel-line);
+}
+.mvp-label {
+  font-size: 13px;
+}
+.mvp-label small {
+  margin-left: 4px;
+  color: var(--sub);
+  font-size: 11.5px;
+}
+.mvp-chips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.mvp-chips button {
+  height: 32px;
+  padding: 0 6px;
+  background: rgb(255 255 255 / 0.02);
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  color: var(--sub);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--fast) ease, color var(--fast) ease;
+}
+.mvp-chips button:hover:not(:disabled) {
+  border-color: var(--tip-line);
+  color: var(--text);
+}
+.mvp-chips button[aria-pressed="true"] {
+  background: rgb(242 193 78 / 0.12);
+  border-color: var(--gold);
+  color: var(--gold);
 }
 .main-info {
   flex: 1;

@@ -66,6 +66,8 @@ export interface StarforcePlan {
   histogram: { bins: number[], max: number }
   // 분포를 그린 모의 실험 횟수. 높은 성급은 한 번에 수천 번씩 눌러서 정해 둔 양까지만 돌린다
   runs: number
+  // 0%~100% 지점의 메소(101개). 실제로 쓴 메소가 몇 % 안에 드는지 찾는 데 쓴다
+  quantiles: number[]
 }
 
 const MAX_RUNS = 10_000
@@ -213,5 +215,6 @@ export function planStarforce(o: StarforceOptions): StarforcePlan {
     noDestroy,
     histogram: { bins: bins.map(n => n / runs.length), max },
     runs: runs.length,
+    quantiles: Array.from({ length: 101 }, (_, i) => runs[Math.min(runs.length - 1, Math.floor(((runs.length - 1) * i) / 100))]!),
   }
 }

@@ -21,7 +21,8 @@ const protect = ref<number[]>([])
 const discount = ref(false)
 const sure = ref(false)
 const lessDestroy = ref(false)
-const mvp = ref(0)
+// 내 정보에서 고른 MVP 할인으로 시작한다
+const mvp = ref(me.value?.mvpDiscount ?? 0)
 const pc = ref(false)
 const copyPriceEok = ref(0)
 const restoreDiscount = ref(false)
@@ -44,7 +45,7 @@ function setSundayEffects(on: boolean) {
 }
 const sundayApplied = computed(() => !!sunday.value && (discount.value || sure.value || lessDestroy.value || restoreDiscount.value))
 const sundayEffects = computed(() => SUNDAY_STARFORCE_EFFECTS.filter(e => sunday.value?.effects?.includes(e.key)).map(e => e.label))
-const sundayDay = computed(() => (sunday.value ? formatMonthDay(new Date(Date.parse(sunday.value.start) + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)) : ''))
+const sundayDay = computed(() => (sunday.value ? formatMonthDay(kstDateOf(sunday.value.start)) : ''))
 
 // 성급은 늘 0 ≤ 지금 < 목표 ≤ 최대로 맞춘다. 지금을 목표 이상으로 올리면 목표도 따라 올라간다
 function setFrom(value: number) {
@@ -109,34 +110,17 @@ const options = computed<StarforceOptions>(() => ({
 // 계산은 브라우저의 Worker에서 돌린다. 입력이 잠깐 멈추면 마지막 값만 계산하고, 그동안은 이전 결과를 흐리게 보여준다
 const plan = shallowRef<StarforcePlan | null>(null)
 const calculating = ref(false)
-let worker: Worker | null = null
-let seq = 0
+const worker = useStarforceWorker()
 let timer: ReturnType<typeof setTimeout> | undefined
-function startWorker() {
-  worker = new Worker(new URL('../../workers/starforce.worker.ts', import.meta.url), { type: 'module' })
-  worker.onmessage = (event: MessageEvent<{ id: number, plan: StarforcePlan }>) => {
-    if (event.data.id !== seq) return
-    plan.value = event.data.plan
-    calculating.value = false
-  }
-}
-function calculate() {
+async function calculate() {
   // 아직 이전 계산 중이면 기다리지 않고 버리고 새로 시작한다
-  if (calculating.value) {
-    worker?.terminate()
-    startWorker()
-  }
+  if (worker.busy()) worker.cancel()
   calculating.value = true
-  worker!.postMessage({ id: ++seq, options: options.value })
+  plan.value = await worker.plan(options.value)
+  calculating.value = false
 }
-onMounted(() => {
-  startWorker()
-  calculate()
-})
-onBeforeUnmount(() => {
-  clearTimeout(timer)
-  worker?.terminate()
-})
+onMounted(calculate)
+onBeforeUnmount(() => clearTimeout(timer))
 watch(options, () => {
   clearTimeout(timer)
   timer = setTimeout(calculate, 120)

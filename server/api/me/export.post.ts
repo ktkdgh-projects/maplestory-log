@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
     enhanceEvents.find({ userId }).sort({ at: 1 }).toArray(),
   ])
   const sheetOf = new Map(sheetDocs.map(s => [s._id.toHexString(), s]))
-  const references = await rowReferences(userId, sheetDocs, rowDocs)
+  const references = await rowReferences(userId, sheetDocs, rowDocs, user.mvpDiscount ?? 0)
   const date = kstToday()
 
   if (format === 'json') {

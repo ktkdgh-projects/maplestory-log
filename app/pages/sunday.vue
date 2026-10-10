@@ -96,8 +96,12 @@ const showLastWeek = ref(false)
             <span v-for="key in current.effects" :key="key" class="effect">{{ SUNDAY_STARFORCE_EFFECTS.find(e => e.key === key)?.label }}</span>
             <NuxtLink to="/calc/starforce" class="origin">계산기에서 이 효과로 보기 →</NuxtLink>
           </div>
-          <img v-if="current.image" :src="current.image" :alt="`${current.title} 이벤트 내용`" class="poster">
-          <p v-else class="muted">공지에 이미지가 없어요. 원문에서 확인해 주세요.</p>
+          <!-- 공지 이미지 오른쪽에 내 결산. 공지 보고 → 강화하고 → 여기서 결과를 본다 -->
+          <div class="with-settle">
+            <img v-if="current.image" :src="current.image" :alt="`${current.title} 이벤트 내용`" class="poster">
+            <p v-else class="muted">공지에 이미지가 없어요. 원문에서 확인해 주세요.</p>
+            <ReviewSundaySettle :notice="current" live class="settle-side" />
+          </div>
         </section>
 
         <!-- 일요일이 지나고 다음 발표 전까지 -->
@@ -112,6 +116,8 @@ const showLastWeek = ref(false)
               <p class="muted small">금요일이 공휴일이면 목요일, 목·금이 다 공휴일이면 수요일 오전 10시에 올라와요. 올라오면 이 화면이 바로 바뀌어요.</p>
             </div>
           </div>
+
+          <ReviewSundaySettle v-if="lastWeek" :notice="lastWeek" :live="false" class="last-settle" />
 
           <div v-if="lastWeek" class="last">
             <button type="button" class="last-head" :aria-expanded="showLastWeek" @click="showLastWeek = !showLastWeek">
@@ -221,6 +227,28 @@ h3 {
   height: auto;
   border: 1px solid var(--panel-line);
   border-radius: 12px;
+}
+.with-settle {
+  display: grid;
+  grid-template-columns: minmax(0, 876px) 300px;
+  justify-content: center;
+  align-items: start;
+  gap: 16px;
+  width: 100%;
+}
+/* 공지 이미지가 길어서 결산 카드는 스크롤해도 옆에 붙어 있게 */
+.settle-side {
+  position: sticky;
+  top: 0;
+}
+.last-settle {
+  width: 100%;
+  max-width: 876px;
+}
+@media (max-width: 1100px) {
+  .with-settle {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 /* 발표 전: 해가 떠오르길 기다리는 카드 */
 .waiting {

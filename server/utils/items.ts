@@ -51,13 +51,15 @@ function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: 
     starforceDate: doc.starforceDate ?? null,
     potential: doc.potential ?? 0,
     potentialDate: doc.potentialDate ?? null,
+    starforceEntries: doc.starforceEntries ?? (doc.starforce && doc.starforceDate ? [{ date: doc.starforceDate, amount: doc.starforce }] : []),
+    potentialEntries: doc.potentialEntries ?? (doc.potential && doc.potentialDate ? [{ date: doc.potentialDate, amount: doc.potential }] : []),
     sell: doc.sell,
     sellDate: doc.sellDate ?? null,
     sellFee: doc.sellFee ?? DEFAULT_AUCTION_FEE,
     memo: doc.memo,
     excluded: doc.excluded ?? false,
     level: doc.level ?? null,
-    reference: reference ?? { starforce: 0, potential: 0 },
+    reference: reference ?? { starforce: 0, potential: 0, shared: false, starforceDays: [], potentialDays: [] },
   }
 }
 

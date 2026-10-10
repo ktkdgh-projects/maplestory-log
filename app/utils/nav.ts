@@ -35,6 +35,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/starforce', label: '스타포스', hint: '구간별 시도·파괴·메소' },
       { to: '/potential', label: '잠재능력', hint: '윗잠·에디 등급 흐름' },
+      { to: '/review', label: '결산', hint: '그날 강화 이득·손해와 운' },
     ],
   },
   {
