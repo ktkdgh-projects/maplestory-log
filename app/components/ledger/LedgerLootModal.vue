@@ -7,7 +7,7 @@ const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{ saved: [] }>()
 
 
-// 억 단위 글자로 들고 있다가 저장할 때 메소로 바꾼다. 수수료는 판 건마다 고르고, 처음엔 마지막에 고른 값으로 둔다
+// 억 단위 글자로 들고 있다가 저장할 때 메소로 바꾼다. 수수료는 내 정보 MVP를 따르고, MVP가 아니면 판 건마다 PC방 여부를 고른다
 const picked = ref<{ item: string, eok: string, fee: number }[]>([])
 const custom = ref('')
 const busy = ref(false)
@@ -88,7 +88,7 @@ async function save() {
       </div>
       <p v-else class="muted small">이 보스·난이도는 드롭표에 있는 장신구가 없어요. 아래에 직접 적을 수 있어요.</p>
 
-      <form class="custom" @submit.prevent="addCustom">
+      <form class="custom" @submit.prevent="addCustom" novalidate>
         <input v-model="custom" class="field-input" maxlength="40" placeholder="다른 아이템 직접 적기" aria-label="아이템 이름">
         <button class="btn ghost compact">추가</button>
       </form>
@@ -105,22 +105,7 @@ async function save() {
             <button type="button" class="remove" :aria-label="`${p.item} 빼기`" @click="toggle(p.item)">×</button>
           </div>
           <div v-if="toMeso(p.eok)" class="sale">
-            <span class="sale-label">경매장 수수료</span>
-            <div class="fees" role="radiogroup" :aria-label="`${p.item} 경매장 수수료`">
-              <button
-                v-for="f in AUCTION_FEES"
-                :key="f.rate"
-                type="button"
-                role="radio"
-                class="fee"
-                :class="{ on: p.fee === f.rate }"
-                :aria-checked="p.fee === f.rate"
-                :title="f.label"
-                @click="p.fee = f.rate"
-              >
-                {{ Math.round(f.rate * 100) }}%<small v-if="f.rate < DEFAULT_AUCTION_FEE"> MVP·PC방</small>
-              </button>
-            </div>
+            <LedgerFeeLine v-model="p.fee" />
             <span class="net">받은 메소 <b>{{ formatKoreanNumber(lootNet({ item: p.item, price: toMeso(p.eok), fee: p.fee })) }}</b></span>
           </div>
         </li>
@@ -237,33 +222,6 @@ async function save() {
 }
 @keyframes fade-in {
   from { opacity: 0; }
-}
-.sale-label {
-  color: var(--sub);
-  font-size: 12px;
-}
-.fees {
-  display: flex;
-  gap: 4px;
-}
-.fee {
-  padding: 3px 10px;
-  background: var(--bar);
-  border: 1px solid var(--panel-line);
-  border-radius: 999px;
-  color: var(--sub);
-  font-family: var(--f-title);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background var(--fast) ease, border-color var(--fast) ease, color var(--fast) ease;
-}
-.fee small {
-  font-size: 11px;
-}
-.fee.on {
-  background: rgb(242 193 78 / 0.15);
-  border-color: var(--gold);
-  color: var(--text);
 }
 .picked-name {
   flex: 1;

@@ -10,5 +10,5 @@ export default defineEventHandler(async (event): Promise<PotentialDetail> => {
   const from = query.from ? parseDate(query.from) : null
 
   const character = await ownCharacter(user._id, getRouterParam(event, 'ocid'), () => getUserApiKey(user._id))
-  return potentialDetail(user._id, character.name, item, level, from, query.side === 'additional')
+  return potentialDetail(user._id, await characterNames(character), item, level, from, query.side === 'additional')
 })

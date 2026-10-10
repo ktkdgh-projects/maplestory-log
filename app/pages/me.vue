@@ -139,7 +139,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <div><button class="btn" :disabled="busy" @click="openPicker">고르기</button></div>
         </template>
         <div class="mvp">
-          <span class="mvp-label">MVP 등급 · 스타포스 비용 할인 <small>강화 기록 비용·계산기에 써요</small></span>
+          <span class="mvp-label">MVP 등급 <small>스타포스 비용 할인(강화 기록·계산기)과 경매장 수수료(실버 이상 3%)에 써요</small></span>
           <div class="mvp-chips" role="group" aria-label="MVP 등급">
             <button v-for="d in MVP_DISCOUNTS" :key="d.label" type="button" :aria-pressed="mvp === d.rate" :disabled="busy" @click="pickMvp(d.rate)">{{ d.label }}</button>
           </div>
@@ -155,9 +155,9 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <div><dt>상태</dt><dd :class="KEY_STATUS[me.keyStatus].tone">{{ KEY_STATUS[me.keyStatus].label }}</dd></div>
           <div><dt>마지막 확인</dt><dd>{{ me.keyCheckedAt ? formatDateTime(me.keyCheckedAt) : '-' }}</dd></div>
         </dl>
-        <form class="row" @submit.prevent="replaceKey">
+        <form class="row" @submit.prevent="replaceKey" novalidate>
           <label class="sr-only" for="new-key">새 API 키</label>
-          <input id="new-key" v-model="newKey" class="field-input" type="password" autocomplete="off" placeholder="새 키로 바꾸기" required>
+          <input id="new-key" v-model="newKey" class="field-input" type="password" autocomplete="off" placeholder="새 키로 바꾸기">
           <button class="btn" :disabled="busy">교체</button>
         </form>
         <p class="muted small">같은 넥슨 계정에서 발급한 키만 바꿀 수 있어요. 기록은 그대로 이어져요.</p>
@@ -196,11 +196,11 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <button class="btn danger" :disabled="!me.keyLast4" @click="confirmTarget = 'key'">키만 삭제</button>
           <button class="btn danger" @click="confirmTarget = 'account'">탈퇴</button>
         </div>
-        <form v-else class="confirm" @submit.prevent="confirmDanger">
+        <form v-else class="confirm" @submit.prevent="confirmDanger" novalidate>
           <p v-if="confirmTarget === 'key'">키를 지우면 자동 수집이 멈추고 모든 기기에서 로그아웃돼요. 지금까지의 기록은 남아요.</p>
           <p v-else>키와 계정 정보, 로그인 기기가 바로 지워지고 되돌릴 수 없어요.</p>
           <label for="confirm-key">확인을 위해 지금 등록된 API 키를 다시 입력해 주세요</label>
-          <input id="confirm-key" v-model="confirmKey" class="field-input" type="password" autocomplete="off" required>
+          <input id="confirm-key" v-model="confirmKey" class="field-input" type="password" autocomplete="off">
           <div class="row">
             <button class="btn danger" :disabled="busy">{{ confirmLabels[confirmTarget] }}</button>
             <button type="button" class="btn ghost" @click="confirmTarget = null; confirmKey = ''">취소</button>

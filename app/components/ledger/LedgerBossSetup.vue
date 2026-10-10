@@ -2,16 +2,51 @@
 import type { BossPick, BossRosterCharacter } from '#shared/types'
 import { BOSSES, BOSS_PRICE_DATE, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, crystalPrice, findBoss, type BossInfo } from '#shared/data/bosses'
 
-// 주간 보스 표에서 캐릭터를 누르면 그 줄 아래로 펼쳐지는 보스 세팅
+// 보스 수입 표에서 캐릭터를 누르면 그 줄 아래로 펼쳐지는 보스 세팅
 const props = defineProps<{ character: BossRosterCharacter, others: BossRosterCharacter[], busy: boolean }>()
-const emit = defineEmits<{ save: [bosses: BossPick[]], copy: [ocid: string, bosses: BossPick[]], remove: [], close: [] }>()
+const emit = defineEmits<{ save: [bosses: BossPick[]], copy: [ocid: string, bosses: BossPick[]], close: [] }>()
 
-const bosses = ref<BossPick[]>(structuredClone(toRaw(props.character.bosses)))
-// 보스를 체크할 때도 표를 새로 받으므로, 저장된 세팅이 실제로 바뀐 때만 고치던 내용을 덮는다
+// 보스 목록 복사. 반응형으로 감싼 항목이 섞이면 structuredClone이 실패해 저장이 멈추므로 JSON으로 복사한다
+const copyPicks = (list: BossPick[]): BossPick[] => JSON.parse(JSON.stringify(list))
+const bosses = ref<BossPick[]>(copyPicks(props.character.bosses))
+const SAVE_DELAY_MS = 600
+
+// 고르면 잠시 뒤 자동으로 저장한다. 연달아 누르면 마지막 것만 보낸다
+let timer: ReturnType<typeof setTimeout> | null = null
+let sent: string | null = null
+function flush() {
+  if (!timer) return
+  clearTimeout(timer)
+  timer = null
+  sent = JSON.stringify(bosses.value)
+  emit('save', copyPicks(bosses.value))
+}
+watch(bosses, () => {
+  if (JSON.stringify(bosses.value) === JSON.stringify(props.character.bosses)) return
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(flush, SAVE_DELAY_MS)
+}, { deep: true })
+// 보스를 체크할 때도 표를 새로 받으므로, 저장된 세팅이 실제로 바뀐 때만 덮는다. 내가 보낸 저장이 돌아온 거면 그사이 고친 걸 지키려고 덮지 않는다
 watch(() => JSON.stringify(props.character.bosses), (value) => {
-  bosses.value = JSON.parse(value)
+  if (value === sent) {
+    sent = null
+    return
+  }
+  if (!timer) bosses.value = JSON.parse(value)
 })
-const dirty = computed(() => JSON.stringify(bosses.value) !== JSON.stringify(props.character.bosses))
+// 닫을 때 아직 안 보낸 고침이 있으면 바로 보낸다
+onBeforeUnmount(flush)
+
+// 세팅 바깥(빈 곳, 다른 줄)을 누르면 닫는다. 모달 안을 누른 건 빼고
+const root = ref<HTMLElement | null>(null)
+function outside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  // 캐릭터 이름 칸은 표가 열고 닫기를 직접 처리한다
+  if (root.value?.contains(target) || target.closest('.modal, .backdrop, .who-main')) return
+  emit('close')
+}
+onMounted(() => setTimeout(() => window.addEventListener('click', outside)))
+onBeforeUnmount(() => window.removeEventListener('click', outside))
 
 const COLUMNS = 3
 const WEEKLY = BOSSES.filter(b => b.cycle === 'weekly')
@@ -35,29 +70,74 @@ function setParty(bossId: string, delta: number) {
   const pick = pickOf(bossId)
   if (pick) pick.party = Math.min(MAX_PARTY, Math.max(1, pick.party + delta))
 }
-function copyTo(select: HTMLSelectElement) {
-  if (select.value) emit('copy', select.value, structuredClone(toRaw(bosses.value)))
-  select.value = ''
+// 세팅 복사: 버튼을 누르면 아래로 캐릭터 목록이 뜬다(아래 칸을 밀지 않게 띄워서 보여 준다)
+const copyOpen = ref(false)
+const RESET_CONFIRM_MS = 3000
+const resetArmed = ref(false)
+let resetTimer: ReturnType<typeof setTimeout> | undefined
+function resetAll() {
+  if (!resetArmed.value) {
+    resetArmed.value = true
+    resetTimer = setTimeout(() => (resetArmed.value = false), RESET_CONFIRM_MS)
+    return
+  }
+  clearTimeout(resetTimer)
+  resetArmed.value = false
+  bosses.value = []
 }
-function remove() {
-  if (confirm(`${props.character.name}을(를) 보스 표에서 뺄까요? 이미 체크한 기록은 가계부에 그대로 남아요.`)) emit('remove')
+onBeforeUnmount(() => clearTimeout(resetTimer))
+
+function copyTo(ocid: string) {
+  if (timer) clearTimeout(timer)
+  timer = null
+  emit('copy', ocid, copyPicks(bosses.value))
+  copyOpen.value = false
 }
+function closeCopy(event: MouseEvent) {
+  if (!(event.target as HTMLElement).closest('.copy')) copyOpen.value = false
+}
+watch(copyOpen, (open) => {
+  if (open) setTimeout(() => window.addEventListener('click', closeCopy))
+  else window.removeEventListener('click', closeCopy)
+})
+onBeforeUnmount(() => window.removeEventListener('click', closeCopy))
 </script>
 
 <template>
-  <div class="setup">
+  <div ref="root" class="setup">
     <div class="head">
       <h3>{{ character.name }}의 보스 세팅</h3>
       <span class="muted">주간 <b :class="{ full }">{{ weeklyCount }}/{{ WEEKLY_BOSS_LIMIT }}</b> · 다 잡으면 <b class="gold">{{ formatKoreanNumber(expected) }}</b></span>
-      <span class="footnote">결정석 {{ BOSS_PRICE_DATE }} 기준 · 같은 난이도를 다시 누르면 빠져요</span>
-      <div class="actions">
-        <select v-if="others.length" class="field-input" aria-label="이 세팅 복사하기" :disabled="busy" @change="copyTo($event.target as HTMLSelectElement)">
-          <option value="">이 세팅 복사하기…</option>
-          <option v-for="c in others" :key="c.ocid" :value="c.ocid">{{ c.name }}에게</option>
-        </select>
-        <button type="button" class="btn ghost compact danger" :disabled="busy" @click="remove">캐릭터 빼기</button>
-        <button type="button" class="btn ghost compact" @click="emit('close')">닫기</button>
-        <button type="button" class="btn compact" :disabled="busy || !dirty" @click="emit('save', bosses)">{{ dirty ? '세팅 저장' : '저장됨' }}</button>
+      <span class="footnote">결정석 {{ BOSS_PRICE_DATE }} 기준 · 고른 카드의 빈 곳을 누르면 빠져요</span>
+      <div class="tools">
+        <div v-if="others.length" class="copy">
+          <button type="button" class="btn ghost compact" :aria-expanded="copyOpen" :disabled="busy" @click="copyOpen = !copyOpen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></svg>
+            다른 캐릭터에 복사
+          </button>
+          <Transition name="fade">
+            <ul v-if="copyOpen" class="copy-menu" role="menu">
+              <li class="copy-title">이 세팅을 누구에게 넣을까요?</li>
+              <li v-for="c in others" :key="c.ocid">
+                <button type="button" role="menuitem" @click="copyTo(c.ocid)">
+                  <CharacterThumb v-if="c.imageUrl" :src="c.imageUrl" :height="32" crop="head" class="copy-face" />
+                  <span><b>{{ c.name }}</b><small>{{ c.job }} · 보스 {{ c.bosses.length }}개</small></span>
+                </button>
+              </li>
+            </ul>
+          </Transition>
+        </div>
+        <button
+          type="button"
+          class="reset-btn"
+          :class="{ armed: resetArmed }"
+          :disabled="busy || !bosses.length"
+          :title="resetArmed ? '한 번 더 누르면 고른 보스를 모두 비워요' : '고른 보스 모두 비우기'"
+          :aria-label="resetArmed ? '한 번 더 눌러 초기화' : '고른 보스 모두 비우기'"
+          @click="resetAll"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4.5h4.5" /></svg>
+        </button>
       </div>
     </div>
 
@@ -86,6 +166,7 @@ function remove() {
         @party="setParty(boss.id, $event)"
       />
     </div>
+
   </div>
 </template>
 
@@ -128,22 +209,110 @@ h4 {
 .gold {
   color: var(--gold);
 }
-.actions {
+.tools {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   margin-left: auto;
 }
-.actions select {
-  width: 170px;
-  min-height: 34px;
-  padding: 0 8px;
-  font-size: 13px;
+.copy {
+  position: relative;
 }
-.danger:hover:not(:disabled) {
+.reset-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+  color: var(--sub);
+  cursor: pointer;
+  transition: color var(--fast) ease, border-color var(--fast) ease, background var(--fast) ease;
+}
+.reset-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+.reset-btn:hover:not(:disabled) {
+  border-color: var(--tip-line);
+  color: var(--text);
+}
+.reset-btn.armed {
+  background: rgb(255 138 122 / 0.14);
   border-color: var(--loss);
   color: var(--loss);
+}
+.reset-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.copy .btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+/* 버튼 아래로 뜨는 목록 */
+.copy-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+  margin: 0;
+  padding: 6px;
+  background: var(--win);
+  border: 1px solid var(--tip-line);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.45);
+  list-style: none;
+}
+.copy-title {
+  padding: 4px 8px 6px;
+  color: var(--sub);
+  font-size: 12px;
+}
+.copy-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.copy-menu button:hover {
+  background: var(--panel);
+}
+.copy-menu span {
+  display: grid;
+}
+.copy-menu b {
+  font-size: 14px;
+}
+.copy-menu small {
+  color: var(--sub);
+  font-size: 12px;
+}
+.copy-face {
+  width: 32px;
 }
 /* 왼쪽 열 위에서부터 센 보스, 오른쪽 열로 넘어가며 약한 보스가 오도록 세로로 채운다 */
 .cards {

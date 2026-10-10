@@ -36,7 +36,7 @@ export function parseIdList(value: unknown): ObjectId[] {
   return value.map(v => parseId(typeof v === 'string' ? v : undefined))
 }
 
-function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: Map<string, ItemIcon>): ItemRow {
+function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: Map<string, ItemIcon>, mvp: number): ItemRow {
   return {
     id: doc._id.toHexString(),
     part: doc.part,
@@ -55,7 +55,7 @@ function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: 
     potentialEntries: doc.potentialEntries ?? (doc.potential && doc.potentialDate ? [{ date: doc.potentialDate, amount: doc.potential }] : []),
     sell: doc.sell,
     sellDate: doc.sellDate ?? null,
-    sellFee: doc.sellFee ?? DEFAULT_AUCTION_FEE,
+    sellFee: effectiveFee(doc.sellFee, mvp),
     memo: doc.memo,
     excluded: doc.excluded ?? false,
     level: doc.level ?? null,
@@ -63,13 +63,13 @@ function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: 
   }
 }
 
-export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[], references: Map<string, RowReference>, known: Map<string, ItemIcon>): ItemSheet {
+export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[], references: Map<string, RowReference>, known: Map<string, ItemIcon>, mvp = 0): ItemSheet {
   return {
     id: doc._id.toHexString(),
     title: doc.title,
     ocid: doc.ocid,
     characterName: doc.characterName,
     excluded: doc.excluded ?? false,
-    rows: rows.filter(r => r.sheetId.equals(doc._id)).map(r => toItemRow(r, references.get(r._id.toHexString()), known)),
+    rows: rows.filter(r => r.sheetId.equals(doc._id)).map(r => toItemRow(r, references.get(r._id.toHexString()), known, mvp)),
   }
 }

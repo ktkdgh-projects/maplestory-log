@@ -36,10 +36,7 @@ const totals = computed(() => (data.value?.items ?? []).reduce((t, i) => ({
 </script>
 
 <template>
-  <GameWindow v-if="!me" title="스타포스">
-    <p class="muted">강화 기록은 API 키를 등록한 사용자만 볼 수 있어요. 기록은 본인만 볼 수 있어요.</p>
-    <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
-  </GameWindow>
+  <KeyGate v-if="!me" v-bind="KEY_GATES.starforce" />
 
   <GameWindow v-else class="fit" title="스타포스" sub="넥슨 강화 기록" fill>
     <EnhanceToolbar v-model:ocid="ocid" v-model:days="days" v-model:picked-from="pickedFrom" :characters="characters" :syncing="data?.syncing" :synced-from="data?.syncedFrom" />
@@ -70,10 +67,10 @@ const totals = computed(() => (data.value?.items ?? []).reduce((t, i) => ({
           <span>★ · 시도</span>
         </div>
         <ul>
-          <li v-for="i in items" :key="i.slot">
+          <li v-for="i in items" :key="`${i.slot}:${i.name}`">
             <button type="button" class="row" :class="{ on: i.name === selected }" @click="selected = i.name">
-              <img :src="i.icon" alt="">
-              <span class="name"><b class="ellipsis">{{ i.name }}</b><small>{{ i.slot }}<template v-if="i.summary.meso.starforce"> · {{ formatShortNumber(i.summary.meso.starforce) }}</template></small></span>
+              <img v-if="i.icon" :src="i.icon" alt=""><span v-else class="no-icon" aria-hidden="true" />
+              <span class="name"><b class="ellipsis">{{ i.name }}</b><small><span v-if="!i.worn" class="unworn" title="지금은 안 낀 장비예요">안 낌</span>{{ i.slot }}<template v-if="i.summary.meso.starforce">{{ i.slot ? ' · ' : '' }}{{ formatShortNumber(i.summary.meso.starforce) }}</template></small></span>
               <span class="count"><b><span class="star">★</span>{{ i.starforce }}</b><small>{{ i.summary.starforce.attempts }}번<template v-if="i.summary.starforce.destroy"> · <span class="loss">파괴 {{ i.summary.starforce.destroy }}</span></template></small></span>
             </button>
           </li>
@@ -83,10 +80,10 @@ const totals = computed(() => (data.value?.items ?? []).reduce((t, i) => ({
           기록 없는 장비 {{ quiet.length }}개 {{ showQuiet ? '▴' : '▾' }}
         </button>
         <ul v-if="showQuiet" class="quiet">
-          <li v-for="i in quiet" :key="i.slot">
+          <li v-for="i in quiet" :key="`${i.slot}:${i.name}`">
             <button type="button" class="row" :class="{ on: i.name === selected }" @click="selected = i.name">
-              <img :src="i.icon" alt="">
-              <span class="name"><b class="ellipsis">{{ i.name }}</b><small>{{ i.slot }}</small></span>
+              <img v-if="i.icon" :src="i.icon" alt=""><span v-else class="no-icon" aria-hidden="true" />
+              <span class="name"><b class="ellipsis">{{ i.name }}</b><small><span v-if="!i.worn" class="unworn" title="지금은 안 낀 장비예요">안 낌</span>{{ i.slot }}</small></span>
               <span class="count"><b><span class="star">★</span>{{ i.starforce }}</b></span>
             </button>
           </li>
@@ -226,6 +223,14 @@ const totals = computed(() => (data.value?.items ?? []).reduce((t, i) => ({
   object-fit: contain;
   image-rendering: pixelated;
 }
+/* 아이콘을 모르는 안 낀 장비는 같은 크기의 빈 칸 */
+.no-icon {
+  width: 30px;
+  height: 30px;
+  background: var(--bar);
+  border: 1px dashed var(--panel-line);
+  border-radius: 6px;
+}
 .name {
   display: grid;
   min-width: 0;
@@ -304,5 +309,13 @@ const totals = computed(() => (data.value?.items ?? []).reduce((t, i) => ({
   .strip b {
     font-size: 19px;
   }
+}
+.unworn {
+  margin-right: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--panel-line);
+  border-radius: 4px;
+  color: var(--sub);
+  font-size: 10.5px;
 }
 </style>

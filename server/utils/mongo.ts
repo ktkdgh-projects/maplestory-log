@@ -1,5 +1,5 @@
 import { MongoClient, type Db, type ObjectId } from 'mongodb'
-import type { BossLoot, BossRosterCharacter, DropSaleInput, EnhanceKind, HuntInput, ItemIcon, ItemPurchase, KeyStatus } from '#shared/types'
+import type { BossLoot, BossRosterCharacter, DropSaleInput, MesoEntryInput, EnhanceKind, HuntInput, ItemIcon, ItemPurchase, KeyStatus } from '#shared/types'
 
 export interface UserDoc {
   _id: ObjectId
@@ -36,6 +36,8 @@ export interface SessionDoc {
 export interface CharacterDoc {
   ocid: string
   name: string
+  // 닉네임을 바꾸기 전 이름들. 넥슨 강화 기록엔 그때 이름만 남아서, 예전 기록을 이어 찾는 데 쓴다
+  pastNames?: string[]
   world: string
   job: string
   level: number
@@ -48,6 +50,8 @@ interface UserCharacterDoc {
   ocid: string
   isMain: boolean
   trackedSince: Date
+  // 성장 기록 캐릭터 칸 순서. 끌어서 바꾸기 전엔 없다
+  order?: number
 }
 
 export interface SnapshotDoc {
@@ -60,6 +64,16 @@ export interface SnapshotDoc {
   combatPower: number | null
   data: { name: string, world: string, job: string, imageUrl: string } | null
   fetchedAt: Date
+}
+
+// 메모장: 사용자가 아무거나 적어 두는 글
+export interface MemoDoc {
+  _id: ObjectId
+  userId: ObjectId
+  title: string
+  body: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 export interface ItemSheetDoc {
@@ -82,7 +96,7 @@ export interface ItemRowDoc {
   icon: string | null
   buy: number
   sell: number
-  // 판매가에 붙는 경매장 수수료율. 손익·가계부에는 수수료를 뺀 금액이 잡힌다
+  // 판매가에 붙는 경매장 수수료율. 손익·가계부에는 수수료를 뺀 금액이 잡힌다(내 정보 MVP가 실버 이상이면 읽을 때 3%로 본다)
   sellFee?: number
   memo: string | null
   buyDate?: string | null
@@ -176,6 +190,12 @@ export interface DropSaleDoc extends DropSaleInput {
   createdAt: Date
 }
 
+export interface MesoEntryDoc extends MesoEntryInput {
+  _id: ObjectId
+  userId: ObjectId
+  createdAt: Date
+}
+
 export interface BossRosterDoc {
   _id: ObjectId
   userId: ObjectId
@@ -229,6 +249,8 @@ interface ItemIconDoc {
   icon: string
   kind: ItemIcon['kind']
   part?: string
+  // 장비 착용 레벨. 지금 안 낀 장비의 스타포스 비용을 계산할 때 쓴다
+  level?: number
   updatedAt: Date
 }
 
@@ -320,10 +342,16 @@ async function ensureIndexes(db: Db) {
       // 강화 결산: 장비와 상관없이 캐릭터·기간으로 찾는다
       { key: { userId: 1, character: 1, at: -1 } },
     ]),
+    db.collection('memos').createIndexes([
+      { key: { userId: 1, createdAt: -1 } },
+    ]),
     db.collection('hunts').createIndexes([
       { key: { userId: 1, date: -1 } },
     ]),
     db.collection('dropSales').createIndexes([
+      { key: { userId: 1, date: 1 } },
+    ]),
+    db.collection('mesoEntries').createIndexes([
       { key: { userId: 1, date: 1 } },
     ]),
     db.collection('bossRosters').createIndexes([
@@ -372,12 +400,14 @@ export async function useCollections() {
     appSettings: db.collection<AppSettingsDoc>('appSettings'),
     hunts: db.collection<HuntDoc>('hunts'),
     dropSales: db.collection<DropSaleDoc>('dropSales'),
+    mesoEntries: db.collection<MesoEntryDoc>('mesoEntries'),
     bossRosters: db.collection<BossRosterDoc>('bossRosters'),
     bossClears: db.collection<BossClearDoc>('bossClears'),
     itemIcons: db.collection<ItemIconDoc>('itemIcons'),
     cache: db.collection<CacheDoc>('cache'),
     rateLimits: db.collection<RateLimitDoc>('rateLimits'),
     sundays: db.collection<SundayDoc>('sundays'),
+    memos: db.collection<MemoDoc>('memos'),
   }
 }
 

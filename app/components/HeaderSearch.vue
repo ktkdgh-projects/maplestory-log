@@ -37,7 +37,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <form class="search" :class="{ open }" role="search" @submit.prevent="search">
+  <form class="search" :class="{ open }" role="search" @submit.prevent="search" novalidate>
     <label for="header-search" class="sr-only">캐릭터 이름</label>
     <span class="icon" aria-hidden="true">⌕</span>
     <input id="header-search" ref="field" v-model="input" placeholder="캐릭터 검색" maxlength="20" autocomplete="off" enterkeyhint="search" @blur="open = false">

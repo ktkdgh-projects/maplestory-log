@@ -113,7 +113,7 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
 <template>
   <GameWindow class="fit" title="잠재 기대값" sub="공식 확률표로 계산" accent="purple" fill>
     <div class="calc-layout">
-      <form class="calc-inputs" @submit.prevent>
+      <form class="calc-inputs" @submit.prevent novalidate>
         <section class="calc-section">
           <h3 class="calc-section-title">장비</h3>
           <label v-if="equipped.length" class="calc-load">

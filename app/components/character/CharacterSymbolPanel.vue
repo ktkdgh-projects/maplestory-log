@@ -23,6 +23,32 @@ const rows = computed(() => props.symbols
   })
   .sort((a, b) => Number(a.symbol.level >= a.maxLevel) - Number(b.symbol.level >= b.maxLevel)))
 
+// 지금 레벨까지 이미 쓴 메소와 넣은 심볼 개수(아케인·어센틱 따로)
+const spent = computed(() => [true, false].flatMap((arcane) => {
+  let meso = 0
+  let total = 0
+  let symbols = 0
+  let count = 0
+  for (const symbol of props.symbols.filter(s => s.name.includes('아케인') === arcane)) {
+    const cost = symbolCost(symbol.name, 1, symbol.level, -1, 0)
+    const full = symbolCost(symbol.name, 1, maxLevelOf(symbol), -1, 0)
+    if (!cost || !full) continue
+    count++
+    meso += cost.meso
+    total += full.meso
+    symbols += cost.symbols + 1 + symbol.growth
+  }
+  if (!count) return []
+  return [{
+    label: `${arcane ? '아케인' : '어센틱'} ${count}개 · 심볼 ${symbols.toLocaleString('ko-KR')}개`,
+    tone: arcane ? 'var(--api)' : '#c48bff',
+    value: formatKoreanNumber(meso),
+    unit: '메소',
+    progress: total ? meso / total : 1,
+    sub: total > meso ? `만렙까지 ${formatKoreanNumber(total - meso)} 메소` : '모두 만렙',
+  }]
+}))
+
 const totals = computed(() => {
   const sum = (arcane: boolean) => rows.value.filter(r => r.arcane === arcane).reduce((acc, r) => acc + (r.cost?.meso ?? 0), 0)
   return [
@@ -36,7 +62,7 @@ const totals = computed(() => {
   <div class="symbols">
     <p v-if="!rows.length" class="muted">장착한 심볼이 없어요.</p>
     <template v-else>
-      <CharacterRangeHeader :totals="totals" hint="손잡이를 끌어 심볼마다 구간을 정해요" @reset="ranges = initialRanges()" />
+      <CharacterRangeHeader :totals="totals" :spent="spent" hint="손잡이를 끌어 심볼마다 구간을 정해요" @reset="ranges = initialRanges()" />
       <ul class="list stagger">
         <li v-for="{ symbol, range, maxLevel, shortName, arcane, reachable, cost } in rows" :key="symbol.name" class="card" :class="{ arcane }">
           <div class="top">

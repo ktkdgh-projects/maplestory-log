@@ -13,7 +13,7 @@ export const iconKey = (name: string) => name.replace(/\s*[x×]\s*\d+\s*$/i, '')
 // 「반지1」「펜던트2」처럼 칸 번호가 붙은 장비 부위를 부위 이름만 남긴다
 const partName = (slot: string | null | undefined) => (slot ?? '').replace(/\d+$/, '').trim()
 
-type IconEntry = { name: string | null | undefined, icon: string | null | undefined, kind: ItemIcon['kind'], part: string }
+type IconEntry = { name: string | null | undefined, icon: string | null | undefined, kind: ItemIcon['kind'], part: string, level?: number }
 
 async function rememberIcons(items: IconEntry[]) {
   const valid = items.filter((i): i is ItemIcon => !!i.name && !!i.icon)
@@ -21,7 +21,7 @@ async function rememberIcons(items: IconEntry[]) {
   const { itemIcons } = await useCollections()
   const now = new Date()
   await itemIcons.bulkWrite(valid.map(i => ({
-    updateOne: { filter: { _id: i.name }, update: { $set: { icon: i.icon, kind: i.kind, part: i.part, updatedAt: now } }, upsert: true },
+    updateOne: { filter: { _id: i.name }, update: { $set: { icon: i.icon, kind: i.kind, part: i.part, ...(i.level && { level: i.level }), updatedAt: now } }, upsert: true },
   })), { ordered: false })
 }
 
@@ -44,11 +44,37 @@ async function collectPetAndCashIcons(apiKey: string, ocid: string) {
 }
 
 // 캐릭터를 불러올 때 본 장비·펫·캐시템 아이콘을 사전에 모은다. 사전은 덤이라 실패해도 원래 작업은 그대로 간다
-export async function collectCharacterIcons(apiKey: string, ocid: string, equipment: { name: string, icon: string, slot: string }[]) {
+export async function collectCharacterIcons(apiKey: string, ocid: string, equipment: { name: string, icon: string, slot: string, level?: number }[]) {
   await Promise.all([
-    rememberIcons(equipment.map(i => ({ name: i.name, icon: i.icon, kind: 'equipment', part: partName(i.slot) }))),
+    rememberIcons(equipment.map(i => ({ name: i.name, icon: i.icon, kind: 'equipment', part: partName(i.slot), level: i.level }))),
     collectPetAndCashIcons(apiKey, ocid),
   ]).catch(() => {})
+}
+
+// 아이콘·레벨을 모르는 안 낀 장비를 그 장비를 마지막으로 강화한 날(과 다음 날)의 장착 장비에서 찾는다.
+// 한 번 찾아봐도 없던 날은 하루 동안 다시 안 부른다(장착하지 않고 강화한 장비는 그날 장비 목록에도 없다)
+const HISTORY_CALLS_MAX = 6
+const HISTORY_MISS_MS = 24 * 60 * 60 * 1000
+export async function collectHistoryIcons(apiKey: string, ocid: string, wanted: { name: string, date: string }[]) {
+  const today = kstToday()
+  const dates = [...new Set(wanted.flatMap(w => [addDays(w.date, 1), w.date]))]
+    .filter(d => d < today)
+    .sort((a, b) => b.localeCompare(a))
+  const left = new Set(wanted.map(w => iconKey(w.name)))
+  const { cache } = await useCollections()
+  let calls = 0
+  for (const date of dates) {
+    if (!left.size || calls >= HISTORY_CALLS_MAX) break
+    const key = `icon-history:${ocid}:${date}`
+    if (await cache.findOne({ _id: key, expireAt: { $gt: new Date() } })) continue
+    calls++
+    const equipment = await nexon.itemEquipment(apiKey, ocid, date).catch(() => null)
+    const items = equipment ? [equipment.item_equipment, equipment.item_equipment_preset_1, equipment.item_equipment_preset_2, equipment.item_equipment_preset_3].flatMap(l => l ?? []) : []
+    await rememberIcons(items.map(i => ({ name: i.item_name, icon: i.item_icon, kind: 'equipment', part: partName(i.item_equipment_slot), level: Number(i.item_base_option?.base_equipment_level) || undefined })))
+    const found = items.filter(i => left.has(iconKey(i.item_name)))
+    for (const i of found) left.delete(iconKey(i.item_name))
+    if (!found.length) await cache.updateOne({ _id: key }, { $set: { data: null, expireAt: new Date(Date.now() + HISTORY_MISS_MS) } }, { upsert: true })
+  }
 }
 
 export async function lookupItems(names: string[]): Promise<Map<string, ItemIcon>> {
@@ -58,7 +84,7 @@ export async function lookupItems(names: string[]): Promise<Map<string, ItemIcon
   const docs = await itemIcons.find({ _id: { $in: keys } }).toArray()
   return new Map([
     ...STATIC_ICONS.map(s => [s.name, s] as const),
-    ...docs.map(d => [d._id, { name: d._id, icon: d.icon, kind: d.kind, part: d.part ?? '' }] as const),
+    ...docs.map(d => [d._id, { name: d._id, icon: d.icon, kind: d.kind, part: d.part ?? '', ...(d.level && { level: d.level }) }] as const),
   ])
 }
 

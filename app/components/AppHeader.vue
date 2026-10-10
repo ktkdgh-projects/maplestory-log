@@ -79,7 +79,7 @@ async function logout() {
             </div>
           </Transition>
         </div>
-        <NuxtLink v-else to="/login" class="btn compact">키 등록</NuxtLink>
+        <NuxtLink v-else to="/login" class="key-btn"><svg class="key-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8M16 7l3 3M14 9l2 2" /></svg>키 등록</NuxtLink>
       </div>
     </div>
     <div v-if="activeGroup && activeGroup.items.length > 1" class="subbar">
@@ -201,6 +201,13 @@ async function logout() {
   50% { opacity: 0.4; }
 }
 /* 봤고 일요일 전이면 켜진 등 + D-n, 일요일엔 '오늘' */
+/* 제목 글꼴은 글자가 줄 위쪽에 붙어 보여서 배지를 그만큼 올린다 */
+.lamp,
+.chip,
+.new {
+  position: relative;
+  top: -2px;
+}
 .chip {
   display: inline-flex;
   align-items: center;
@@ -298,6 +305,26 @@ async function logout() {
   right: 0;
   left: auto;
   top: calc(100% + 8px);
+}
+.key-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px 0 11px;
+  background: rgb(242 193 78 / 0.1);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  color: var(--gold);
+  font-family: var(--f-title);
+  font-size: 15px;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background var(--fast) ease, box-shadow var(--fast) ease;
+}
+.key-btn:hover {
+  background: rgb(242 193 78 / 0.2);
+  box-shadow: 0 0 12px rgb(242 193 78 / 0.3);
 }
 .me {
   display: flex;

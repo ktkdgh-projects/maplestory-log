@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ date: string, feeRate: number, stock: number }>()
+const props = defineProps<{ date: string, feeRate: number }>()
 const emit = defineEmits<{ saved: [], cancel: [] }>()
 
 const count = ref<number | null>(null)
@@ -26,16 +26,16 @@ async function submit() {
 </script>
 
 <template>
-  <form class="form" @submit.prevent="submit">
+  <form class="form" @submit.prevent="submit" novalidate>
     <div class="amounts">
       <label for="sale-count" class="field">
         <span class="label">판 개수</span>
-        <input id="sale-count" v-model.number="count" type="number" min="1" :max="stock > 0 ? stock : undefined" class="field-input" placeholder="0" required>
+        <input id="sale-count" v-model.number="count" type="number" class="field-input" placeholder="0">
       </label>
-      <MesoInput id="sale-price" v-model="unitPrice" label="개당 가격" required />
+      <MesoInput id="sale-price" v-model="unitPrice" label="개당 가격" />
     </div>
-    <div class="fees" role="radiogroup" aria-label="경매장 수수료">
-      <button v-for="f in AUCTION_FEES" :key="f.rate" type="button" role="radio" class="fee" :class="{ on: fee === f.rate }" :aria-checked="fee === f.rate" @click="fee = f.rate">{{ f.label }}</button>
+    <div class="fees">
+      <LedgerFeeLine v-model="fee" />
       <span class="net">받은 메소 <b>{{ formatKoreanNumber(net) }}</b></span>
     </div>
     <p v-if="failure" class="form-error" role="alert">{{ failure }}</p>
@@ -87,20 +87,6 @@ async function submit() {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-}
-.fee {
-  padding: 4px 10px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-radius: 999px;
-  color: var(--sub);
-  font-size: 12px;
-  cursor: pointer;
-}
-.fee.on {
-  background: rgb(242 193 78 / 0.15);
-  border-color: var(--gold);
-  color: var(--gold);
 }
 .net {
   margin-left: auto;

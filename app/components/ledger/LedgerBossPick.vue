@@ -2,12 +2,18 @@
 import type { BossPick } from '#shared/types'
 import { DIFFICULTY_LABELS, crystalPrice, type BossDifficulty, type BossInfo } from '#shared/data/bosses'
 
-defineProps<{ boss: BossInfo, pick: BossPick | undefined, locked?: boolean }>()
+const props = defineProps<{ boss: BossInfo, pick: BossPick | undefined, locked?: boolean }>()
 const emit = defineEmits<{ difficulty: [difficulty: string], party: [delta: number] }>()
+
+// 고른 카드의 빈 곳을 누르면 뺀다(고른 난이도를 다시 눌러도 빠진다). 버튼 위를 누른 건 그 버튼이 처리한다
+function onCard(event: MouseEvent) {
+  if (!props.pick || (event.target as HTMLElement).closest('button')) return
+  emit('difficulty', props.pick.difficulty)
+}
 </script>
 
 <template>
-  <div class="card" :class="{ picked: pick, locked }" :style="pick ? { '--diff': DIFFICULTY_COLORS[pick.difficulty as BossDifficulty] } : undefined">
+  <div class="card" :class="{ picked: pick, locked }" :style="pick ? { '--diff': DIFFICULTY_COLORS[pick.difficulty as BossDifficulty] } : undefined" :title="pick ? '빈 곳을 누르면 빠져요' : undefined" @click="onCard">
     <LedgerBossEmblem :boss-id="boss.id" :size="44" />
     <div class="body">
       <span class="name ellipsis" :title="boss.name">{{ boss.name }}</span>
@@ -61,6 +67,12 @@ const emit = defineEmits<{ difficulty: [difficulty: string], party: [delta: numb
   background: linear-gradient(90deg, color-mix(in srgb, var(--diff) 16%, var(--panel)), var(--panel) 70%);
   border-color: var(--diff);
   box-shadow: 0 0 10px color-mix(in srgb, var(--diff) 25%, transparent);
+}
+.card.picked {
+  cursor: pointer;
+}
+.card.picked:hover {
+  border-color: color-mix(in srgb, var(--loss) 60%, var(--diff));
 }
 .card.locked {
   opacity: 0.35;

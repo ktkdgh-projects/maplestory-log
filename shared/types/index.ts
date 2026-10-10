@@ -117,11 +117,14 @@ export interface CharacterDetail {
 }
 
 export interface UnionResponse {
+  // account: 내 계정 캐릭터 목록(이미지 포함) · raider: 남의 캐릭터라 공격대에 배치된 직업·레벨만
+  mode: 'account' | 'raider'
   worlds: { name: string, count: number, active: boolean }[]
   world: string
   unionLevel: number | null
   unionGrade: string | null
   members: (CharacterBrief & { imageUrl: string | null })[]
+  raiders: { job: string, level: number, type: string }[]
   pending: number
 }
 
@@ -217,12 +220,74 @@ export interface DropSale extends DropSaleInput {
   id: string
 }
 
+// 가계부에 직접 등록한 지출·수입(메소 판매, 경매장 구매 등)
+export interface MesoEntryInput {
+  date: string
+  type: import('#shared/data/mesoEntries').MesoEntryType
+  // 메소. 수수료가 붙는 종류(경매장 판매·메소 구매)는 수수료를 떼기 전 금액
+  amount: number
+  // 메소 판매·구매 때 받은·낸 현금(원)
+  cash: number | null
+  // 경매장에서 산·판 물건 이름과, 검색해서 골랐으면 그 아이콘
+  item: string | null
+  icon: string | null
+  // 수수료가 붙는 종류의 경매장 수수료율
+  fee: number | null
+  memo: string | null
+}
+
+export interface MesoEntry extends MesoEntryInput {
+  id: string
+}
+
+// 메소 내역: 메소가 움직인 기록을 날짜·종류별 한 줄로
+export type MesoHistoryKind = 'hunt' | 'boss' | 'sale' | 'item' | 'entry' | 'base'
+// 메소 내역에서 바로 지울 수 있는 기록. 장비는 장비 결산 시트 값이라 여기서 지우지 않는다
+export interface MesoHistoryRef {
+  kind: 'hunt' | 'sale' | 'clear' | 'entry'
+  id: string
+}
+export interface MesoHistoryRow {
+  key: string
+  kind: MesoHistoryKind
+  title: string
+  detail: string
+  // 들어온 메소는 양수, 나간 메소는 음수. 맞추기 줄은 0
+  amount: number
+  // 이 줄까지 반영한 보유 메소. 맞춘 날보다 앞이면 null
+  balance: number | null
+  // 장비 한 건이면 그 아이템 아이콘
+  icon: string | null
+  // 여러 건을 한 줄로 묶었으면 건별 내역
+  children: { label: string, amount: number, icon?: string | null, ref?: MesoHistoryRef | null }[]
+  // 한 건짜리 줄을 지울 때 쓰는 값
+  ref: MesoHistoryRef | null
+  // 직접 등록한 건이면 고치기·지우기에 쓴다
+  entry: MesoEntry | null
+}
+export interface MesoHistoryDay {
+  date: string
+  net: number
+  rows: MesoHistoryRow[]
+}
+export interface MesoHistoryResponse {
+  from: string
+  to: string
+  balance: MesoBalance | null
+  totals: { income: number, spent: number, byKind: Partial<Record<MesoHistoryKind, { income: number, spent: number }>> }
+  // 최신 날이 먼저, 날 안에서는 나중 기록이 먼저
+  days: MesoHistoryDay[]
+  // 날마다 그날 끝 보유 메소(맞춘 날부터)
+  series: { date: string, balance: number }[]
+}
+
 export interface LedgerResponse {
   month: string
   hunts: HuntEntry[]
   clears: BossClear[]
   items: ItemFlow[]
   sales: DropSale[]
+  entries: MesoEntry[]
   // 지금까지 먹은 개수 - 판 개수 (전체 기간)
   stock: HuntDrops
 }
@@ -243,7 +308,7 @@ export interface ItemRow {
   potentialDate: string | null
   sell: number
   sellDate: string | null
-  // 경매장 수수료율(5%·3%). 판매가에서 이만큼 떼고 손익·가계부에 잡는다
+  // 경매장 수수료율(5%·3%). 판매가에서 이만큼 떼고 손익·가계부에 잡는다. 내 정보 MVP가 실버 이상이면 3%로 맞춰 내려준다
   sellFee: number
   memo: string | null
   // 예전에 산 장비처럼 들인 메소·손익·가계부에서 뺄 줄
@@ -377,6 +442,8 @@ export interface EnhanceSummary {
 }
 
 export interface EnhanceItem {
+  // 지금 낀 장비인지. 안 낀 장비는 기간 안에 기록이 있는 것만 온다
+  worn: boolean
   slot: string
   name: string
   icon: string
@@ -495,6 +562,21 @@ export interface ItemIcon {
   kind: 'equipment' | 'pet' | 'cash' | 'symbol' | 'etc'
   // 장비 결산 부위 칸에 들어갈 이름 (반지, 펫, 기타 …)
   part: string
+  // 장비 착용 레벨(장비만, 본 적 있을 때)
+  level?: number
+}
+
+export interface Memo {
+  id: string
+  title: string
+  body: string
+  updatedAt: string
+}
+
+export interface MemosResponse {
+  memos: Memo[]
+  // 브라우저 임시 저장 칸 이름. 한 브라우저에서 계정을 바꿔도 남의 메모가 섞이지 않게 계정마다 다르다
+  owner: string
 }
 
 export interface ItemsResponse {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ItemIcon, ItemPurchase, ItemRow, ItemSheet } from '#shared/types'
+import type { ItemIcon, ItemPurchase, ItemRow, ItemSheet, MeResponse } from '#shared/types'
 
 const props = defineProps<{ sheet: ItemSheet }>()
 const emit = defineEmits<{ changed: [], removed: [] }>()
@@ -12,13 +12,11 @@ const newName = ref('')
 const picked = ref<ItemIcon | null>(null)
 const renaming = ref(false)
 const title = ref(props.sheet.title)
-const confirmDelete = ref(false)
 
 watch(() => props.sheet.id, () => {
   failure.value = ''
   notice.value = ''
   renaming.value = false
-  confirmDelete.value = false
   title.value = props.sheet.title
 })
 
@@ -125,10 +123,15 @@ const saveEntries = (row: ItemRow, kind: 'starforce' | 'potential', entries: Ite
   [`${kind}Date`]: entries.at(-1)?.date ?? null,
 })
 const saveDate = (row: ItemRow, field: MoneyField, date: string | null) => patchRow(row, { [`${field}Date`]: date })
+// 내 정보의 MVP가 실버 이상이면 수수료는 3%로 정해져 누를 수 없다
+const { data: me } = useNuxtData<MeResponse>('me')
+const mvpFee = computed(() => hasMvpFee(me.value?.user?.mvpDiscount))
 const toggleFee = (row: ItemRow) => patchRow(row, { sellFee: row.sellFee === DEFAULT_AUCTION_FEE ? AUCTION_FEES[1].rate : DEFAULT_AUCTION_FEE })
 const toggleExcluded = () => run(() => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'PATCH', body: { excluded: !props.sheet.excluded } }))
-function removeRow(row: ItemRow) {
+const { ask } = useConfirm()
+async function removeRow(row: ItemRow) {
   if (isPending(row)) return
+  if (!await ask({ title: '장비 줄 지우기', name: row.name, detail: props.sheet.title, note: '이 줄의 구매·강화·판매 금액이 가계부에서도 빠지고 되돌릴 수 없어요.' })) return
   const before = [...rows.value]
   rows.value = rows.value.filter(r => r.id !== row.id)
   saveInBackground(() => $fetch(`/api/items/rows/${row.id}`, { method: 'DELETE' }), () => {
@@ -166,6 +169,7 @@ const rename = () => run(async () => {
   renaming.value = false
 })
 async function removeSheet() {
+  if (!await ask({ title: '시트 삭제', name: props.sheet.title, detail: `장비 ${rows.value.length}줄`, note: '시트의 장비와 가계부에 잡힌 금액이 같이 사라지고 되돌릴 수 없어요.', action: '삭제' })) return
   await run(() => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'DELETE' }))
   if (!failure.value) emit('removed')
 }
@@ -174,7 +178,7 @@ async function removeSheet() {
 <template>
   <section class="sheet">
     <header class="head">
-      <form v-if="renaming" class="rename" @submit.prevent="rename">
+      <form v-if="renaming" class="rename" @submit.prevent="rename" novalidate>
         <input v-model="title" class="field-input" maxlength="40" aria-label="시트 이름">
         <button class="btn compact" :disabled="busy">저장</button>
         <button type="button" class="btn ghost compact" @click="renaming = false">취소</button>
@@ -189,12 +193,7 @@ async function removeSheet() {
           {{ sheet.excluded ? '가계부 미반영' : '가계부 반영' }}
         </button>
         <button v-if="sheet.ocid" type="button" class="btn ghost compact" :disabled="busy" @click="importEquipment">현재 장비 불러오기</button>
-        <button v-if="!confirmDelete" type="button" class="btn ghost compact" @click="confirmDelete = true">시트 삭제</button>
-        <template v-else>
-          <span class="ask">시트와 가계부에 잡힌 금액이 같이 사라져요</span>
-          <button type="button" class="btn danger compact" :disabled="busy" @click="removeSheet">삭제</button>
-          <button type="button" class="btn ghost compact" @click="confirmDelete = false">취소</button>
-        </template>
+        <button type="button" class="btn ghost compact" :disabled="busy" @click="removeSheet">시트 삭제</button>
       </div>
     </header>
     <p v-if="failure" class="form-error">{{ failure }}</p>
@@ -261,7 +260,8 @@ async function removeSheet() {
             <td class="num cell"><ItemsEnhanceCell label="잠재" :name="row.name" :entries="row.potentialEntries" :reference="row.reference.potential" :reference-days="row.reference.potentialDays" :shared="row.reference.shared" :ocid="sheet.ocid" @save="saveEntries(row, 'potential', $event)" /></td>
             <td class="num cell"><ItemsMoneyCell :value="row.sell" :date="row.sellDate" label="판매" @save="saveField(row, 'sell', $event)" @date="saveDate(row, 'sell', $event)" /></td>
             <td class="center">
-              <button type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'MVP 실버 이상·PC방 3% → 누르면 5%' : '일반 5% → 누르면 MVP·PC방 3%'" @click="toggleFee(row)">
+              <span v-if="mvpFee" class="fee mvp locked" :class="{ idle: !row.sell }" title="내 정보의 MVP 등급이 실버 이상이라 3%예요">3%</span>
+              <button v-else type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'PC방 3% → 누르면 5%' : '5% → PC방이면 눌러서 3%'" @click="toggleFee(row)">
                 {{ Math.round(row.sellFee * 100) }}%
               </button>
             </td>
@@ -300,7 +300,7 @@ async function removeSheet() {
     <div class="bottom">
       <slot name="tabs" />
       <!-- 입력칸 하나뿐이라 엔터만 누르면 이 시트에 추가된다 -->
-      <form class="add" title="금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요" @submit.prevent="busy || addRow()">
+      <form class="add" title="금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요" @submit.prevent="busy || addRow()" novalidate>
         <ItemsNameSearch v-model="newName" class="name-input" @pick="picked = $event" />
       </form>
     </div>
@@ -359,10 +359,6 @@ h3 {
   align-items: center;
   gap: 6px;
   margin-left: auto;
-}
-.ask {
-  color: var(--loss);
-  font-size: 13px;
 }
 .notice {
   margin: 0;
@@ -494,6 +490,11 @@ td.cell {
   color: var(--gold);
 }
 /* 아직 안 판 줄은 수수료가 의미 없어 흐리게만 둔다 */
+.fee.locked {
+  display: inline-block;
+  text-align: center;
+  cursor: default;
+}
 .fee.idle {
   opacity: 0.45;
 }

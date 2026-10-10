@@ -1,12 +1,27 @@
 <script setup lang="ts">
 // 게임 창 느낌의 작은 달력. 값은 'YYYY-MM-DD' 문자열, 비우면 ''.
 // marks: 점을 찍을 날(기록 있는 날), accents: 초록 테두리로 짚을 날(썬데이), quiet: 고른 값이 있어도 버튼을 금색으로 채우지 않고 지우기도 숨긴다
-const props = withDefaults(defineProps<{ min?: string, max?: string, placeholder?: string, suffix?: string, marks?: string[], accents?: string[], quiet?: boolean }>(), { placeholder: '날짜 고르기', suffix: '', marks: () => [], accents: () => [] })
+// field: 입력칸 모양(폼 안에서 쓸 때). 지우기 없이 연·월·일과 요일을 보여 준다
+const props = withDefaults(defineProps<{ min?: string, max?: string, placeholder?: string, suffix?: string, marks?: string[], accents?: string[], quiet?: boolean, field?: boolean, id?: string }>(), { placeholder: '날짜 고르기', suffix: '', marks: () => [], accents: () => [] })
 const value = defineModel<string>({ required: true })
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 const open = ref(false)
 const root = ref<HTMLElement>()
+const pop = ref<HTMLElement>()
+// 달력은 body에 띄워 모달·창 테두리에 잘리지 않게 한다. 아래 자리가 모자라면 위로 연다
+const POP_HEIGHT = 330
+const POP_WIDTH = 260
+const place = ref({ top: 0, left: 0 })
+function measure() {
+  const rect = root.value?.getBoundingClientRect()
+  if (!rect) return
+  const below = window.innerHeight - rect.bottom
+  place.value = {
+    top: below < POP_HEIGHT + 16 && rect.top > POP_HEIGHT ? rect.top - POP_HEIGHT - 8 : rect.bottom + 8,
+    left: Math.max(8, Math.min(rect.left, window.innerWidth - POP_WIDTH - 8)),
+  }
+}
 // 보고 있는 달의 1일
 const view = ref(monthStart(value.value || props.max || kstToday()))
 
@@ -34,9 +49,14 @@ const canPrev = computed(() => !props.min || shiftMonth(view.value, -1) >= month
 const canNext = computed(() => !props.max || shiftMonth(view.value, 1) <= monthStart(props.max))
 
 function toggle() {
-  if (!open.value) view.value = monthStart(value.value || props.max || today)
+  if (!open.value) {
+    view.value = monthStart(value.value || props.max || today)
+    measure()
+  }
   open.value = !open.value
 }
+const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토']
+const fieldLabel = computed(() => (value.value ? `${value.value.replaceAll('-', '. ')} (${WEEKDAY_SHORT[new Date(`${value.value}T12:00:00+09:00`).getUTCDay()]})` : props.placeholder))
 function pick(date: string) {
   if (blocked(date)) return
   value.value = date
@@ -48,7 +68,12 @@ function clear() {
 }
 
 function onOutside(event: Event) {
-  if (open.value && !root.value?.contains(event.target as Node)) open.value = false
+  const target = event.target as Node
+  if (open.value && !root.value?.contains(target) && !pop.value?.contains(target)) open.value = false
+}
+// 띄운 달력은 스크롤하면 자리가 어긋나므로 닫는다
+function onScroll(event: Event) {
+  if (open.value && !pop.value?.contains(event.target as Node)) open.value = false
 }
 function onKey(event: KeyboardEvent) {
   if (event.key === 'Escape') open.value = false
@@ -56,21 +81,27 @@ function onKey(event: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', onOutside)
   document.addEventListener('keydown', onKey)
+  window.addEventListener('scroll', onScroll, true)
+  window.addEventListener('resize', onScroll)
 })
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onOutside)
   document.removeEventListener('keydown', onKey)
+  window.removeEventListener('scroll', onScroll, true)
+  window.removeEventListener('resize', onScroll)
 })
 </script>
 
 <template>
-  <div ref="root" class="picker">
-    <button type="button" class="trigger" :class="{ on: value && !quiet, open }" :aria-expanded="open" aria-haspopup="dialog" @click="toggle">
+  <div ref="root" class="picker" :class="{ field }">
+    <button :id="id" type="button" class="trigger" :class="{ on: value && !quiet && !field, open }" :aria-expanded="open" aria-haspopup="dialog" @click="toggle">
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="2" /><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" /></svg>
-      {{ value && !quiet ? `${formatMonthDay(value)}${suffix}` : placeholder }}
+      <template v-if="field">{{ fieldLabel }}</template>
+      <template v-else>{{ value && !quiet ? `${formatMonthDay(value)}${suffix}` : placeholder }}</template>
     </button>
+    <Teleport to="body">
     <Transition name="pop">
-      <div v-if="open" class="pop" role="dialog" aria-label="날짜 고르기">
+      <div v-if="open" ref="pop" class="pop" role="dialog" aria-label="날짜 고르기" :style="{ top: `${place.top}px`, left: `${place.left}px` }">
         <div class="pop-head">
           <button type="button" class="nav" :disabled="!canPrev" aria-label="이전 달" @click="view = shiftMonth(view, -1)">‹</button>
           <b>{{ title }}</b>
@@ -95,10 +126,11 @@ onBeforeUnmount(() => {
         <div class="pop-foot">
           <button type="button" class="link" :disabled="blocked(today)" @click="pick(today)">오늘</button>
           <span v-if="marks.length" class="legend"><i class="dot" />기록 있는 날</span>
-          <button v-if="value && !quiet" type="button" class="link" @click="clear">지우기</button>
+          <button v-if="value && !quiet && !field" type="button" class="link" @click="clear">지우기</button>
         </div>
       </div>
     </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -136,11 +168,31 @@ onBeforeUnmount(() => {
   stroke-width: 1.4;
   stroke-linecap: round;
 }
+/* 폼 안: 다른 입력칸과 같은 모양 */
+.field .trigger {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  background: var(--bar);
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  transition: border-color var(--fast) ease, box-shadow var(--fast) ease;
+}
+.field .trigger:hover,
+.field .trigger.open {
+  border-color: var(--gold);
+}
+.field .trigger.open {
+  box-shadow: var(--glow);
+}
+.field .trigger svg {
+  color: var(--sub);
+}
 .pop {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 30;
+  position: fixed;
+  z-index: 120;
   display: grid;
   gap: 8px;
   width: 260px;

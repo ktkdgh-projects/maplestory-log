@@ -11,5 +11,5 @@ export default defineEventHandler(async (event): Promise<ItemsResponse> => {
     rowReferences(user._id, sheets, rows, user.mvpDiscount ?? 0),
     lookupItems(rows.filter(r => !r.icon).map(r => r.name)),
   ])
-  return { sheets: sheets.map(s => toItemSheet(s, rows, references, icons)) }
+  return { sheets: sheets.map(s => toItemSheet(s, rows, references, icons, user.mvpDiscount ?? 0)) }
 })
