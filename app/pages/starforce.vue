@@ -45,7 +45,7 @@ const totals = computed(() => (data.value?.items ?? []).reduce((t, i) => ({
     <EnhanceToolbar v-model:ocid="ocid" v-model:days="days" v-model:picked-from="pickedFrom" :characters="characters" :syncing="data?.syncing" :synced-from="data?.syncedFrom" />
 
     <div class="strip">
-      <div title="스타포스 비용은 공식 발표가 없어 위키 공식으로 추정해요. MVP·PC방 할인과 파괴 복구 메소는 빠져 있어요">
+      <div title="스타포스 비용은 공식 발표가 없어 위키 공식으로 추정해요. 이벤트·MVP 할인(내 정보에서 고른 등급)과 파괴 뒤 복구 메소를 넣었고, 노작값은 빠져 있어요">
         <small>쓴 메소 <span class="muted">추정</span></small><b class="gold">{{ data ? formatKoreanNumber(totals.meso) : '-' }}</b>
       </div>
       <div><small>시도</small><b>{{ data ? `${totals.attempts.toLocaleString('ko-KR')}번` : '-' }}</b></div>

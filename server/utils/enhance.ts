@@ -1,7 +1,7 @@
-import type { ObjectId } from 'mongodb'
-import type { CharacterBrief, EnhanceEvent, EnhanceKind, EnhanceSummary, PotentialDay, PotentialDetail, PotentialTier, StarforceDay, StarforceDetail, StarforceStage } from '#shared/types'
+import type { Filter, ObjectId } from 'mongodb'
+import type { CharacterBrief, EnhanceEvent, EnhanceKind, EnhanceSummary, PotentialDay, PotentialDetail, PotentialTier, StarforceDay, StarforceDetail, StarforceRestore, StarforceStage } from '#shared/types'
 import { POTENTIAL_GRADES, resetCost, type PotentialGrade } from '#shared/data/potential'
-import { PROTECT_EXTRA, STARFORCE_REVAMP_DATE, baseCost } from '#shared/data/starforce'
+import { BASE_RESTORE_STAR, DISCOUNT_MAX_STAR, PROTECT_EXTRA, RESTORE_EVENT_DISCOUNT, STARFORCE_REVAMP_DATE, baseCost, restoreCopies, restoreFee, traceStar } from '#shared/data/starforce'
 import type { EnhanceEventDoc } from './mongo'
 import type { NexonHistoryEvent } from './nexon'
 
@@ -116,22 +116,51 @@ export async function syncEnhanceHistory(userId: ObjectId, budgetMs: number) {
   }
 }
 
-const kstDate = (at: Date) => new Date(at.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-// 잠재 메소 재설정은 공식 비용표로, 스타포스는 장비 레벨로 비용 공식을 써서 추정한다(MVP·PC방 할인과 복구 비용은 기록에 없어 빠짐)
-// 큐브·주문서·슈페리얼은 메소를 안 셈
-export function eventMeso(doc: Pick<EnhanceEventDoc, 'kind' | 'at' | 'beforeStar' | 'beforeGrade' | 'itemLevel' | 'tool' | 'scroll' | 'superior' | 'protect' | 'eventDiscount'>, starforceLevel: number | null): number | null {
+// 잠재 메소 재설정은 공식 비용표로, 스타포스는 장비 레벨로 비용 공식을 써서 계산한다. MVP 할인은 기록에 없어 사용자가 고른 값을 쓴다.
+// 파괴 뒤 복구 메소는 다음 시도를 봐야 알아서 restoresOf로 따로 센다. 큐브·주문서·슈페리얼은 메소를 안 셈
+export function eventMeso(doc: Pick<EnhanceEventDoc, 'kind' | 'at' | 'beforeStar' | 'beforeGrade' | 'itemLevel' | 'tool' | 'scroll' | 'superior' | 'protect' | 'eventDiscount'>, starforceLevel: number | null, mvp = 0): number | null {
   if (doc.kind === 'potential') {
     const grade = doc.beforeGrade as PotentialGrade
     return doc.itemLevel && POTENTIAL_GRADES.includes(grade) ? resetCost(isAdditional(doc.tool), doc.itemLevel, grade) : null
   }
   if (doc.kind !== 'starforce' || doc.scroll || doc.superior || doc.beforeStar === null || !starforceLevel) return null
-  const base = baseCost(starforceLevel, doc.beforeStar, kstDate(doc.at) < STARFORCE_REVAMP_DATE)
-  return Math.round(base * (1 - (doc.eventDiscount ?? 0))) + (doc.protect ? base * PROTECT_EXTRA : 0)
+  const base = baseCost(starforceLevel, doc.beforeStar, kstDateOf(doc.at) < STARFORCE_REVAMP_DATE)
+  const member = doc.beforeStar <= DISCOUNT_MAX_STAR ? mvp : 0
+  return Math.round(base * (1 - member) * (1 - (doc.eventDiscount ?? 0))) + (doc.protect ? base * PROTECT_EXTRA : 0)
+}
+
+export interface RestoreRecord { eventId: string, character: string, item: string, at: Date, restore: StarforceRestore }
+
+// 파괴된 시도마다 그 뒤 복구. 다음 시도가 흔적 성급에서 시작했으면 흔적 복구, 12성에서 시작했으면 12성 복구다.
+// 다음 시도가 아직 없거나 다른 ★에서 시작했으면 알 수 없어 넣지 않는다. 복구 메소 20% 할인은 그 썬데이에 운영자가 고른 효과로 본다
+export async function restoresOf(userId: ObjectId, match: Filter<EnhanceEventDoc>, levelOf: (item: string) => number | null): Promise<RestoreRecord[]> {
+  const { enhanceEvents, sundays } = await useCollections()
+  const [docs, sales] = await Promise.all([
+    enhanceEvents.aggregate<{ eventId: string, character: string, item: string, at: Date, beforeStar: number | null, next: number | null }>([
+      { $match: { ...match, userId, kind: 'starforce' } },
+      { $setWindowFields: { partitionBy: { character: '$character', item: '$item' }, sortBy: { at: 1 }, output: { next: { $shift: { output: '$beforeStar', by: 1, default: null } } } } },
+      { $match: { destroyed: true } },
+      { $project: { _id: 0, eventId: 1, character: 1, item: 1, at: 1, beforeStar: 1, next: 1 } },
+    ]).toArray(),
+    sundays.find({ effects: 'restoreDiscount' }, { projection: { start: 1, end: 1 } }).toArray(),
+  ])
+  const result: RestoreRecord[] = []
+  for (const d of docs) {
+    if (d.beforeStar === null) continue
+    const trace = traceStar(d.beforeStar)
+    const level = levelOf(d.item)
+    if (d.next === trace && trace > BASE_RESTORE_STAR && level) {
+      const sale = sales.some(s => d.at >= s.start && d.at <= s.end) ? 1 - RESTORE_EVENT_DISCOUNT : 1
+      result.push({ eventId: d.eventId, character: d.character, item: d.item, at: d.at, restore: { to: trace, fee: Math.round(restoreFee(level, trace) * sale), copies: restoreCopies(trace) } })
+    }
+    else if (d.next === BASE_RESTORE_STAR) result.push({ eventId: d.eventId, character: d.character, item: d.item, at: d.at, restore: { to: BASE_RESTORE_STAR, fee: 0, copies: 1 } })
+  }
+  return result
 }
 
 // 에디셔널 큐브·에디셔널 재설정은 이름에 '에디셔널'이 들어 있다
-const isAdditional = (tool: string | null) => !!tool?.includes('에디셔널')
+export const isAdditional = (tool: string | null) => !!tool?.includes('에디셔널')
 
 export const emptySummary = (): EnhanceSummary => ({
   starforce: { attempts: 0, success: 0, destroy: 0, protect: 0 },
@@ -142,7 +171,7 @@ export const emptySummary = (): EnhanceSummary => ({
   last: null,
 })
 
-function toEvent(doc: EnhanceEventDoc, meso: number | null): EnhanceEvent {
+function toEvent(doc: EnhanceEventDoc, meso: number | null, restore: StarforceRestore | null = null): EnhanceEvent {
   return {
     kind: doc.kind,
     at: doc.at.toISOString(),
@@ -159,6 +188,7 @@ function toEvent(doc: EnhanceEventDoc, meso: number | null): EnhanceEvent {
     // 쓴 메소 필드를 받기 전(버전 1)에 저장된 기록엔 없다
     protect: doc.protect ?? false,
     eventDiscount: doc.eventDiscount ?? 0,
+    restore,
   }
 }
 
@@ -175,11 +205,12 @@ const sinceFilter = (from: string | null) => (from ? { at: { $gte: kstDayStart(f
 type CostGroup = Pick<EnhanceEventDoc, 'item' | 'kind' | 'success' | 'destroyed' | 'beforeStar' | 'beforeGrade' | 'itemLevel' | 'tool' | 'protect' | 'superior' | 'scroll' | 'eventDiscount'>
 
 // 넥슨 기록엔 아이템 고유 번호가 없어서 같은 캐릭터·같은 이름으로 묶는다. 기록 목록은 장비를 고를 때 starforceDetail·potentialDetail로 따로 받는다
-export async function summariesByItem(userId: ObjectId, character: string, items: { name: string, level: number | null }[], from: string | null): Promise<Map<string, EnhanceSummary>> {
+export async function summariesByItem(userId: ObjectId, character: string, items: { name: string, level: number | null }[], from: string | null, mvp: number): Promise<Map<string, EnhanceSummary>> {
   const { enhanceEvents } = await useCollections()
   const levels = new Map(items.map(i => [i.name, i.level]))
-  const groups = await enhanceEvents.aggregate<{ _id: CostGroup & { legacy: boolean }, count: number, first: Date, last: Date }>([
-    { $match: { userId, character, item: { $in: [...levels.keys()] }, ...sinceFilter(from) } },
+  const match = { character, item: { $in: [...levels.keys()] }, ...sinceFilter(from) }
+  const [groups, restores] = await Promise.all([enhanceEvents.aggregate<{ _id: CostGroup & { legacy: boolean }, count: number, first: Date, last: Date }>([
+    { $match: { userId, ...match } },
     { $group: {
       _id: {
         item: '$item', kind: '$kind', success: '$success', destroyed: '$destroyed', beforeStar: '$beforeStar', beforeGrade: '$beforeGrade', itemLevel: '$itemLevel',
@@ -191,13 +222,13 @@ export async function summariesByItem(userId: ObjectId, character: string, items
       first: { $min: '$at' },
       last: { $max: '$at' },
     } },
-  ]).toArray()
+  ]).toArray(), restoresOf(userId, match, item => levels.get(item) ?? null)])
 
   const result = new Map<string, EnhanceSummary>()
   for (const { _id: g, count, first, last } of groups) {
     const s = result.get(g.item) ?? result.set(g.item, emptySummary()).get(g.item)!
     // 묶음 안에선 비용이 같으므로 대표 시각 하나로 한 번만 계산한다
-    const meso = (eventMeso({ ...g, at: first }, levels.get(g.item) ?? null) ?? 0) * count
+    const meso = (eventMeso({ ...g, at: first }, levels.get(g.item) ?? null, mvp) ?? 0) * count
     if (g.kind === 'starforce') {
       s.starforce.attempts += count
       if (g.success) s.starforce.success += count
@@ -214,6 +245,10 @@ export async function summariesByItem(userId: ObjectId, character: string, items
     if (!s.first || first.toISOString() < s.first) s.first = first.toISOString()
     if (!s.last || last.toISOString() > s.last) s.last = last.toISOString()
   }
+  for (const r of restores) {
+    const s = result.get(r.item)
+    if (s) s.meso.starforce += r.restore.fee
+  }
   return result
 }
 
@@ -221,20 +256,24 @@ export async function summariesByItem(userId: ObjectId, character: string, items
 const MAX_DETAIL_EVENTS = 3000
 
 // 한 장비의 스타포스 기록을 ★ 구간별과 날짜별로 묶는다
-export async function starforceDetail(userId: ObjectId, character: string, item: string, level: number | null, from: string | null): Promise<StarforceDetail> {
+export async function starforceDetail(userId: ObjectId, character: string, item: string, level: number | null, from: string | null, mvp: number): Promise<StarforceDetail> {
   const { enhanceEvents } = await useCollections()
-  const docs = await enhanceEvents
-    .find({ userId, character, item, kind: 'starforce', ...sinceFilter(from) })
-    .sort({ at: -1 })
-    .limit(MAX_DETAIL_EVENTS + 1)
-    .toArray()
+  const match = { character, item, ...sinceFilter(from) }
+  const [docs, restoreList] = await Promise.all([
+    enhanceEvents.find({ userId, kind: 'starforce', ...match }).sort({ at: -1 }).limit(MAX_DETAIL_EVENTS + 1).toArray(),
+    restoresOf(userId, match, () => level),
+  ])
+  const restores = new Map(restoreList.map(r => [r.eventId, r.restore]))
   const truncated = docs.length > MAX_DETAIL_EVENTS
   if (truncated) docs.pop()
 
   const stages = new Map<number, StarforceStage>()
   const days = new Map<string, StarforceDay>()
   for (const doc of docs) {
-    const meso = eventMeso(doc, level)
+    const meso = eventMeso(doc, level, mvp)
+    const restore = restores.get(doc.eventId) ?? null
+    // 복구 메소는 터진 구간·그날에 더한다
+    const spent = (meso ?? 0) + (restore?.fee ?? 0)
     if (doc.beforeStar !== null) {
       const stage = stages.get(doc.beforeStar) ?? stages.set(doc.beforeStar, { star: doc.beforeStar, attempts: 0, success: 0, fail: 0, destroy: 0, protect: 0, meso: 0 }).get(doc.beforeStar)!
       stage.attempts++
@@ -242,18 +281,18 @@ export async function starforceDetail(userId: ObjectId, character: string, item:
       else if (doc.destroyed) stage.destroy++
       else stage.fail++
       if (doc.protect) stage.protect++
-      stage.meso += meso ?? 0
+      stage.meso += spent
     }
-    const date = kstDate(doc.at)
+    const date = kstDateOf(doc.at)
     const day = days.get(date) ?? days.set(date, { date, attempts: 0, success: 0, destroy: 0, meso: 0, fromStar: null, toStar: null, events: [] }).get(date)!
     day.attempts++
     if (doc.success) day.success++
     if (doc.destroyed) day.destroy++
-    day.meso += meso ?? 0
+    day.meso += spent
     // 최신순으로 돌므로 처음 만난 기록이 그날 마지막, 마지막으로 만난 기록이 그날 처음이다
     day.toStar ??= doc.afterStar
     day.fromStar = doc.beforeStar
-    day.events.push(toEvent(doc, meso))
+    day.events.push(toEvent(doc, meso, restore))
   }
   return {
     stages: [...stages.values()].sort((a, b) => a.star - b.star),
@@ -277,7 +316,7 @@ export async function potentialDetail(userId: ObjectId, character: string, item:
   const days = new Map<string, PotentialDay>()
   for (const doc of docs) {
     const meso = eventMeso(doc, level)
-    const date = kstDate(doc.at)
+    const date = kstDateOf(doc.at)
     const day = days.get(date) ?? days.set(date, { date, cubes: 0, resets: 0, meso: 0, ups: 0, events: [] }).get(date)!
     if (doc.kind === 'cube') day.cubes++
     else day.resets++

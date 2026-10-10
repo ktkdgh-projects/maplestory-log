@@ -12,6 +12,8 @@ export interface UserDoc {
   keyStatusReason: string | null
   keyCheckedAt: Date | null
   mainOcid: string | null
+  // 스타포스 MVP 할인율(0~0.1). 강화 기록 비용·계산기에 쓴다
+  mvpDiscount?: number
   consentAt: Date
   createdAt: Date
   lastSeenAt: Date
@@ -92,6 +94,9 @@ export interface ItemRowDoc {
   starforceDate?: string | null
   potential?: number
   potentialDate?: string | null
+  // 강화 비용을 날짜별로 나눠 적은 내역. 있으면 금액은 그 합계, 날짜는 가장 늦은 날이다
+  starforceEntries?: ItemPurchase[]
+  potentialEntries?: ItemPurchase[]
   order: number
 }
 
@@ -312,6 +317,8 @@ async function ensureIndexes(db: Db) {
     db.collection('enhanceEvents').createIndexes([
       { key: { userId: 1, eventId: 1 }, unique: true },
       { key: { userId: 1, character: 1, item: 1, at: -1 } },
+      // 강화 결산: 장비와 상관없이 캐릭터·기간으로 찾는다
+      { key: { userId: 1, character: 1, at: -1 } },
     ]),
     db.collection('hunts').createIndexes([
       { key: { userId: 1, date: -1 } },

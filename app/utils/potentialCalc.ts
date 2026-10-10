@@ -143,6 +143,32 @@ export function goalPresets(table: PotentialOptionTable, stat: string): OptionGo
   return goals
 }
 
+// 이미 뜬 옵션이 이룬 목표 중 가장 어려운 것("STR 21%↑", "공·보공 2줄"). 쓸모없는 줄까지 똑같이 뜰 확률이 아니라
+// 같은 효과의 합이 그만큼 이상 뜰 확률로 운을 보려고 쓴다. 이룬 목표가 없으면 null
+export function achievedGoal(table: PotentialOptionTable, options: string[]): { goal: OptionGoal, chance: number } | null {
+  const shown = options.map(text => parseOption({ text, prob: 0 }))
+  const sum = (keys: string[]) => Math.round(shown.filter(o => keys.includes(o.key)).reduce((n, o) => n + o.value, 0) * 10) / 10
+  const lines = (keys: string[]) => shown.filter(o => keys.includes(o.key)).length
+  const goals: OptionGoal[] = []
+  for (const stat of ['STR', 'DEX', 'INT', 'LUK', '최대 HP']) {
+    for (const group of SUM_GOALS) {
+      const keys = group.keys(stat)
+      const value = sum(keys)
+      if (value > 0) goals.push({ label: `${group.name(stat)} ${value}${keys[0]!.endsWith('(초)') ? '초' : '%'}↑`, keys, mode: 'sum', threshold: value })
+    }
+  }
+  for (const group of LINE_GOALS) {
+    const count = lines(group.keys)
+    if (count >= 2) goals.push({ label: `${group.name} ${count}줄`, keys: group.keys, mode: 'lines', threshold: count })
+  }
+  const unique = [...new Map(goals.map(g => [g.label, g])).values()]
+  // HP는 노리는 경우가 드물어(데몬어벤져 정도) 다른 목표가 없을 때만 본다
+  const hp = (g: OptionGoal) => g.keys.includes('최대 HP %')
+  const candidates = unique.some(g => !hp(g)) ? unique.filter(g => !hp(g)) : unique
+  const scored = candidates.map(goal => ({ goal, chance: optionChance(table, goal) })).filter(g => g.chance > 0)
+  return scored.length ? scored.reduce((a, b) => (b.chance < a.chance ? b : a)) : null
+}
+
 export interface PotentialPlan {
   tierTries: number
   optionTries: number

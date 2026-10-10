@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 게임 창 느낌의 작은 달력. 값은 'YYYY-MM-DD' 문자열, 비우면 ''
-const props = withDefaults(defineProps<{ min?: string, max?: string, placeholder?: string, suffix?: string }>(), { placeholder: '날짜 고르기', suffix: '' })
+// 게임 창 느낌의 작은 달력. 값은 'YYYY-MM-DD' 문자열, 비우면 ''.
+// marks: 점을 찍을 날(기록 있는 날), accents: 초록 테두리로 짚을 날(썬데이), quiet: 고른 값이 있어도 버튼을 금색으로 채우지 않고 지우기도 숨긴다
+const props = withDefaults(defineProps<{ min?: string, max?: string, placeholder?: string, suffix?: string, marks?: string[], accents?: string[], quiet?: boolean }>(), { placeholder: '날짜 고르기', suffix: '', marks: () => [], accents: () => [] })
 const value = defineModel<string>({ required: true })
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -64,9 +65,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="root" class="picker">
-    <button type="button" class="trigger" :class="{ on: value }" :aria-expanded="open" aria-haspopup="dialog" @click="toggle">
+    <button type="button" class="trigger" :class="{ on: value && !quiet, open }" :aria-expanded="open" aria-haspopup="dialog" @click="toggle">
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="2" /><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3" /></svg>
-      {{ value ? `${formatMonthDay(value)}${suffix}` : placeholder }}
+      {{ value && !quiet ? `${formatMonthDay(value)}${suffix}` : placeholder }}
     </button>
     <Transition name="pop">
       <div v-if="open" class="pop" role="dialog" aria-label="날짜 고르기">
@@ -83,7 +84,7 @@ onBeforeUnmount(() => {
               v-else
               type="button"
               class="day"
-              :class="{ picked: cell.date === value, today: cell.date === today, sun: i % 7 === 0, sat: i % 7 === 6 }"
+              :class="{ picked: cell.date === value, today: cell.date === today, sun: i % 7 === 0, sat: i % 7 === 6, mark: marks.includes(cell.date), accent: accents.includes(cell.date) }"
               :disabled="blocked(cell.date)"
               @click="pick(cell.date)"
             >
@@ -93,7 +94,8 @@ onBeforeUnmount(() => {
         </div>
         <div class="pop-foot">
           <button type="button" class="link" :disabled="blocked(today)" @click="pick(today)">오늘</button>
-          <button v-if="value" type="button" class="link" @click="clear">지우기</button>
+          <span v-if="marks.length" class="legend"><i class="dot" />기록 있는 날</span>
+          <button v-if="value && !quiet" type="button" class="link" @click="clear">지우기</button>
         </div>
       </div>
     </Transition>
@@ -216,6 +218,45 @@ onBeforeUnmount(() => {
 }
 .day.today {
   border-color: rgb(242 193 78 / 0.5);
+}
+/* 기록 있는 날은 숫자 아래 금색 점, 썬데이 같은 날은 초록 테두리 */
+.day {
+  position: relative;
+}
+.day.mark::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  background: var(--gold);
+  border-radius: 50%;
+  translate: -50% 0;
+}
+.day.accent {
+  border-color: rgb(127 217 154 / 0.55);
+}
+.day.picked.mark::after {
+  background: var(--on-gold);
+}
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  margin-right: 8px;
+  color: var(--sub);
+  font-size: 11.5px;
+}
+.legend .dot {
+  width: 5px;
+  height: 5px;
+  background: var(--gold);
+  border-radius: 50%;
+}
+.trigger.open {
+  color: var(--text);
 }
 .day.picked {
   background: var(--gold);

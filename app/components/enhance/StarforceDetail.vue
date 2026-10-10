@@ -122,7 +122,8 @@ const calcLink = computed(() => ({
               <span class="what">
                 <span class="star">★</span>{{ e.beforeStar }} → {{ e.beforeStar === null ? '' : e.beforeStar + 1 }}
                 <span v-if="e.protect" class="tag protect">방지</span>
-                <span v-if="e.eventDiscount" class="tag event">이벤트 {{ Math.round(e.eventDiscount * 100) }}%</span>
+                <span v-if="e.eventDiscount" class="tag sale">이벤트 {{ Math.round(e.eventDiscount * 100) }}%</span>
+                <span v-if="e.restore" class="tag restore" :title="`노작 ${e.restore.copies}개${e.restore.fee ? ` + 복구 메소 ${formatShortNumber(e.restore.fee)}` : ''}`">{{ e.restore.to === 12 ? '12성 복구' : `★${e.restore.to} 흔적 복구${e.restore.fee ? ` ${formatShortNumber(e.restore.fee)}` : ''}` }}</span>
               </span>
               <span class="cost">{{ e.meso ? formatShortNumber(e.meso) : '' }}</span>
               <span class="result">{{ resultOf(e) }}</span>
@@ -351,7 +352,11 @@ td.small {
   border-color: rgb(127 178 255 / 0.5);
   color: var(--api);
 }
-.tag.event {
+.tag.restore {
+  border-color: rgb(255 138 122 / 0.5);
+  color: var(--loss);
+}
+.tag.sale {
   border-color: rgb(242 193 78 / 0.5);
   color: var(--gold);
 }

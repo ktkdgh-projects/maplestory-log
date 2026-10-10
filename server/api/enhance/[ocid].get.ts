@@ -22,7 +22,7 @@ export default defineEventHandler(async (event): Promise<EnhanceResponse> => {
   ])
   const equipped = detail.presets[detail.presetNo - 1] ?? detail.presets[0] ?? []
   // 스타포스 기록엔 장비 레벨이 없어 지금 낀 같은 이름 장비의 착용 레벨로 비용을 추정한다
-  const summaries = await summariesByItem(user._id, character.name, equipped.map(i => ({ name: i.name, level: i.requiredLevel || null })), from)
+  const summaries = await summariesByItem(user._id, character.name, equipped.map(i => ({ name: i.name, level: i.requiredLevel || null })), from, user.mvpDiscount ?? 0)
 
   return {
     character: { ...character, imageUrl: detail.imageUrl },

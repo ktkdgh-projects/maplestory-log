@@ -106,7 +106,7 @@ function patchRow(row: ItemRow, changes: Partial<ItemRow>) {
   )
 }
 
-type MoneyField = 'buy' | 'starforce' | 'potential' | 'sell'
+type MoneyField = 'buy' | 'sell'
 const today = kstToday()
 // 서버와 같이, 날짜 없이 금액만 적으면 오늘 날짜로 잡는다
 const saveField = (row: ItemRow, field: MoneyField, meso: number) => patchRow(row, {
@@ -117,6 +117,12 @@ const savePurchases = (row: ItemRow, purchases: ItemPurchase[]) => patchRow(row,
   purchases,
   buy: purchases.reduce((sum, p) => sum + p.amount, 0),
   buyDate: purchases[0]?.date ?? null,
+})
+// 강화 비용 내역은 서버와 같이 합계·가장 늦은 날짜로 칸 값을 맞춘다
+const saveEntries = (row: ItemRow, kind: 'starforce' | 'potential', entries: ItemPurchase[]) => patchRow(row, {
+  [`${kind}Entries`]: entries,
+  [kind]: entries.reduce((sum, e) => sum + e.amount, 0),
+  [`${kind}Date`]: entries.at(-1)?.date ?? null,
 })
 const saveDate = (row: ItemRow, field: MoneyField, date: string | null) => patchRow(row, { [`${field}Date`]: date })
 const toggleFee = (row: ItemRow) => patchRow(row, { sellFee: row.sellFee === DEFAULT_AUCTION_FEE ? AUCTION_FEES[1].rate : DEFAULT_AUCTION_FEE })
@@ -137,7 +143,8 @@ function addRow() {
   rows.value.push({
     id: pendingId, part: known?.part ?? '', name, icon: known?.icon ?? null, memo: null, level: null, excluded: false,
     buy: 0, buyDate: null, purchases: [], starforce: 0, starforceDate: null, potential: 0, potentialDate: null,
-    sell: 0, sellDate: null, sellFee: DEFAULT_AUCTION_FEE, reference: { starforce: 0, potential: 0 },
+    sell: 0, sellDate: null, sellFee: DEFAULT_AUCTION_FEE, starforceEntries: [], potentialEntries: [],
+    reference: { starforce: 0, potential: 0, shared: false, starforceDays: [], potentialDays: [] },
   })
   newName.value = ''
   picked.value = null
@@ -250,8 +257,8 @@ async function removeSheet() {
               <ItemsPurchaseCell v-if="isMultiPurchase(row)" :name="row.name" :purchases="row.purchases" @save="savePurchases(row, $event)" />
               <ItemsMoneyCell v-else :value="row.buy" :date="row.buyDate" label="구매" @save="saveField(row, 'buy', $event)" @date="saveDate(row, 'buy', $event)" />
             </td>
-            <td class="num cell"><ItemsMoneyCell :value="row.starforce" :date="row.starforceDate" label="스타포스" :reference="row.reference.starforce" estimated @save="saveField(row, 'starforce', $event)" @date="saveDate(row, 'starforce', $event)" /></td>
-            <td class="num cell"><ItemsMoneyCell :value="row.potential" :date="row.potentialDate" label="잠재" :reference="row.reference.potential" @save="saveField(row, 'potential', $event)" @date="saveDate(row, 'potential', $event)" /></td>
+            <td class="num cell"><ItemsEnhanceCell label="스타포스" :name="row.name" :entries="row.starforceEntries" :reference="row.reference.starforce" :reference-days="row.reference.starforceDays" :shared="row.reference.shared" :ocid="sheet.ocid" estimated @save="saveEntries(row, 'starforce', $event)" /></td>
+            <td class="num cell"><ItemsEnhanceCell label="잠재" :name="row.name" :entries="row.potentialEntries" :reference="row.reference.potential" :reference-days="row.reference.potentialDays" :shared="row.reference.shared" :ocid="sheet.ocid" @save="saveEntries(row, 'potential', $event)" /></td>
             <td class="num cell"><ItemsMoneyCell :value="row.sell" :date="row.sellDate" label="판매" @save="saveField(row, 'sell', $event)" @date="saveDate(row, 'sell', $event)" /></td>
             <td class="center">
               <button type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'MVP 실버 이상·PC방 3% → 누르면 5%' : '일반 5% → 누르면 MVP·PC방 3%'" @click="toggleFee(row)">

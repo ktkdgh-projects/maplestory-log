@@ -17,6 +17,8 @@ export interface MeResponse {
     createdAt: string
     main: (CharacterBrief & { imageUrl: string | null }) | null
     isAdmin: boolean
+    // 스타포스 MVP 할인율(0~0.1)
+    mvpDiscount: number
   } | null
 }
 
@@ -248,8 +250,11 @@ export interface ItemRow {
   excluded: boolean
   // 착용 레벨. 현재 장비 불러오기로 채운다(스타포스 참고값 계산용)
   level: number | null
-  // 구매일 이후 강화 기록으로 센 참고값. 잠재 메소 재설정은 공식 비용표, 스타포스는 위키 공식 추정(할인·복구 비용 빠짐)
-  reference: { starforce: number, potential: number }
+  // 강화 비용을 날짜별로 나눈 내역. 가계부에는 건마다 그 날짜로 들어간다
+  starforceEntries: ItemPurchase[]
+  potentialEntries: ItemPurchase[]
+  // 구매일 이후 강화 기록으로 센 참고값(MVP 할인·복구 메소 포함)과 날짜별 내역. 같은 이름 장비가 여러 줄이면 나눌 수 없어 shared로 비운다
+  reference: { starforce: number, potential: number, shared: boolean, starforceDays: ItemPurchase[], potentialDays: ItemPurchase[] }
 }
 
 export interface ItemSheet {
@@ -283,6 +288,77 @@ export interface EnhanceEvent {
   // 스타포스만: 파괴방지를 썼는지, 이벤트 할인율(0.3 = 30%)
   protect: boolean
   eventDiscount: number
+  // 스타포스 파괴 뒤 복구. 다음 시도를 보고 가리므로 아직 모르면 null
+  restore: StarforceRestore | null
+}
+
+// 강화 결산: 고른 기간에 한 장비의 스타포스. 시작 ★은 첫 시도 전, 끝 ★은 마지막 시도 뒤
+export interface ReviewStarforce {
+  item: string
+  slot: string | null
+  icon: string | null
+  level: number | null
+  from: number
+  to: number
+  attempts: number
+  destroys: number
+  // 누른 비용(MVP·이벤트 할인·파괴방지 포함)과 파괴 뒤 복구 메소, 복구에 든 노작
+  meso: number
+  restoreMeso: number
+  copies: number
+  // 계산기 조건: 파괴방지를 쓴 ★, 이벤트 할인을 받았는지, 그 기간 썬데이 스타포스 효과
+  protectStars: number[]
+  discount: boolean
+  sundayEffects: string[]
+  stages: { star: number, attempts: number, success: number, destroy: number }[]
+  // 어떻게 올렸나: 시간순으로 ★마다 몇 번 눌러 오르거나 터졌는지. stop은 그 ★에서 멈춤
+  path: { star: number, tries: number, result: 'up' | 'destroy' | 'stop', restore: StarforceRestore | null }[]
+  first: string
+  last: string
+  // 장비 결산에 이 기간 날짜로 직접 적은 스타포스 비용
+  manual: number | null
+}
+
+// 강화 결산: 고른 기간에 한 장비의 윗잠 또는 에디 재설정
+export interface ReviewPotential {
+  item: string
+  slot: string | null
+  icon: string | null
+  level: number | null
+  additional: boolean
+  // 도구별 횟수(블랙 큐브 22, 메소 재설정 74 …)
+  tools: { name: string, count: number }[]
+  meso: number
+  fromGrade: string | null
+  toGrade: string | null
+  // 기간 시작 때 그 등급에서 이미 돌린 횟수(천장)
+  stackBefore: number
+  tiers: PotentialTier[]
+  // 마지막 등급이 된 뒤(또는 기간 처음부터) 돌린 횟수와, 지금 옵션이 그중 몇 번째에 떴는지
+  optionTries: number
+  optionAt: number | null
+  optionTime: string | null
+  options: string[]
+  first: string
+  last: string
+  manual: number | null
+}
+
+export interface ReviewResponse {
+  character: CharacterBrief
+  from: string
+  to: string
+  starforce: ReviewStarforce[]
+  potential: ReviewPotential[]
+  // 최근 기록이 있는 날(날짜 칩 점·가까운 날 찾기)
+  recordDays: string[]
+}
+
+// 흔적 복구(to = 흔적 성급, 노작 1~4개 + 복구 메소)나 12성 복구(to = 12, 노작 1개)
+export interface StarforceRestore {
+  to: number
+  fee: number
+  copies: number
 }
 
 // 잠재(윗잠)와 에디셔널(아랫잠) 각각 큐브와 메소 재설정 횟수

@@ -6,6 +6,11 @@ export function kstToday(): string {
   return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0, 10)
 }
 
+// 시각(Date나 ISO 문자열)의 한국 날짜
+export function kstDateOf(at: Date | string): string {
+  return new Date(new Date(at).getTime() + KST_OFFSET_MS).toISOString().slice(0, 10)
+}
+
 export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
 }

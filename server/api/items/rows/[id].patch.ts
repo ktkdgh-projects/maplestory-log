@@ -28,6 +28,13 @@ export default defineEventHandler(async (event) => {
     update.buy = update.purchases.reduce((sum, p) => sum + p.amount, 0)
     update.buyDate = update.purchases[0]?.date ?? null
   }
+  // 강화 비용을 날짜별로 나눠 적은 줄은 내역이 기준이고, 금액·날짜는 그 합계·가장 늦은 날로 맞춘다
+  for (const [entries, total, date] of [['starforceEntries', 'starforce', 'starforceDate'], ['potentialEntries', 'potential', 'potentialDate']] as const) {
+    if (body?.[entries] === undefined) continue
+    update[entries] = parsePurchases(body[entries])
+    update[total] = update[entries]!.reduce((sum, p) => sum + p.amount, 0)
+    update[date] = update[entries]!.at(-1)?.date ?? null
+  }
   if (body?.sellFee !== undefined) {
     if (!isAuctionFee(body.sellFee)) throw createError({ statusCode: 400, message: '수수료를 골라 주세요.' })
     update.sellFee = body.sellFee
