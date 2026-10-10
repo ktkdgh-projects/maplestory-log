@@ -10,10 +10,22 @@ const fetchedAgo = computed(() => {
 })
 
 const best = computed(() => findBestPresetCombo(props.character))
+// 더 센 조합이 있으면 큰 숫자는 그 조합의 전투력으로 보여준다
+const upgrade = computed(() => (best.value && !best.value.current && props.character.combatPower ? best.value : null))
+// 추산과 3% 안으로 맞는 가장 최근 실제 기록을 쓴다. 템을 팔거나 빼서 스펙이 바뀐 뒤의 옛 기록은 어긋나서 걸러진다
+const RECORD_TOLERANCE = 0.03
+const recorded = computed(() => {
+  const estimated = upgrade.value?.value
+  if (!estimated) return null
+  return props.character.recentPowers?.find(record => Math.abs(record.value - estimated) / estimated <= RECORD_TOLERANCE) ?? null
+})
 const gain = computed(() => {
   const current = props.character.combatPower
-  return best.value && current ? ((best.value.value - current) / current) * 100 : 0
+  const target = recorded.value?.value ?? upgrade.value?.value
+  return target && current ? Math.round(((target - current) / current) * 100) : 0
 })
+// 추산은 실제와 1% 안팎 차이 나므로 10만 단위로 반올림해 대략인 값임을 드러낸다
+const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.value ?? 0) / 100_000) * 100_000))
 </script>
 
 <template>
@@ -38,17 +50,33 @@ const gain = computed(() => {
       </div>
     </div>
     <div class="tile power" style="--tone: var(--gold)">
-      <span class="tile-label">전투력</span>
-      <span class="tile-value">{{ character.combatPower === null ? '-' : formatKoreanNumber(character.combatPower) }}</span>
-      <div v-if="best" class="combo" :class="{ up: !best.current }">
-        <template v-if="best.current">
-          <b>✓ 지금 조합이 가장 세요</b>
-          <span>장비 프리셋 {{ best.equipPreset }} · 어빌리티 {{ best.abilityPreset }}</span>
-        </template>
-        <template v-else>
-          <b>▲ 장비 프리셋 {{ best.equipPreset }} · 어빌리티 {{ best.abilityPreset }}</b>
-          <span>이 조합이 가장 세요 · 약 +{{ gain.toFixed(1) }}%</span>
-        </template>
+      <span class="tile-label">
+        전투력
+        <HoverInfo v-if="recorded" title="실제 기록" align="left">
+          <span class="badge-mini record">{{ formatMonthDay(recorded.date) }} 기록</span>
+          <template #info>
+            <span>이 조합의 추산과 맞는 가장 최근 실제 전투력이에요</span>
+          </template>
+        </HoverInfo>
+        <HoverInfo v-else-if="upgrade" title="추산 전투력" align="left">
+          <span class="badge-mini">추산</span>
+          <template #info>
+            <span>장착 정보로 계산한 값이라 실제와 1% 정도 차이 날 수 있어요</span>
+          </template>
+        </HoverInfo>
+      </span>
+      <span v-if="recorded" class="tile-value">{{ formatKoreanNumber(recorded.value) }}</span>
+      <span v-else-if="upgrade" class="tile-value"><small class="about">약</small>{{ estimate }}</span>
+      <span v-else class="tile-value">{{ character.combatPower === null ? '-' : formatKoreanNumber(character.combatPower) }}</span>
+      <div v-if="upgrade" class="combo up">
+        <p class="sentence">
+          <b>▲ 장비 프리셋 {{ upgrade.equipPreset }} · 어빌리티 {{ upgrade.abilityPreset }}</b>으로 바꾸면<br>
+          지금 <em>{{ formatKoreanNumber(character.combatPower!) }}</em>보다 <strong>약 {{ gain }}% 올라요!</strong>
+        </p>
+      </div>
+      <div v-else-if="best" class="combo">
+        <b>✓ 지금 조합이 가장 세요</b>
+        <span>장비 프리셋 {{ best.equipPreset }} · 어빌리티 {{ best.abilityPreset }}</span>
       </div>
       <div v-else class="combo muted">이 직업은 프리셋 조합을 비교할 수 없어요</div>
     </div>
@@ -190,6 +218,49 @@ const gain = computed(() => {
 }
 .combo.up b {
   color: var(--gold);
+}
+.power .tile-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 추산은 계산 색, 실제 기록은 API 색 */
+.badge-mini {
+  --c: var(--calc);
+  padding: 0 7px;
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  border-radius: 999px;
+  color: var(--c);
+  font-size: 11px;
+  line-height: 17px;
+  cursor: help;
+}
+.badge-mini.record {
+  --c: var(--api);
+}
+.about {
+  margin-right: 5px;
+  color: var(--sub);
+  font-size: 15px;
+}
+/* 두 줄이 한 문장으로 읽히도록 붙여 쓰고 강조만 색으로 나눈다 */
+.sentence {
+  margin: 0;
+  color: var(--sub);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.sentence em {
+  color: var(--text);
+  font-style: normal;
+  font-weight: 700;
+}
+.sentence strong {
+  color: var(--gain);
+  font-family: var(--f-title);
+  font-size: 15px;
+  font-weight: 400;
 }
 .combo.muted {
   background: none;
