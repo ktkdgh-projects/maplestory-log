@@ -108,6 +108,8 @@ export interface CharacterDetail {
   symbols: SymbolInfo[]
   hexaCores: HexaCore[]
   fetchedAt: string
+  // 성장 기록에 남은 최근 날짜별 실제 전투력(최신순). 추산을 실제 값으로 맞춰 보는 데 쓴다
+  recentPowers?: { date: string, value: number }[]
 }
 
 export interface UnionResponse {

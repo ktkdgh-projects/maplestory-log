@@ -183,6 +183,17 @@ export async function processSnapshotJobs(options: { budgetMs: number, userId?: 
   return { processed }
 }
 
+const RECENT_POWER_DAYS = 30
+
+export async function recentCombatPowers(ocid: string): Promise<{ date: string, value: number }[]> {
+  const { snapshots } = await useCollections()
+  const rows = await snapshots
+    .find({ ocid, date: { $gte: addDays(kstToday(), -RECENT_POWER_DAYS) }, combatPower: { $ne: null } }, { projection: { date: 1, combatPower: 1 } })
+    .sort({ date: -1 })
+    .toArray()
+  return rows.map(row => ({ date: row.date, value: row.combatPower! }))
+}
+
 export async function countPendingJobs(ocid: string) {
   const { jobs } = await useCollections()
   return jobs.countDocuments({ type: 'snapshot', ocid, status: { $in: ['pending', 'running'] } })

@@ -12,10 +12,11 @@ export default defineEventHandler(async (event): Promise<CharacterDetail> => {
   const apiKey = await searchApiKey(event, 'search')
 
   try {
-    const detail = await getCharacterDetail(apiKey, await resolveOcid(apiKey, name), fresh)
-    if (detail.name === name) return detail
+    const load = (ocid: string) => Promise.all([getCharacterDetail(apiKey, ocid, fresh), recentCombatPowers(ocid)])
+    let [detail, recentPowers] = await load(await resolveOcid(apiKey, name))
     // 이름을 바꾼 캐릭터면 캐시된 ocid가 다른 캐릭터를 가리키므로 새로 찾는다
-    return await getCharacterDetail(apiKey, (await nexon.ocid(apiKey, name)).ocid, fresh)
+    if (detail.name !== name) [detail, recentPowers] = await load((await nexon.ocid(apiKey, name)).ocid)
+    return { ...detail, recentPowers }
   }
   catch (error) {
     throw toHttpError(error)
