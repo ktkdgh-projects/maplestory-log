@@ -8,16 +8,44 @@ const DETAIL_CACHE_MS = 60 * 60 * 1000
 const DETAIL_CACHE_VERSION = 15
 const STAT_NAMES = ['전투력', '최소 스탯공격력', '최대 스탯공격력', '데미지', '보스 몬스터 데미지', '최종 데미지', '방어율 무시', '크리티컬 확률', '크리티컬 데미지', '공격력', '마력', '일반 몬스터 데미지', '속성 내성 무시', '상태이상 추가 데미지', 'STR', 'DEX', 'INT', 'LUK', 'HP', 'MP', '방어력', '상태이상 내성', '스탠스', '이동속도', '점프력', '공격 속도', '아이템 드롭률', '메소 획득량', '추가 경험치 획득', '버프 지속시간', '재사용 대기시간 감소 (초)', '재사용 대기시간 감소 (%)', '재사용 대기시간 미적용', '스타포스', '아케인포스', '어센틱포스']
 
-export async function saveCharacter({ imageUrl, ...character }: Omit<CharacterDoc, 'updatedAt' | 'imageUrl'> & { imageUrl?: string }) {
+export async function saveCharacter({ imageUrl, ...character }: Omit<CharacterDoc, 'updatedAt' | 'imageUrl' | 'pastNames'> & { imageUrl?: string }) {
   const { characters } = await useCollections()
-  await characters.updateOne(
+  const before = await characters.findOneAndUpdate(
     { ocid: character.ocid },
     {
       $set: { ...character, ...(imageUrl && { imageUrl }), updatedAt: new Date() },
       ...(!imageUrl && { $setOnInsert: { imageUrl: null } }),
     },
-    { upsert: true },
+    { upsert: true, projection: { name: 1 } },
   )
+  if (before && before.name !== character.name) await noteRename(character.ocid, before.name, character.name)
+}
+
+// 닉네임이 바뀌면 예전 이름을 남기고, 캐릭터를 연결한 장비 결산 시트 이름도 새 이름으로 바꾼다
+async function noteRename(ocid: string, oldName: string, newName: string) {
+  const { characters, itemSheets } = await useCollections()
+  await Promise.all([
+    characters.updateOne({ ocid }, { $addToSet: { pastNames: oldName } }),
+    itemSheets.updateMany({ ocid }, { $set: { characterName: newName } }),
+  ])
+}
+
+// 계정 캐릭터 목록을 받을 때마다 저장된 이름과 비교해 닉네임 변경을 잡는다
+async function checkRenames(list: CharacterBrief[]) {
+  const { characters } = await useCollections()
+  const saved = await characters.find({ ocid: { $in: list.map(c => c.ocid) } }, { projection: { ocid: 1, name: 1 } }).toArray()
+  await Promise.all(saved.flatMap((doc) => {
+    const now = list.find(c => c.ocid === doc.ocid)
+    if (!now || now.name === doc.name) return []
+    return [characters.updateOne({ ocid: doc.ocid }, { $set: { name: now.name, updatedAt: new Date() } }).then(() => noteRename(doc.ocid, doc.name, now.name))]
+  }))
+}
+
+// 이 캐릭터가 강화 기록에 남았을 수 있는 이름들(지금 이름 먼저)
+export async function characterNames(character: Pick<CharacterBrief, 'ocid' | 'name'>): Promise<string[]> {
+  const { characters } = await useCollections()
+  const doc = await characters.findOne({ ocid: character.ocid }, { projection: { pastNames: 1 } })
+  return [...new Set([character.name, ...(doc?.pastNames ?? [])])]
 }
 
 export async function fetchAccountCharacters(apiKey: string): Promise<{ accountId: string | null, characters: CharacterBrief[] }> {
@@ -35,7 +63,11 @@ const ACCOUNT_CACHE_MS = 10 * 60 * 1000
 
 // 계정 캐릭터 목록은 자주 안 바뀌어 사용자마다 잠시 캐시한다. 키는 캐시가 없을 때만 꺼낸다
 export function accountCharacters(userId: ObjectId, apiKey: () => Promise<string>): Promise<CharacterBrief[]> {
-  return withCache(`account:${userId.toHexString()}`, ACCOUNT_CACHE_MS, async () => (await fetchAccountCharacters(await apiKey())).characters)
+  return withCache(`account:${userId.toHexString()}`, ACCOUNT_CACHE_MS, async () => {
+    const { characters } = await fetchAccountCharacters(await apiKey())
+    await checkRenames(characters)
+    return characters
+  })
 }
 
 export async function resolveOcid(apiKey: string, name: string): Promise<string> {
@@ -197,7 +229,7 @@ export function getCharacterDetail(apiKey: string, ocid: string, fresh = false):
     await Promise.all([
       saveCharacter({ ocid, name: detail.name, world: detail.world, job: detail.job, level: detail.level, imageUrl: detail.imageUrl }),
       // 장비 결산에서 직접 적은 장비에도 아이콘을 붙이려고 본 아이템을 사전에 모은다
-      collectCharacterIcons(apiKey, ocid, detail.presets.flat()),
+      collectCharacterIcons(apiKey, ocid, detail.presets.flat().map(i => ({ ...i, level: i.requiredLevel || undefined }))),
     ])
     return detail
   }, fresh)

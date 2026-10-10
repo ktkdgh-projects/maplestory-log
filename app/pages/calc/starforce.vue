@@ -175,7 +175,7 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
 <template>
   <GameWindow class="fit" title="스타포스 기대값" sub="일반 장비 · 스타캐치 보너스 항상 적용" accent="purple" fill>
     <div class="calc-layout">
-      <form class="calc-inputs" @submit.prevent>
+      <form class="calc-inputs" @submit.prevent novalidate>
         <section class="calc-section">
           <h3 class="calc-section-title">장비<small>최대 ★{{ max }}</small></h3>
           <label v-if="equipped.length" class="calc-load">

@@ -6,18 +6,48 @@ function onKey(event: KeyboardEvent) {
   if (event.key === 'Escape') open.value = false
 }
 watch(open, (value) => {
-  if (value) window.addEventListener('keydown', onKey)
+  if (value) {
+    offset.value = { x: 0, y: 0 }
+    window.addEventListener('keydown', onKey)
+  }
   else window.removeEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+
+// 제목 줄을 잡아 끌어 옮긴다. 화면 밖으로는 못 나가고, 다시 열면 가운데에서 시작한다
+const box = ref<HTMLElement | null>(null)
+const offset = ref({ x: 0, y: 0 })
+let drag: { x: number, y: number, base: { x: number, y: number }, rect: DOMRect } | null = null
+// 끌다가 바깥에서 손을 떼면 바깥 클릭으로 닫히지 않게 한다
+let justDragged = false
+function startDrag(event: PointerEvent) {
+  if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
+  drag = { x: event.clientX, y: event.clientY, base: { ...offset.value }, rect: box.value!.getBoundingClientRect() }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+function moveDrag(event: PointerEvent) {
+  if (!drag) return
+  const EDGE = 8
+  const dx = Math.min(Math.max(event.clientX - drag.x, EDGE - drag.rect.left), window.innerWidth - EDGE - drag.rect.right)
+  const dy = Math.min(Math.max(event.clientY - drag.y, EDGE - drag.rect.top), window.innerHeight - EDGE - drag.rect.bottom)
+  if (Math.abs(dx) + Math.abs(dy) > 3) justDragged = true
+  offset.value = { x: drag.base.x + dx, y: drag.base.y + dy }
+}
+function endDrag() {
+  drag = null
+  setTimeout(() => (justDragged = false))
+}
+function backdropClick() {
+  if (!justDragged) open.value = false
+}
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="open" class="backdrop" @click.self="open = false">
-        <section class="modal" role="dialog" aria-modal="true" :aria-label="title" :style="{ width: `min(${width}px, 100%)` }">
-          <header class="head">
+      <div v-if="open" class="backdrop" @click.self="backdropClick">
+        <section ref="box" class="modal" role="dialog" aria-modal="true" :aria-label="title" :style="{ width: `min(${width}px, 100%)`, translate: `${offset.x}px ${offset.y}px` }">
+          <header class="head" title="끌어서 옮기기" @pointerdown="startDrag" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag">
             <span class="dot" aria-hidden="true" />
             <h2>{{ title }}</h2>
             <button type="button" class="close" aria-label="닫기" @click="open = false">×</button>
@@ -56,6 +86,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   display: flex;
   align-items: center;
   gap: 10px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
   padding: 9px 14px;
   background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 22%, var(--title)), var(--title) 70%);
   border-bottom: 2px solid var(--win-line);
@@ -94,7 +127,6 @@ h2 {
   gap: 12px;
   padding: 14px;
   overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 .modal-enter-active,
 .modal-leave-active {

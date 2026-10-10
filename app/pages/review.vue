@@ -146,10 +146,7 @@ const cubeText = (n: number) => `${Math.round(Math.abs(n)).toLocaleString('ko-KR
 </script>
 
 <template>
-  <GameWindow v-if="!me" title="강화 결산" accent="green">
-    <p class="muted">강화 결산은 API 키를 등록한 사용자만 볼 수 있어요. 기록은 본인만 볼 수 있어요.</p>
-    <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
-  </GameWindow>
+  <KeyGate v-if="!me" v-bind="KEY_GATES.review" />
 
   <GameWindow v-else title="강화 결산" sub="기록과 기대값 비교" accent="green" class="review-win">
     <div class="review">

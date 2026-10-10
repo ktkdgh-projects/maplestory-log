@@ -16,13 +16,20 @@ export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], ro
   const result = new Map<string, RowReference>()
   if (!linked.length) return result
 
-  const key = (character: string, item: string) => `${character}\n${item}`
+  // 닉네임을 바꿨으면 예전 이름으로 남은 기록도 지금 시트 이름으로 묶는다
+  const { enhanceEvents, characters } = await useCollections()
+  const currentOf = new Map<string, string>()
+  const renamed = await characters.find({ ocid: { $in: sheets.flatMap(s => (s.ocid ? [s.ocid] : [])) }, pastNames: { $exists: true } }, { projection: { ocid: 1, pastNames: 1 } }).toArray()
+  for (const doc of renamed) {
+    const name = sheets.find(s => s.ocid === doc.ocid)?.characterName
+    if (name) for (const past of doc.pastNames ?? []) currentOf.set(past, name)
+  }
+  const key = (character: string, item: string) => `${currentOf.get(character) ?? character}\n${item}`
   const rowKey = (row: ItemRowDoc) => key(characterOf.get(row.sheetId.toHexString())!, row.name)
   const rowsByKey = Map.groupBy(linked, rowKey)
   const levelOf = new Map(linked.map(r => [r.name, r.level ?? null]))
-  const match = { character: { $in: [...new Set(characterOf.values())] }, item: { $in: [...new Set(linked.map(r => r.name))] } }
+  const match = { character: { $in: [...new Set([...characterOf.values(), ...currentOf.keys()])] }, item: { $in: [...new Set(linked.map(r => r.name))] } }
 
-  const { enhanceEvents } = await useCollections()
   const [docs, restores] = await Promise.all([
     enhanceEvents.find({ userId, kind: { $in: ['starforce', 'potential'] }, ...match }, { projection: REFERENCE_FIELDS }).toArray(),
     restoresOf(userId, match, item => levelOf.get(item) ?? null),
@@ -55,32 +62,56 @@ export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], ro
   return result
 }
 
-// 장비 결산에서 가계부로 넘어오는 날별 금액. 직접 적은 값만 쓰고, 가계부 미반영 시트와 제외한 줄은 뺀다
-export async function itemFlows(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlow[]> {
-  const { itemSheets, itemRows } = await useCollections()
-  const [excludedSheets, allRows] = await Promise.all([
+export interface ItemFlowEvent {
+  date: string
+  kind: 'buy' | 'starforce' | 'potential' | 'sell'
+  name: string
+  icon: string | null
+  // 들어온 메소는 양수, 나간 메소는 음수
+  amount: number
+}
+
+// 장비 결산에서 가계부로 넘어오는 금액을 장비·날짜별 한 건씩. 직접 적은 값만 쓰고, 가계부 미반영 시트와 제외한 줄은 뺀다
+export async function itemFlowEvents(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlowEvent[]> {
+  const { itemSheets, itemRows, users } = await useCollections()
+  const [excludedSheets, allRows, user] = await Promise.all([
     itemSheets.find({ userId, excluded: true }, { projection: { _id: 1 } }).toArray(),
     itemRows.find({ userId, excluded: { $ne: true } }).toArray(),
+    users.findOne({ _id: userId }, { projection: { mvpDiscount: 1 } }),
   ])
   const skip = new Set(excludedSheets.map(s => s._id.toHexString()))
   const rows = allRows.filter(r => !skip.has(r.sheetId.toHexString()))
 
   const inRange = (date: string | null | undefined): date is string => !!date && (!range.from || date >= range.from) && (!range.to || date <= range.to)
-  const days = new Map<string, ItemFlow>()
-  const day = (date: string) => days.get(date) ?? days.set(date, { date, bought: 0, enhanced: 0, earned: 0 }).get(date)!
+  const events: ItemFlowEvent[] = []
+  const push = (date: string, kind: ItemFlowEvent['kind'], row: ItemRowDoc, amount: number) => {
+    if (amount) events.push({ date, kind, name: row.name, icon: row.icon ?? null, amount })
+  }
   for (const row of rows) {
     if (row.purchases?.length) {
-      for (const p of row.purchases) if (inRange(p.date)) day(p.date).bought += p.amount
+      for (const p of row.purchases) if (inRange(p.date)) push(p.date, 'buy', row, -p.amount)
     }
-    else if (row.buy && inRange(row.buyDate)) day(row.buyDate).bought += row.buy
+    else if (row.buy && inRange(row.buyDate)) push(row.buyDate, 'buy', row, -row.buy)
     // 강화 비용도 날짜별 내역이 있으면 건마다 그 날짜로
-    for (const [entries, total, date] of [[row.starforceEntries, row.starforce, row.starforceDate], [row.potentialEntries, row.potential, row.potentialDate]] as const) {
+    for (const [kind, entries, total, date] of [['starforce', row.starforceEntries, row.starforce, row.starforceDate], ['potential', row.potentialEntries, row.potential, row.potentialDate]] as const) {
       if (entries?.length) {
-        for (const e of entries) if (inRange(e.date)) day(e.date).enhanced += e.amount
+        for (const e of entries) if (inRange(e.date)) push(e.date, kind, row, -e.amount)
       }
-      else if (total && inRange(date)) day(date).enhanced += total
+      else if (total && inRange(date)) push(date, kind, row, -total)
     }
-    if (row.sell && inRange(row.sellDate)) day(row.sellDate).earned += afterFee(row.sell, row.sellFee ?? DEFAULT_AUCTION_FEE)
+    if (row.sell && inRange(row.sellDate)) push(row.sellDate, 'sell', row, afterFee(row.sell, effectiveFee(row.sellFee, user?.mvpDiscount)))
+  }
+  return events.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+// 장비 결산에서 가계부로 넘어오는 날별 금액
+export async function itemFlows(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlow[]> {
+  const days = new Map<string, ItemFlow>()
+  for (const e of await itemFlowEvents(userId, range)) {
+    const day = days.get(e.date) ?? days.set(e.date, { date: e.date, bought: 0, enhanced: 0, earned: 0 }).get(e.date)!
+    if (e.kind === 'buy') day.bought -= e.amount
+    else if (e.kind === 'sell') day.earned += e.amount
+    else day.enhanced -= e.amount
   }
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date))
 }

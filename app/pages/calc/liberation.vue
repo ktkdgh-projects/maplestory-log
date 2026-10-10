@@ -150,7 +150,7 @@ const weekLabel = (week: string) => {
 <template>
   <GameWindow class="fit" title="해방" :sub="`${info.name} · ${info.currency}`" accent="purple" fill>
     <div class="calc-layout">
-      <form v-if="ready" ref="inputs" class="calc-inputs" @submit.prevent>
+      <form v-if="ready" ref="inputs" class="calc-inputs" @submit.prevent novalidate>
         <section class="calc-section">
           <h3 class="calc-section-title">캐릭터</h3>
           <label v-if="board?.roster.length" class="calc-load">

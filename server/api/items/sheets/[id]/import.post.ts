@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
   const equipment = await nexon.itemEquipment(apiKey, sheet.ocid).catch((error) => {
     throw toHttpError(error)
   })
-  await collectCharacterIcons(apiKey, sheet.ocid, equipment.item_equipment.map(i => ({ name: i.item_name, icon: i.item_icon, slot: i.item_equipment_slot })))
+  await collectCharacterIcons(apiKey, sheet.ocid, equipment.item_equipment.map(i => ({ name: i.item_name, icon: i.item_icon, slot: i.item_equipment_slot, level: Number(i.item_base_option?.base_equipment_level) || undefined })))
   const existing = await itemRows.find({ userId: user._id, sheetId: id }, { projection: { name: 1, level: 1 } }).toArray()
   const have = new Set(existing.map(r => r.name))
   const fresh = equipment.item_equipment.filter(item => !have.has(item.item_name))

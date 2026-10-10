@@ -2,6 +2,8 @@ export interface NavItem {
   to: string
   label: string
   hint: string
+  // 아래 주소(/ledger/bosses)가 다른 메뉴인 경우 이 주소만 켠다
+  exact?: boolean
 }
 
 export interface NavGroup {
@@ -24,8 +26,11 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'ledger',
     label: '가계부',
     items: [
-      { to: '/ledger', label: '메소 가계부', hint: '달력·주간 보스' },
+      { to: '/ledger/days', label: '일별 기록', hint: '사냥·판매 달력' },
+      { to: '/ledger/bosses', label: '보스 수입', hint: '주간·월간 보스 체크와 결정석' },
       { to: '/items', label: '장비 결산', hint: '구매·강화·판매 시트' },
+      // 확인하고 싶을 때만 보는 화면이라 맨 뒤에 둔다
+      { to: '/ledger', label: '메소 내역', hint: '보유 메소와 들고 남', exact: true },
     ],
   },
   {
@@ -57,7 +62,7 @@ export const NAV_GROUPS: NavGroup[] = [
 ]
 
 export function isNavItemActive(item: NavItem, path: string): boolean {
-  return path === item.to || (item.to !== '/' && path.startsWith(`${item.to}/`))
+  return path === item.to || (!item.exact && item.to !== '/' && path.startsWith(`${item.to}/`))
 }
 
 // 지금 주소가 속한 메뉴 묶음. 로그인·내 정보처럼 묶음 밖 페이지면 null

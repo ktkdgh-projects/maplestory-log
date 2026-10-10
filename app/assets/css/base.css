@@ -192,6 +192,16 @@ select optgroup {
   cursor: wait;
   opacity: 0.6;
 }
+.key-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
 .btn.ghost {
   background: var(--panel);
   border-color: var(--panel-line);

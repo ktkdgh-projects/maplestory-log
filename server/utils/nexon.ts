@@ -191,6 +191,10 @@ export interface NexonUnion {
   union_grade: string | null
 }
 
+export interface NexonUnionRaider {
+  union_block: { block_type: string, block_class: string, block_level: string }[] | null
+}
+
 interface NexonDojang {
   dojang_best_floor: number | null
 }
@@ -252,7 +256,7 @@ export const nexon = {
   ocid: (apiKey: string, name: string) => nexonGet<{ ocid: string }>('/id', apiKey, { character_name: name }),
   basic: (apiKey: string, ocid: string, date?: string) => nexonGet<NexonBasic>('/character/basic', apiKey, { ocid, date }),
   stat: (apiKey: string, ocid: string, date?: string) => nexonGet<NexonStat>('/character/stat', apiKey, { ocid, date }),
-  itemEquipment: (apiKey: string, ocid: string) => nexonGet<NexonItemEquipment>('/character/item-equipment', apiKey, { ocid }),
+  itemEquipment: (apiKey: string, ocid: string, date?: string) => nexonGet<NexonItemEquipment>('/character/item-equipment', apiKey, { ocid, date }),
   symbolEquipment: (apiKey: string, ocid: string) => nexonGet<NexonSymbolEquipment>('/character/symbol-equipment', apiKey, { ocid }),
   hexaMatrix: (apiKey: string, ocid: string) => nexonGet<NexonHexaMatrix>('/character/hexamatrix', apiKey, { ocid }),
   android: (apiKey: string, ocid: string) => nexonGet<NexonAndroid>('/character/android-equipment', apiKey, { ocid }),
@@ -260,6 +264,7 @@ export const nexon = {
   ability: (apiKey: string, ocid: string) => nexonGet<NexonAbility>('/character/ability', apiKey, { ocid }),
   setEffect: (apiKey: string, ocid: string) => nexonGet<NexonSetEffect>('/character/set-effect', apiKey, { ocid }),
   union: (apiKey: string, ocid: string) => nexonGet<NexonUnion>('/user/union', apiKey, { ocid }),
+  unionRaider: (apiKey: string, ocid: string) => nexonGet<NexonUnionRaider>('/user/union-raider', apiKey, { ocid }),
   dojang: (apiKey: string, ocid: string) => nexonGet<NexonDojang>('/character/dojang', apiKey, { ocid }),
   petEquipment: (apiKey: string, ocid: string) => nexonGet<NexonPetEquipment>('/character/pet-equipment', apiKey, { ocid }),
   cashItemEquipment: (apiKey: string, ocid: string) => nexonGet<NexonCashItemEquipment>('/character/cashitem-equipment', apiKey, { ocid }),

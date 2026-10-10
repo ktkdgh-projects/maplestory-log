@@ -30,7 +30,7 @@ async function submit() {
 </script>
 
 <template>
-  <form class="form" @submit.prevent="submit">
+  <form class="form" @submit.prevent="submit" novalidate>
     <div class="field">
       <span class="label">소재비 개수 <small>(1개 = {{ SOJAEBI_MINUTES }}분)</small><b v-if="perHour" class="per-hour">시간당 {{ formatKoreanNumber(perHour) }}</b></span>
       <div class="sojaebi" role="radiogroup" aria-label="소재비 개수">

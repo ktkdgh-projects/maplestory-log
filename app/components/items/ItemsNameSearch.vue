@@ -4,6 +4,7 @@ import type { ItemIcon } from '#shared/types'
 // 장비 이름 칸. 치는 대로 넥슨 API에서 본 장비·펫·캐시템을 아이콘과 함께 보여주고, 고르면 그 이름으로 채운다
 const name = defineModel<string>({ required: true })
 const emit = defineEmits<{ pick: [item: ItemIcon] }>()
+withDefaults(defineProps<{ placeholder?: string, label?: string, enter?: boolean, required?: boolean }>(), { placeholder: '장비 이름으로 추가', label: '추가할 장비 이름', enter: true, required: false })
 
 const DEBOUNCE_MS = 200
 const KIND_LABELS: Record<ItemIcon['kind'], string> = { equipment: '장비', pet: '펫', cash: '캐시', symbol: '심볼', etc: '기타' }
@@ -63,16 +64,16 @@ onBeforeUnmount(() => clearTimeout(timer))
     <input
       v-model="name"
       maxlength="40"
-      placeholder="장비 이름으로 추가"
-      aria-label="추가할 장비 이름"
+      :placeholder="placeholder"
+      :aria-label="label"
       autocomplete="off"
-      required
+      :required="required"
       @input="onInput"
       @keydown="onKeydown"
       @focus="open = results.length > 0"
       @blur="open = false"
     >
-    <kbd aria-hidden="true">Enter</kbd>
+    <kbd v-if="enter" aria-hidden="true">Enter</kbd>
     <ul v-if="open && results.length" class="results" role="listbox">
       <li v-for="(item, i) in results" :key="item.name" role="option" :aria-selected="i === active">
         <!-- blur보다 먼저 고르도록 mousedown에서 처리한다 -->

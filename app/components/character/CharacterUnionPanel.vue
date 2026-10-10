@@ -11,7 +11,7 @@ const world = ref(props.world)
 const showHidden = ref(false)
 const { data, error, refresh } = useFetch<UnionResponse>(() => `/api/union/${props.ocid}`, { query: { world }, server: false, lazy: true })
 
-// 로그인 전이나 남의 캐릭터면 목록 없이 이 캐릭터 월드의 유니온 정보만 보여준다
+// 불러오기 전엔 캐릭터 정보에 있던 이 월드의 유니온 등급·레벨을 먼저 보여 준다
 const unionGrade = computed(() => data.value?.unionGrade ?? (world.value === props.world ? props.unionGrade : null))
 const unionLevel = computed(() => data.value?.unionLevel ?? (world.value === props.world ? props.unionLevel : null))
 
@@ -33,7 +33,12 @@ onBeforeUnmount(() => clearTimeout(timer))
 const visibleWorlds = computed(() => data.value?.worlds.filter(w => w.active || showHidden.value || w.name === world.value) ?? [])
 const hiddenCount = computed(() => data.value?.worlds.filter(w => !w.active).length ?? 0)
 
-const totalLevel = computed(() => data.value?.members.reduce((sum, m) => sum + m.level, 0) ?? 0)
+const raider = computed(() => data.value?.mode === 'raider')
+const totalLevel = computed(() => (raider.value ? data.value!.raiders : data.value?.members ?? []).reduce((sum, m) => sum + m.level, 0))
+const count = computed(() => (raider.value ? data.value!.raiders.length : data.value?.members.length ?? 0))
+// 공격대 칸 색: 직업 계열
+const TYPE_COLORS: Record<string, string> = { 전사: '#ff8a7a', 마법사: '#7fb2ff', 궁수: '#7fd99a', 도적: '#b79cff', 해적: '#ffc06b' }
+const typeColor = (type: string) => TYPE_COLORS[type] ?? '#a5aecb'
 </script>
 
 <template>
@@ -49,12 +54,23 @@ const totalLevel = computed(() => data.value?.members.reduce((sum, m) => sum + m
       <div class="head-info">
         <span class="grade">{{ unionGrade ?? '유니온 정보 없음' }}</span>
         <span class="level">Lv.{{ unionLevel?.toLocaleString('ko-KR') ?? '-' }}</span>
-        <span v-if="data" class="muted small">{{ data.world }} · 캐릭터 {{ data.members.length }}명 · 레벨 합 {{ totalLevel.toLocaleString('ko-KR') }}</span>
+        <span v-if="data && count" class="muted small">{{ raider ? `공격대원 ${count}명` : `${data.world} · 캐릭터 ${count}명` }} · 레벨 합 {{ totalLevel.toLocaleString('ko-KR') }}</span>
       </div>
     </div>
 
-    <p v-if="error" class="muted small">{{ errorMessage(error, '로그인하면 내 계정 캐릭터 목록을 볼 수 있어요.') }}</p>
+    <p v-if="error" class="muted small">{{ errorMessage(error, '유니온 정보를 불러오지 못했어요.') }}</p>
     <p v-else-if="!data" class="muted small">캐릭터 목록을 불러오는 중이에요…</p>
+    <!-- 남의 캐릭터: 공격대에 배치된 캐릭터의 직업·레벨(넥슨 API가 이름·이미지는 주지 않는다) -->
+    <template v-else-if="raider">
+      <p class="muted small">{{ data.raiders.length ? '공격대에 배치된 캐릭터예요. 다른 계정은 넥슨 API가 이름·이미지를 주지 않아 직업과 레벨만 보여요.' : '다른 계정의 캐릭터 목록은 넥슨 API로 받을 수 없어 유니온 등급과 레벨만 보여요.' }}</p>
+      <ul v-if="data.raiders.length" class="raiders stagger">
+        <li v-for="(m, i) in data.raiders" :key="i" :style="{ '--tone': typeColor(m.type) }">
+          <span class="type">{{ m.type }}</span>
+          <b class="ellipsis" :title="m.job">{{ m.job }}</b>
+          <span class="lv">Lv.{{ m.level }}</span>
+        </li>
+      </ul>
+    </template>
     <template v-else>
       <p v-if="data.pending" class="muted small">캐릭터 이미지를 불러오는 중 · {{ data.pending }}명 남음</p>
       <ul class="members stagger">
@@ -176,6 +192,37 @@ const totalLevel = computed(() => data.value?.members.reduce((sum, m) => sum + m
 }
 .members .muted {
   font-size: 11px;
+}
+.raiders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.raiders li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-left: 3px solid var(--tone);
+  border-radius: 8px;
+}
+.raiders .type {
+  color: var(--tone);
+  font-size: 11px;
+  font-weight: 700;
+}
+.raiders b {
+  font-size: 13.5px;
+}
+.raiders .lv {
+  color: var(--sub);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .face {
   width: 100%;

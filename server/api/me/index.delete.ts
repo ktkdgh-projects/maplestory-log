@@ -3,7 +3,7 @@ export default defineEventHandler(async (event) => {
   assertSameKey(user, (await readBody<{ apiKey?: unknown }>(event))?.apiKey)
 
   // 스냅샷은 ocid 기준 공개 데이터라 남기고, 이 사용자에게 묶인 것만 지운다
-  const { users, sessions, userCharacters, jobs, hunts, dropSales, bossRosters, bossClears, itemSheets, itemRows, itemLogs, ledgerSettings, enhanceEvents, historySync } = await useCollections()
+  const { users, sessions, userCharacters, jobs, hunts, dropSales, bossRosters, bossClears, itemSheets, itemRows, itemLogs, ledgerSettings, enhanceEvents, historySync, memos, mesoEntries } = await useCollections()
   await Promise.all([
     itemSheets.deleteMany({ userId: user._id }),
     itemRows.deleteMany({ userId: user._id }),
@@ -11,6 +11,8 @@ export default defineEventHandler(async (event) => {
     ledgerSettings.deleteOne({ _id: user._id }),
     enhanceEvents.deleteMany({ userId: user._id }),
     historySync.deleteOne({ _id: user._id }),
+    memos.deleteMany({ userId: user._id }),
+    mesoEntries.deleteMany({ userId: user._id }),
   ])
   await hunts.deleteMany({ userId: user._id })
   await dropSales.deleteMany({ userId: user._id })

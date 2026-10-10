@@ -22,10 +22,11 @@ export default defineEventHandler(async (event): Promise<ReviewResponse> => {
   })
   const equipped = detail.presets[detail.presetNo - 1] ?? detail.presets[0] ?? []
   const range = { from, to }
+  const names = await characterNames(character)
   const [starforce, potential, days] = await Promise.all([
-    reviewStarforce(user._id, character.name, range, equipped, user.mvpDiscount ?? 0),
-    reviewPotential(user._id, character.name, range, equipped),
-    recordDays(user._id, character.name, today),
+    reviewStarforce(user._id, names, range, equipped, user.mvpDiscount ?? 0),
+    reviewPotential(user._id, names, range, equipped),
+    recordDays(user._id, names, today),
   ])
   return { character, from, to, starforce, potential, recordDays: days }
 })

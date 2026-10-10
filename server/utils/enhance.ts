@@ -199,16 +199,16 @@ export async function ownCharacter(userId: ObjectId, ocid: string | undefined, a
   return character
 }
 
-const sinceFilter = (from: string | null) => (from ? { at: { $gte: kstDayStart(from) } } : {})
+export const sinceFilter = (from: string | null) => (from ? { at: { $gte: kstDayStart(from) } } : {})
 
 // 비용이 같게 나오는 기록끼리 DB에서 묶어 센다. 반년치 수천 건을 다 받아 오면 느려서
 type CostGroup = Pick<EnhanceEventDoc, 'item' | 'kind' | 'success' | 'destroyed' | 'beforeStar' | 'beforeGrade' | 'itemLevel' | 'tool' | 'protect' | 'superior' | 'scroll' | 'eventDiscount'>
 
 // 넥슨 기록엔 아이템 고유 번호가 없어서 같은 캐릭터·같은 이름으로 묶는다. 기록 목록은 장비를 고를 때 starforceDetail·potentialDetail로 따로 받는다
-export async function summariesByItem(userId: ObjectId, character: string, items: { name: string, level: number | null }[], from: string | null, mvp: number): Promise<Map<string, EnhanceSummary>> {
+export async function summariesByItem(userId: ObjectId, names: string[], items: { name: string, level: number | null }[], from: string | null, mvp: number): Promise<Map<string, EnhanceSummary>> {
   const { enhanceEvents } = await useCollections()
   const levels = new Map(items.map(i => [i.name, i.level]))
-  const match = { character, item: { $in: [...levels.keys()] }, ...sinceFilter(from) }
+  const match = { character: { $in: names }, item: { $in: [...levels.keys()] }, ...sinceFilter(from) }
   const [groups, restores] = await Promise.all([enhanceEvents.aggregate<{ _id: CostGroup & { legacy: boolean }, count: number, first: Date, last: Date }>([
     { $match: { userId, ...match } },
     { $group: {
@@ -252,13 +252,29 @@ export async function summariesByItem(userId: ObjectId, character: string, items
   return result
 }
 
+// 지금 안 낀 장비 중 기간 안에 기록이 있는 것. 레벨은 기록에 남은 착용 레벨, ★은 마지막 스타포스 결과
+export async function unwornRecordItems(userId: ObjectId, names: string[], worn: Set<string>, from: string | null) {
+  const { enhanceEvents } = await useCollections()
+  // 마지막 스타포스 기록은 {at, star} 중 at이 가장 큰 것. 큐브 기록은 null이라 비교에서 밀린다
+  const docs = await enhanceEvents.aggregate<{ _id: string, level: number | null, lastAt: Date, last: { at: Date, star: number | null } | null }>([
+    { $match: { userId, character: { $in: names }, item: { $nin: [...worn] }, ...sinceFilter(from) } },
+    { $group: {
+      _id: '$item',
+      level: { $max: '$itemLevel' },
+      lastAt: { $max: '$at' },
+      last: { $max: { $cond: [{ $eq: ['$kind', 'starforce'] }, { at: '$at', star: '$afterStar' }, null] } },
+    } },
+  ]).toArray()
+  return docs.map(d => ({ name: d._id, level: d.level ?? null, star: d.last?.star ?? 0, lastDate: kstDateOf(d.lastAt) }))
+}
+
 // 반년 동안 한 장비에 이보다 많이 누르는 일은 드물다. 넘으면 오래된 날부터 잘린다
 const MAX_DETAIL_EVENTS = 3000
 
 // 한 장비의 스타포스 기록을 ★ 구간별과 날짜별로 묶는다
-export async function starforceDetail(userId: ObjectId, character: string, item: string, level: number | null, from: string | null, mvp: number): Promise<StarforceDetail> {
+export async function starforceDetail(userId: ObjectId, names: string[], item: string, level: number | null, from: string | null, mvp: number): Promise<StarforceDetail> {
   const { enhanceEvents } = await useCollections()
-  const match = { character, item, ...sinceFilter(from) }
+  const match = { character: { $in: names }, item, ...sinceFilter(from) }
   const [docs, restoreList] = await Promise.all([
     enhanceEvents.find({ userId, kind: 'starforce', ...match }).sort({ at: -1 }).limit(MAX_DETAIL_EVENTS + 1).toArray(),
     restoresOf(userId, match, () => level),
@@ -302,11 +318,11 @@ export async function starforceDetail(userId: ObjectId, character: string, item:
 }
 
 // 한 장비의 윗잠 또는 에디 기록을 등급 상승 단계별과 날짜별로 묶는다
-export async function potentialDetail(userId: ObjectId, character: string, item: string, level: number | null, from: string | null, additional: boolean): Promise<PotentialDetail> {
+export async function potentialDetail(userId: ObjectId, names: string[], item: string, level: number | null, from: string | null, additional: boolean): Promise<PotentialDetail> {
   const { enhanceEvents } = await useCollections()
   // 최근 것을 기준으로 자르고, 등급 단계는 오래된 것부터 세야 해서 받은 뒤 뒤집는다
   const docs = await enhanceEvents
-    .find({ userId, character, item, kind: { $in: ['cube', 'potential'] }, tool: additional ? /에디셔널/ : { $not: /에디셔널/ }, ...sinceFilter(from) })
+    .find({ userId, character: { $in: names }, item, kind: { $in: ['cube', 'potential'] }, tool: additional ? /에디셔널/ : { $not: /에디셔널/ }, ...sinceFilter(from) })
     .sort({ at: -1 })
     .limit(MAX_DETAIL_EVENTS + 1)
     .toArray()

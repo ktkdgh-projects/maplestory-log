@@ -1,7 +1,8 @@
 import { ObjectId } from 'mongodb'
-import type { BossClear, BossLoot, BossPick, BossRosterCharacter, DropSale, DropSaleInput, HuntEntry, HuntInput } from '#shared/types'
+import type { BossClear, BossLoot, BossPick, BossRosterCharacter, DropSale, DropSaleInput, HuntEntry, HuntInput, MesoEntry, MesoEntryInput } from '#shared/types'
+import { findMesoEntryType } from '#shared/data/mesoEntries'
 import { MAX_BOSS_CHARACTERS, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, findBoss } from '#shared/data/bosses'
-import type { BossClearDoc, DropSaleDoc, HuntDoc } from './mongo'
+import type { BossClearDoc, DropSaleDoc, HuntDoc, MesoEntryDoc } from './mongo'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const COUNT_MAX = 1e6
@@ -56,6 +57,33 @@ export function parseDropSale(body: Record<string, unknown> | null | undefined, 
   return input
 }
 
+const CASH_MAX = 1e10
+const ENTRY_ITEM_MAX = 40
+
+export function parseMesoEntry(body: Record<string, unknown> | null | undefined, defaultFee: number): MesoEntryInput {
+  const info = findMesoEntryType(String(body?.type))
+  if (!info) throw fail('지출·수입 종류를 골라 주세요.')
+  const amount = floorMeso(count(body?.amount, '메소', MESO_MAX))
+  if (amount < MESO_UNIT) throw fail('메소를 1만 이상 적어 주세요.')
+  const text = (value: unknown, max: number) => (typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null)
+  return {
+    date: parseDate(body?.date),
+    type: info.key,
+    amount,
+    cash: info.cash ? count(body?.cash, '현금', CASH_MAX) || null : null,
+    item: info.item ? text(body?.item, ENTRY_ITEM_MAX) : null,
+    // 아이콘은 넥슨 아이콘이나 사이트에 둔 그림만 받는다
+    icon: info.item && typeof body?.icon === 'string' && /^(https:\/\/open\.api\.nexon\.com\/|\/icons\/)/.test(body.icon) ? body.icon.slice(0, 300) : null,
+    fee: info.fee ? (isAuctionFee(body?.fee) ? body.fee : defaultFee) : null,
+    memo: text(body?.memo, MEMO_MAX),
+  }
+}
+
+export function toMesoEntry(doc: MesoEntryDoc): MesoEntry {
+  const { _id, userId: _userId, createdAt: _createdAt, ...input } = doc
+  return { id: _id.toHexString(), ...input, icon: input.icon ?? null }
+}
+
 export function toDropSale(doc: DropSaleDoc): DropSale {
   const { _id, userId: _userId, createdAt: _createdAt, ...input } = doc
   return { id: _id.toHexString(), ...input }
@@ -93,10 +121,14 @@ export function parseLoot(value: unknown, defaultFee: number): BossLoot[] {
   })
 }
 
+// 경매장 수수료 기본값: 내 정보의 MVP 등급이 실버 이상이면 3%, 아니면 마지막으로 고른 값
 export async function loadLedgerSettings(userId: ObjectId) {
-  const { ledgerSettings } = await useCollections()
-  const doc = await ledgerSettings.findOne({ _id: userId })
-  return { feeRate: doc?.feeRate ?? DEFAULT_AUCTION_FEE, balanceDate: doc?.balanceDate ?? null, balance: doc?.balance ?? null }
+  const { ledgerSettings, users } = await useCollections()
+  const [doc, user] = await Promise.all([
+    ledgerSettings.findOne({ _id: userId }),
+    users.findOne({ _id: userId }, { projection: { mvpDiscount: 1 } }),
+  ])
+  return { feeRate: hasMvpFee(user?.mvpDiscount) ? MVP_FEE : doc?.feeRate ?? DEFAULT_AUCTION_FEE, balanceDate: doc?.balanceDate ?? null, balance: doc?.balance ?? null }
 }
 
 // 마지막으로 고른 수수료를 다음 판매의 기본값으로 기억한다
@@ -107,19 +139,21 @@ export async function rememberFeeRate(userId: ObjectId, feeRate: number) {
 
 // 맞춘 금액은 그날 기록을 반영하기 전 보유 메소라서, 맞춘 날 기록부터 더하고 뺀다
 export async function currentBalance(userId: ObjectId, balanceDate: string, balance: number): Promise<number> {
-  const { hunts, bossClears, dropSales } = await useCollections()
+  const { hunts, bossClears, dropSales, mesoEntries } = await useCollections()
   const after = { $gte: balanceDate }
-  const [huntDocs, clearDocs, flows, saleDocs] = await Promise.all([
+  const [huntDocs, clearDocs, flows, saleDocs, entryDocs] = await Promise.all([
     hunts.find({ userId, date: after }, { projection: { meso: 1 } }).toArray(),
     bossClears.find({ userId, date: after }, { projection: { meso: 1, loot: 1 } }).toArray(),
     itemFlows(userId, { from: balanceDate }),
     dropSales.find({ userId, date: after }, { projection: { count: 1, unitPrice: 1, fee: 1 } }).toArray(),
+    mesoEntries.find({ userId, date: after }, { projection: { type: 1, amount: 1, fee: 1 } }).toArray(),
   ])
   let total = balance
   for (const h of huntDocs) total += h.meso
   for (const c of clearDocs) total += clearMeso({ meso: c.meso, loot: lootOf(c) })
   for (const f of flows) total += f.earned - f.bought - f.enhanced
   for (const s of saleDocs) total += dropSaleNet(s)
+  for (const e of entryDocs) total += mesoEntryDelta(e)
   return total
 }
 

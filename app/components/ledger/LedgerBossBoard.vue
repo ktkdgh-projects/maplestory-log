@@ -28,7 +28,37 @@ function clearOf(ocid: string, bossId: string) {
   return clears.value.find(c => c.ocid === ocid && c.bossId === bossId && c.period === period)
 }
 
-const rows = computed(() => props.roster.map((character) => {
+// 캐릭터 줄을 손잡이로 끌어서 순서를 바꾼다. 끄는 동안은 화면에서만 옮기고 놓을 때 저장한다
+const order = ref(props.roster.map(c => c.ocid))
+watch(() => props.roster, (value) => {
+  order.value = value.map(c => c.ocid)
+})
+const ordered = computed(() => [...props.roster].sort((a, b) => order.value.indexOf(a.ocid) - order.value.indexOf(b.ocid)))
+const dragOcid = ref<string | null>(null)
+function startDrag(event: DragEvent, ocid: string) {
+  dragOcid.value = ocid
+  event.dataTransfer?.setData('text/plain', ocid)
+  // 손잡이만이 아니라 줄 전체가 끌려가는 것처럼 보이게 한다
+  const row = (event.target as HTMLElement).closest('li')
+  if (row) event.dataTransfer?.setDragImage(row, 24, 24)
+}
+function dragOver(ocid: string) {
+  if (!dragOcid.value || dragOcid.value === ocid) return
+  const list = order.value.filter(o => o !== dragOcid.value)
+  list.splice(order.value.indexOf(ocid), 0, dragOcid.value)
+  order.value = list
+}
+function endDrag() {
+  if (!dragOcid.value) return
+  dragOcid.value = null
+  if (order.value.join() !== props.roster.map(c => c.ocid).join()) saveRoster(ordered.value)
+}
+
+type Cycle = 'weekly' | 'monthly'
+const sumMeso = (list: { boss: { cycle: Cycle }, clear?: BossClear }[], cycle: Cycle) => list.filter(b => b.boss.cycle === cycle).reduce((sum, b) => sum + clearMeso(b.clear!), 0)
+const sumPrice = (list: (BossPick & { boss: { cycle: Cycle } })[], cycle: Cycle) => list.filter(b => b.boss.cycle === cycle).reduce((sum, b) => sum + (crystalPrice(b.bossId, b.difficulty, b.party) ?? 0), 0)
+
+const rows = computed(() => ordered.value.map((character) => {
   const bosses = [...character.bosses]
     .sort((a, b) => bossOrder(a.bossId) - bossOrder(b.bossId))
     .map(pick => ({ ...pick, boss: findBoss(pick.bossId)!, clear: clearOf(character.ocid, pick.bossId) }))
@@ -43,12 +73,19 @@ const rows = computed(() => props.roster.map((character) => {
     // 월간 보스는 매주 잡는 게 아니라 주간 세팅을 다 잡았는지만 본다
     complete: weekly.length > 0 && weeklyDone === weekly.length,
     earned: done.reduce((sum, b) => sum + clearMeso(b.clear!), 0),
-    expected: bosses.reduce((sum, b) => sum + (crystalPrice(b.bossId, b.difficulty, b.party) ?? 0), 0),
+    // 주간은 매주, 월간은 한 달에 한 번이라 합계를 따로 낸다
+    weeklyEarned: sumMeso(done, 'weekly'),
+    monthlyEarned: sumMeso(done, 'monthly'),
+    weeklyExpected: sumPrice(bosses, 'weekly'),
+    monthlyExpected: sumPrice(bosses, 'monthly'),
   }
 }))
+const sumRows = (key: 'weeklyEarned' | 'weeklyExpected' | 'monthlyEarned' | 'monthlyExpected') => rows.value.reduce((s, r) => s + r[key], 0)
 const totals = computed(() => ({
-  earned: rows.value.reduce((s, r) => s + r.earned, 0),
-  expected: rows.value.reduce((s, r) => s + r.expected, 0),
+  weeklyEarned: sumRows('weeklyEarned'),
+  weeklyExpected: sumRows('weeklyExpected'),
+  monthlyEarned: sumRows('monthlyEarned'),
+  monthlyExpected: sumRows('monthlyExpected'),
   complete: rows.value.length > 0 && rows.value.every(r => r.complete),
   completeCount: rows.value.filter(r => r.complete).length,
 }))
@@ -81,13 +118,15 @@ async function clearAll(characters: BossRosterCharacter[]) {
   }
 }
 
-// 그 주 주간 보스 체크를 한 번에 푼다. 물욕템을 적어 둔 기록도 같이 지워지므로 그때만 한 번 묻는다
+// 그 주 주간 보스 체크를 한 번에 푼다. 적어 둔 물욕템 기록도 같이 지워지므로 늘 한 번 묻는다
+const { ask } = useConfirm()
 async function unclearAll(character: BossRosterCharacter) {
   const key = `none:${character.ocid}`
   if (busy.value) return
   const weekly = clears.value.filter(c => c.ocid === character.ocid && c.period === props.week)
   if (!weekly.length) return
-  if (weekly.some(c => c.loot.length) && !confirm(`${character.name}의 이번 주 체크를 모두 풀까요? 적어 둔 물욕템 기록도 같이 지워져요.`)) return
+  const loot = weekly.some(c => c.loot.length)
+  if (!await ask({ title: '이번 주 체크 모두 풀기', name: `${character.name} · 주간 보스 ${weekly.length}개`, amount: weekly.reduce((n, c) => n + clearMeso(c), 0), note: loot ? '적어 둔 물욕템 기록도 같이 지워지고 되돌릴 수 없어요.' : '보유 메소와 메소 내역에서도 빠져요.', action: '모두 풀기' })) return
   busy.value = key
   failure.value = ''
   const before = clears.value
@@ -161,9 +200,18 @@ async function saveRoster(characters: BossRosterCharacter[]) {
 }
 const setBosses = (ocid: string, bosses: BossPick[]) => saveRoster(props.roster.map(c => (c.ocid === ocid ? { ...c, bosses } : c)))
 // 복사할 땐 보고 있던 캐릭터의 고친 세팅도 같이 저장해야 다시 불러올 때 사라지지 않는다
-const copyBosses = (from: string, to: string, bosses: BossPick[]) => saveRoster(props.roster.map(c => (c.ocid === from || c.ocid === to ? { ...c, bosses: structuredClone(bosses) } : c)))
+const copyBosses = (from: string, to: string, bosses: BossPick[]) => saveRoster(props.roster.map(c => (c.ocid === from || c.ocid === to ? { ...c, bosses: JSON.parse(JSON.stringify(bosses)) } : c)))
+// 빼기 전에 모달로 한 번 더 묻는다
+const removing = ref<BossRosterCharacter | null>(null)
+const removeOpen = computed({
+  get: () => !!removing.value,
+  set: (value) => {
+    if (!value) removing.value = null
+  },
+})
 async function removeCharacter(ocid: string) {
-  openOcid.value = null
+  removing.value = null
+  if (openOcid.value === ocid) openOcid.value = null
   await saveRoster(props.roster.filter(c => c.ocid !== ocid))
 }
 
@@ -191,13 +239,16 @@ async function addCharacter(ocid: string) {
 <template>
   <div class="board">
     <div class="totals">
-      <span>이번 주 보스 수입 <b class="earned">{{ formatKoreanNumber(totals.earned) }}</b></span>
-      <span class="muted">/ 세팅대로 다 잡으면 {{ formatKoreanNumber(totals.expected) }}</span>
+      <span>이번 주 주간 보스 <b class="earned">{{ formatKoreanNumber(totals.weeklyEarned) }}</b></span>
+      <span class="muted">/ 다 잡으면 {{ formatKoreanNumber(totals.weeklyExpected) }}</span>
+      <span v-if="totals.monthlyExpected" class="monthly-tag" title="월간 보스는 한 달에 한 번이라 주간과 따로 세요">
+        {{ Number(clearDate.slice(5, 7)) }}월 월간 <b>{{ formatKoreanNumber(totals.monthlyEarned) }}</b> / {{ formatKoreanNumber(totals.monthlyExpected) }}
+      </span>
       <span v-if="roster.length" class="progress-tag" :class="{ all: totals.complete }">
         {{ totals.complete ? '이번 주 전부 잡았어요 ✓' : `다 잡은 캐릭터 ${totals.completeCount}/${roster.length}` }}
       </span>
       <button v-if="roster.length > 1 && !totals.complete" type="button" class="btn compact" :disabled="!!busy" @click="clearAll(roster)">모든 캐릭터 전부 잡음</button>
-      <div class="bar"><span :style="{ width: `${totals.expected ? (totals.earned / totals.expected) * 100 : 0}%` }" /></div>
+      <div class="bar"><span :style="{ width: `${totals.weeklyExpected ? (totals.weeklyEarned / totals.weeklyExpected) * 100 : 0}%` }" /></div>
     </div>
     <p v-if="failure" class="form-error">{{ failure }}</p>
 
@@ -211,8 +262,24 @@ async function addCharacter(ocid: string) {
       <li v-if="roster.length < MAX_BOSS_CHARACTERS" class="add-row">
         <button type="button" class="add" :disabled="!!busy" @click="openPicker">+ 캐릭터 추가 ({{ roster.length }}/{{ MAX_BOSS_CHARACTERS }})</button>
       </li>
-      <li v-for="r in rows" :key="r.character.ocid" class="row" :class="{ complete: r.complete, open: openOcid === r.character.ocid }">
+      <li
+        v-for="r in rows"
+        :key="r.character.ocid"
+        class="row"
+        :class="{ complete: r.complete, open: openOcid === r.character.ocid, dragging: dragOcid === r.character.ocid }"
+        @dragover.prevent="dragOver(r.character.ocid)"
+        @drop.prevent="endDrag"
+      >
         <div class="who">
+          <span
+            v-if="roster.length > 1"
+            class="grip"
+            draggable="true"
+            title="끌어서 순서 바꾸기"
+            aria-hidden="true"
+            @dragstart="startDrag($event, r.character.ocid)"
+            @dragend="endDrag"
+          >⠿</span>
           <button
             type="button"
             class="who-main"
@@ -228,9 +295,10 @@ async function addCharacter(ocid: string) {
             </span>
           </button>
           <!-- 잡음·취소를 캐릭터 칸에 세로로 쌓아 보스 칸 너비를 줄이지 않는다 -->
-          <div v-if="r.weeklyTotal" class="acts">
-            <span v-if="r.complete" class="done-stamp">다 잡음</span>
-            <button v-else type="button" class="all-btn" :disabled="!!busy" :title="`${r.character.name}의 남은 주간 보스 ${r.weeklyTotal - r.weeklyDone}개를 한 번에 체크`" @click="clearAll([r.character])">
+          <div class="acts">
+            <button type="button" class="out-btn" :disabled="!!busy" :title="`${r.character.name}을(를) 보스 표에서 빼기`" @click="removing = r.character">빼기</button>
+            <span v-if="r.weeklyTotal && r.complete" class="done-stamp">다 잡음</span>
+            <button v-else-if="r.weeklyTotal" type="button" class="all-btn" :disabled="!!busy" :title="`${r.character.name}의 남은 주간 보스 ${r.weeklyTotal - r.weeklyDone}개를 한 번에 체크`" @click="clearAll([r.character])">
               전부 잡음
             </button>
             <button
@@ -294,7 +362,6 @@ async function addCharacter(ocid: string) {
           :busy="!!busy"
           @save="setBosses(r.character.ocid, $event)"
           @copy="(to, bosses) => copyBosses(r.character.ocid, to, bosses)"
-          @remove="removeCharacter(r.character.ocid)"
           @close="openOcid = null"
         />
       </li>
@@ -303,6 +370,23 @@ async function addCharacter(ocid: string) {
     <AppModal v-model="pickerOpen" title="보스 도는 캐릭터 추가">
       <p v-if="!candidates" class="muted">캐릭터 목록을 불러오는 중이에요…</p>
       <CharacterPicker v-else :characters="candidates.filter(c => !roster.some(r => r.ocid === c.ocid))" :busy="!!busy" @pick="addCharacter" />
+    </AppModal>
+
+    <AppModal v-model="removeOpen" title="캐릭터 빼기" :width="376">
+      <div v-if="removing" class="confirm">
+        <div class="confirm-who">
+          <CharacterThumb v-if="removing.imageUrl" :src="removing.imageUrl" :height="48" crop="head" class="face" />
+          <span>
+            <b>{{ removing.name }}</b>
+            <small class="muted">{{ removing.job }} · LV.{{ removing.level }} · 보스 {{ removing.bosses.length }}개</small>
+          </span>
+        </div>
+        <p class="muted small">보스 표에서 빼요. 이미 체크한 기록은 가계부에 그대로 남아요.</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn ghost compact" @click="removing = null">취소</button>
+          <button type="button" class="btn compact remove-btn" :disabled="!!busy" @click="removeCharacter(removing.ocid)">빼기</button>
+        </div>
+      </div>
     </AppModal>
   </div>
 </template>
@@ -326,6 +410,18 @@ async function addCharacter(ocid: string) {
   font-family: var(--f-title);
   font-size: 24px;
   font-weight: 400;
+}
+.monthly-tag {
+  padding: 2px 10px;
+  background: rgb(183 156 255 / 0.08);
+  border: 1px solid rgb(183 156 255 / 0.4);
+  border-radius: 999px;
+  color: var(--sub);
+  font-size: 13px;
+}
+.monthly-tag b {
+  color: var(--calc);
+  font-weight: 700;
 }
 .bar {
   flex-basis: 100%;
@@ -369,6 +465,23 @@ async function addCharacter(ocid: string) {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+.grip {
+  flex: none;
+  margin: 0 -2px 0 -4px;
+  padding: 6px 2px;
+  color: var(--sub);
+  font-size: 16px;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0.5;
+  transition: opacity var(--fast) ease;
+}
+.row:hover .grip {
+  opacity: 1;
+}
+.row.dragging {
+  opacity: 0.5;
 }
 .who-main {
   display: flex;
@@ -568,13 +681,68 @@ async function addCharacter(ocid: string) {
   cursor: pointer;
   transition: background var(--fast) ease, transform var(--fast) var(--ease-out);
 }
+/* 캐릭터마다 버튼 수가 달라도 빼기 크기가 같게 칸 너비를 고정한다 */
 .acts {
   display: grid;
   flex: none;
+  width: 68px;
   justify-items: stretch;
   gap: 4px;
   margin-left: auto;
   text-align: center;
+}
+.out-btn {
+  padding: 2px 10px;
+  background: none;
+  border: 1px solid var(--panel-line);
+  border-radius: 6px;
+  color: var(--sub);
+  font-family: var(--f-title);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--fast) ease, border-color var(--fast) ease;
+}
+.out-btn:hover:not(:disabled) {
+  border-color: var(--loss);
+  color: var(--loss);
+}
+.confirm {
+  display: grid;
+  gap: 12px;
+}
+.confirm-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-left: 3px solid var(--loss);
+  border-radius: 8px;
+}
+.confirm-who > span {
+  display: grid;
+  gap: 2px;
+}
+.confirm-who .face {
+  width: 48px;
+}
+.confirm-who small {
+  font-size: 12.5px;
+}
+.small {
+  font-size: 13px;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.remove-btn {
+  background: var(--loss);
+  border-color: var(--loss);
+  color: #2a1210;
 }
 .none-btn {
   padding: 3px 10px;

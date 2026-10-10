@@ -1,4 +1,4 @@
-import type { BossClear, DropSale, HuntDrops, HuntEntry, ItemFlow } from '#shared/types'
+import type { BossClear, DropSale, HuntDrops, HuntEntry, ItemFlow, MesoEntry } from '#shared/types'
 import { DIFFICULTY_LABELS, findBoss, type BossDifficulty } from '#shared/data/bosses'
 import type { DropSet } from '#shared/data/bossDrops'
 
@@ -70,18 +70,21 @@ export interface LedgerDay extends HuntDrops {
   itemEnhanced: number
   itemSpent: number
   itemEarned: number
+  // 직접 등록한 지출·수입
+  entryIn: number
+  entryOut: number
   minutes: number
   hunts: number
   clears: number
   loot: string[]
 }
 
-const emptyDay = (): LedgerDay => ({ huntMeso: 0, bossMeso: 0, bossMonthly: 0, monthlyClears: 0, saleMeso: 0, itemBought: 0, itemEnhanced: 0, itemSpent: 0, itemEarned: 0, minutes: 0, hunts: 0, clears: 0, loot: [], fragments: 0, traces: 0 })
+const emptyDay = (): LedgerDay => ({ huntMeso: 0, bossMeso: 0, bossMonthly: 0, monthlyClears: 0, saleMeso: 0, itemBought: 0, itemEnhanced: 0, itemSpent: 0, itemEarned: 0, entryIn: 0, entryOut: 0, minutes: 0, hunts: 0, clears: 0, loot: [], fragments: 0, traces: 0 })
 
-export const dayIncome = (d: LedgerDay) => d.huntMeso + d.bossMeso + d.saleMeso + d.itemEarned
-export const dayNet = (d: LedgerDay) => dayIncome(d) - d.itemSpent
+export const dayIncome = (d: LedgerDay) => d.huntMeso + d.bossMeso + d.saleMeso + d.itemEarned + d.entryIn
+export const dayNet = (d: LedgerDay) => dayIncome(d) - d.itemSpent - d.entryOut
 
-export function summarizeLedger(hunts: HuntEntry[], clears: BossClear[], items: ItemFlow[] = [], sales: DropSale[] = []) {
+export function summarizeLedger(hunts: HuntEntry[], clears: BossClear[], items: ItemFlow[] = [], sales: DropSale[] = [], entries: MesoEntry[] = []) {
   const days = new Map<string, LedgerDay>()
   const total = emptyDay()
   const day = (date: string) => days.get(date) ?? days.set(date, emptyDay()).get(date)!
@@ -117,6 +120,13 @@ export function summarizeLedger(hunts: HuntEntry[], clears: BossClear[], items: 
       target.itemEarned += i.earned
     }
   }
+  for (const e of entries) {
+    const delta = mesoEntryDelta(e)
+    for (const target of [day(e.date), total]) {
+      if (delta >= 0) target.entryIn += delta
+      else target.entryOut -= delta
+    }
+  }
   return { days, total }
 }
 
@@ -139,14 +149,6 @@ export function shiftMonth(month: string, delta: number): string {
 export function formatMonth(month: string): string {
   const [y, m] = month.split('-')
   return `${y}년 ${Number(m)}월`
-}
-
-// 사냥 시간은 소재비 개수로 센다. 1개 = 30분
-export const SOJAEBI_MINUTES = 30
-export const SOJAEBI_MAX = 10
-
-export function formatHuntTime(minutes: number): string {
-  return minutes % SOJAEBI_MINUTES === 0 ? `소재 ${minutes / SOJAEBI_MINUTES}개` : `${minutes}분`
 }
 
 export function mesoPerHour(meso: number, minutes: number): number | null {

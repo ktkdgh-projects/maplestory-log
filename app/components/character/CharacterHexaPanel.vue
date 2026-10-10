@@ -22,6 +22,30 @@ const rows = computed(() => props.cores
   })
   .sort((a, b) => b.core.level - a.core.level))
 
+// 지금 레벨까지 이미 쓴 솔 에르다·조각
+const spent = computed(() => {
+  const used = { erda: 0, fragment: 0 }
+  const all = { erda: 0, fragment: 0 }
+  props.cores.forEach((core, i, list) => {
+    const kind = costKind(core, i, list)
+    const done = hexaCost(kind, 0, core.level)
+    const full = hexaCost(kind, 0, HEXA_MAX_LEVEL)
+    used.erda += done.erda
+    used.fragment += done.fragment
+    all.erda += full.erda
+    all.fragment += full.fragment
+  })
+  const item = (label: string, tone: string, key: 'erda' | 'fragment') => ({
+    label,
+    tone,
+    value: used[key].toLocaleString('ko-KR'),
+    unit: '개',
+    progress: all[key] ? used[key] / all[key] : 1,
+    sub: all[key] > used[key] ? `만렙까지 ${(all[key] - used[key]).toLocaleString('ko-KR')}개 남음` : '모든 코어 만렙',
+  })
+  return [item('솔 에르다', 'var(--calc)', 'erda'), item('솔 에르다 조각', 'var(--api)', 'fragment')]
+})
+
 const totals = computed(() => {
   const erda = rows.value.reduce((sum, row) => sum + row.cost.erda, 0)
   const fragment = rows.value.reduce((sum, row) => sum + row.cost.fragment, 0)
@@ -36,7 +60,7 @@ const totals = computed(() => {
   <div class="hexa">
     <p v-if="!rows.length" class="muted">장착한 헥사 코어가 없어요.</p>
     <template v-else>
-      <CharacterRangeHeader :totals="totals" hint="손잡이를 끌어 코어마다 구간을 정해요" @reset="ranges = initialRanges()" />
+      <CharacterRangeHeader :totals="totals" :spent="spent" hint="손잡이를 끌어 코어마다 구간을 정해요" @reset="ranges = initialRanges()" />
       <ul class="cores stagger">
         <li v-for="{ core, range, cost } in rows" :key="core.name" class="core">
           <div class="core-head">

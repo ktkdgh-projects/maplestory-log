@@ -43,10 +43,7 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
 </script>
 
 <template>
-  <GameWindow v-if="!me" title="잠재능력" accent="blue">
-    <p class="muted">강화 기록은 API 키를 등록한 사용자만 볼 수 있어요. 기록은 본인만 볼 수 있어요.</p>
-    <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
-  </GameWindow>
+  <KeyGate v-if="!me" v-bind="KEY_GATES.potential" />
 
   <GameWindow v-else class="fit" title="잠재능력" sub="큐브 · 메소 재설정 기록" :accent="additional ? 'purple' : 'blue'" fill>
     <EnhanceToolbar v-model:ocid="ocid" v-model:days="days" v-model:picked-from="pickedFrom" :characters="characters" :syncing="data?.syncing" :synced-from="data?.syncedFrom">
@@ -76,10 +73,10 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
       <div class="list" :class="{ add: additional }">
         <div class="list-head"><span>장비 · 많이 돌린 순</span><span>지금 등급 · 횟수</span></div>
         <ul>
-          <li v-for="i in items" :key="i.slot">
+          <li v-for="i in items" :key="`${i.slot}:${i.name}`">
             <button type="button" class="row" :class="{ on: i.name === selected }" @click="selected = i.name">
-              <img :src="i.icon" alt="">
-              <span class="name"><b class="ellipsis">{{ i.name }}</b><small>{{ i.slot }}</small></span>
+              <img v-if="i.icon" :src="i.icon" alt=""><span v-else class="no-icon" aria-hidden="true" />
+              <span class="name"><b class="ellipsis">{{ i.name }}</b><small><span v-if="!i.worn" class="unworn" title="지금은 안 낀 장비예요">안 낌</span>{{ i.slot }}</small></span>
               <span class="count"><span class="grade" :style="gradeStyle(gradeOf(i))">{{ gradeOf(i) ?? '없음' }}</span><small>{{ countOf(i) }}번</small></span>
             </button>
           </li>
@@ -89,10 +86,10 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
           돌린 적 없는 장비 {{ quiet.length }}개 {{ showQuiet ? '▴' : '▾' }}
         </button>
         <ul v-if="showQuiet" class="quiet">
-          <li v-for="i in quiet" :key="i.slot">
+          <li v-for="i in quiet" :key="`${i.slot}:${i.name}`">
             <button type="button" class="row" :class="{ on: i.name === selected }" @click="selected = i.name">
-              <img :src="i.icon" alt="">
-              <span class="name"><b class="ellipsis">{{ i.name }}</b><small>{{ i.slot }}</small></span>
+              <img v-if="i.icon" :src="i.icon" alt=""><span v-else class="no-icon" aria-hidden="true" />
+              <span class="name"><b class="ellipsis">{{ i.name }}</b><small><span v-if="!i.worn" class="unworn" title="지금은 안 낀 장비예요">안 낌</span>{{ i.slot }}</small></span>
               <span class="count"><span class="grade" :style="gradeStyle(gradeOf(i))">{{ gradeOf(i) ?? '없음' }}</span></span>
             </button>
           </li>
@@ -240,6 +237,14 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
   object-fit: contain;
   image-rendering: pixelated;
 }
+/* 아이콘을 모르는 안 낀 장비는 같은 크기의 빈 칸 */
+.no-icon {
+  width: 30px;
+  height: 30px;
+  background: var(--bar);
+  border: 1px dashed var(--panel-line);
+  border-radius: 6px;
+}
 .name {
   display: grid;
   min-width: 0;
@@ -307,5 +312,13 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
   .strip b {
     font-size: 19px;
   }
+}
+.unworn {
+  margin-right: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--panel-line);
+  border-radius: 4px;
+  color: var(--sub);
+  font-size: 10.5px;
 }
 </style>

@@ -33,7 +33,10 @@ function add() {
   emit('save', sorted([...props.entries, { date: date.value || today, amount }]))
   eok.value = ''
 }
-function remove(index: number) {
+const { ask } = useConfirm()
+async function remove(index: number) {
+  const item = props.entries[index]!
+  if (!await ask({ title: '내역 지우기', name: `${props.name} ${`${props.label} 내역`}`, detail: formatShortDate(item.date), amount: -item.amount, note: '지우면 가계부에서도 이 금액이 빠져요.' })) return
   emit('save', props.entries.filter((_, i) => i !== index))
 }
 // 그날 기록 값으로 넣기. 같은 날 적은 건이 있으면 바꾼다
@@ -71,9 +74,9 @@ const reviewLink = (day: string) => (props.ocid ? { path: '/review', query: { oc
         </li>
       </ol>
       <p v-else class="muted small">아직 적은 내역이 없어요.</p>
-      <form class="add" @submit.prevent="add">
-        <input v-model="date" type="date" class="field-input" :max="today" :aria-label="`${label} 한 날`" required>
-        <input v-model="eok" class="field-input amount" inputmode="decimal" placeholder="억 단위 금액" aria-label="금액 (억)" required>
+      <form class="add" @submit.prevent="add" novalidate>
+        <input v-model="date" type="date" class="field-input" :max="today" :aria-label="`${label} 한 날`">
+        <input v-model="eok" class="field-input amount" inputmode="decimal" placeholder="억 단위 금액" aria-label="금액 (억)">
         <button class="btn compact">+ 추가</button>
       </form>
       <p class="sum">합계 <b>{{ formatKoreanNumber(total) }}</b></p>

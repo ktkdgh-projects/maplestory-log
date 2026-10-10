@@ -66,10 +66,7 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
 </script>
 
 <template>
-  <GameWindow v-if="!me" title="장비 결산">
-    <p class="muted">장비 결산은 API 키를 등록한 사용자만 쓸 수 있어요. 기록은 본인만 볼 수 있어요.</p>
-    <div><NuxtLink to="/login" class="btn">API 키 등록하기</NuxtLink></div>
-  </GameWindow>
+  <KeyGate v-if="!me" v-bind="KEY_GATES.items" />
 
   <GameWindow v-else class="fit" title="장비 결산" sub="판매는 경매장 수수료를 뺀 금액으로 계산해요" accent="red" fill>
     <div class="overview stagger">
@@ -97,10 +94,10 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
           <p v-if="!candidates" class="muted">캐릭터 목록을 불러오는 중이에요…</p>
           <CharacterPicker v-else :characters="candidates" :busy="busy" @pick="createSheet({ ocid: $event })" />
         </div>
-        <form class="create-col" @submit.prevent="createSheet({ title: customTitle })">
+        <form class="create-col" @submit.prevent="createSheet({ title: customTitle })" novalidate>
           <h3>이름만으로 만들기</h3>
           <p class="muted small">자석펫, 거래 기록처럼 캐릭터와 상관없는 표를 만들 때 써요.</p>
-          <input v-model="customTitle" class="field-input" maxlength="40" placeholder="예: 자석펫" required>
+          <input v-model="customTitle" class="field-input" maxlength="40" placeholder="예: 자석펫">
           <div><button class="btn" :disabled="busy">만들기</button></div>
         </form>
       </div>

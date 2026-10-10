@@ -22,9 +22,9 @@ export default defineEventHandler(async (event) => {
   const table = CSV_TABLES.includes(body?.table as CsvTable) ? body!.table as CsvTable : null
   if (format === 'csv' && !table) throw createError({ statusCode: 400, message: '내보낼 표를 골라 주세요.' })
 
-  const { hunts, dropSales, bossRosters, bossClears, itemSheets, itemRows, ledgerSettings, enhanceEvents } = await useCollections()
+  const { hunts, dropSales, bossRosters, bossClears, itemSheets, itemRows, ledgerSettings, enhanceEvents, memos, mesoEntries } = await useCollections()
   const userId = user._id
-  const [huntDocs, saleDocs, roster, clearDocs, sheetDocs, rowDocs, settings, enhanceDocs] = await Promise.all([
+  const [huntDocs, saleDocs, roster, clearDocs, sheetDocs, rowDocs, settings, enhanceDocs, memoDocs, entryDocs] = await Promise.all([
     hunts.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
     dropSales.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
     bossRosters.findOne({ userId }),
@@ -33,6 +33,8 @@ export default defineEventHandler(async (event) => {
     itemRows.find({ userId }).sort({ order: 1 }).toArray(),
     ledgerSettings.findOne({ _id: userId }),
     enhanceEvents.find({ userId }).sort({ at: 1 }).toArray(),
+    memos.find({ userId }).sort({ createdAt: 1 }).toArray(),
+    mesoEntries.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
   ])
   const sheetOf = new Map(sheetDocs.map(s => [s._id.toHexString(), s]))
   const references = await rowReferences(userId, sheetDocs, rowDocs, user.mvpDiscount ?? 0)
@@ -52,9 +54,11 @@ export default defineEventHandler(async (event) => {
         sales: saleDocs.map(toDropSale),
         roster: roster?.characters ?? [],
         clears: clearDocs.map(toBossClear),
+        entries: entryDocs.map(toMesoEntry),
       },
-      items: sheetDocs.map(s => toItemSheet(s, rowDocs, references, new Map())),
+      items: sheetDocs.map(s => toItemSheet(s, rowDocs, references, new Map(), user.mvpDiscount ?? 0)),
       enhance: enhanceDocs.map(({ userId: _u, _id, ...e }) => e),
+      memos: memoDocs.map(toMemo),
     }
   }
 

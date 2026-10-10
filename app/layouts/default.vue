@@ -2,6 +2,9 @@
 const { me } = await useMe()
 
 const keyBroken = computed(() => me.value?.keyStatus === 'invalid' || me.value?.keyStatus === 'deleted')
+// 메모장은 따로 페이지 없이, 가계부 페이지에 떠 있는 버튼으로만 연다
+const route = useRoute()
+const memoFab = computed(() => !!me.value && navGroupOf(route.path)?.key === 'ledger')
 </script>
 
 <template>
@@ -28,6 +31,8 @@ const keyBroken = computed(() => me.value?.keyStatus === 'invalid' || me.value?.
       </nav>
     </footer>
     <AppTabbar />
+    <ClientOnly><MemoFab v-if="memoFab" /></ClientOnly>
+    <ClientOnly><ConfirmHost /></ClientOnly>
   </div>
 </template>
 

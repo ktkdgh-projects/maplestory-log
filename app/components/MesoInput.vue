@@ -2,12 +2,11 @@
 defineProps<{ id: string, label: string, required?: boolean }>()
 const value = defineModel<number | null>({ required: true })
 
-// 큰 숫자를 읽기 쉽게 쉼표를 넣어 보여주고, 저장은 숫자만 남긴다
+// 메소는 만 단위로 친다(1 → 1만 메소). 쉼표를 넣어 보여 주고 저장은 메소로
 const text = computed({
-  get: () => (value.value === null ? '' : value.value.toLocaleString('ko-KR')),
+  get: () => mesoToManText(value.value),
   set: (input: string) => {
-    const digits = input.replace(/\D/g, '').slice(0, 16)
-    value.value = digits ? Number(digits) : null
+    value.value = manTextToMeso(input)
   },
 })
 </script>
@@ -15,7 +14,10 @@ const text = computed({
 <template>
   <label :for="id" class="meso-input">
     <span class="label">{{ label }}</span>
-    <input :id="id" v-model="text" class="field-input" inputmode="numeric" autocomplete="off" :required="required" placeholder="0">
+    <span class="box">
+      <input :id="id" v-model="text" class="field-input" inputmode="numeric" autocomplete="off" :required="required" placeholder="0">
+      <small class="unit">만</small>
+    </span>
     <small class="hint">{{ value ? `${formatKoreanNumber(value)} 메소` : ' ' }}</small>
   </label>
 </template>
@@ -30,9 +32,23 @@ const text = computed({
   color: var(--sub);
   font-size: 13px;
 }
+.box {
+  position: relative;
+  display: block;
+}
 input {
+  padding-right: 30px;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+.unit {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--sub);
+  font-size: 13px;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 .hint {
   min-height: 1.4em;
