@@ -1,6 +1,7 @@
-// 메소 잠재능력 재설정 비용 (2026-10-09 확인)
-// 출처: 넥슨 공식 업데이트 1.2.387(2024-01-25, News/Update/737) 잠재능력, 2024-06-20(Update/746) 에디셔널. 이후 바뀐 공지 없음
-// 큐브는 2024-01-25부터 메소로 살 수 없어서 메소가 드는 재설정은 이 두 가지뿐이다
+// 잠재능력 재설정 비용·등급 상승 확률·천장 (2026-10-10 확인)
+// 메소 재설정 비용: 넥슨 공식 1.2.387(2024-01-25, News/Update/737) 윗잠, 2024-06-20(News/Update/746) 에디셔널
+// 확률·천장: 공식 확률 페이지 Guide/OtherProbability/cube/{black|red|addi}, 에디셔널 메소 재설정은 Update/746
+// 큐브는 2024-01-25부터 메소로 살 수 없어서 메소가 드는 재설정은 메소 재설정 두 가지뿐이다
 export const POTENTIAL_GRADES = ['레어', '에픽', '유니크', '레전드리'] as const
 export type PotentialGrade = typeof POTENTIAL_GRADES[number]
 
@@ -27,3 +28,48 @@ const RESET_COST = {
 export function resetCost(additional: boolean, level: number, grade: PotentialGrade): number {
   return RESET_COST[additional ? 'additional' : 'potential'][levelBand(level)]![POTENTIAL_GRADES.indexOf(grade)]!
 }
+
+export interface ResetMethod {
+  id: 'meso' | 'meso-addi' | 'black' | 'red' | 'addi'
+  label: string
+  // 공식 옵션 확률표를 찾을 때 쓰는 큐브 아이템 id. 메소 재설정은 같은 표를 쓰는 큐브 id
+  cubeItemId: number
+  additional: boolean
+  // 메소로 하는 재설정이면 true (비용은 resetCost)
+  meso: boolean
+  // 레어→에픽, 에픽→유니크, 유니크→레전드리 (%)
+  tierUp: number[]
+  // 같은 등급에서 이 횟수째 돌리면 등급이 반드시 오른다. 재설정 방식·등급별로 따로 쌓이고 월드 안 캐릭터끼리 공유
+  ceiling: number[]
+}
+
+export const RESET_METHODS: ResetMethod[] = [
+  { id: 'meso', label: '메소 재설정', cubeItemId: 5062010, additional: false, meso: true, tierUp: [15.0000001275, 3.5, 1.4], ceiling: [10, 42, 107] },
+  { id: 'black', label: '블랙 큐브', cubeItemId: 5062010, additional: false, meso: false, tierUp: [15.0000001275, 3.5, 1.4], ceiling: [10, 42, 107] },
+  { id: 'red', label: '레드 큐브', cubeItemId: 5062009, additional: false, meso: false, tierUp: [6.0000002444, 1.8, 0.3], ceiling: [25, 83, 500] },
+  { id: 'meso-addi', label: '메소 재설정', cubeItemId: 5062500, additional: true, meso: true, tierUp: [2.381, 0.9804, 0.7], ceiling: [62, 152, 214] },
+  { id: 'addi', label: '에디셔널 · 화이트 에디셔널 큐브', cubeItemId: 5062500, additional: true, meso: false, tierUp: [4.7619, 1.9608, 0.7], ceiling: [31, 76, 214] },
+]
+
+// 기록 페이지에서 쓰는 메소 재설정 천장. 등급 이름으로 찾는다
+export function mesoCeiling(additional: boolean, grade: PotentialGrade): number | null {
+  const method = RESET_METHODS.find(m => m.meso && m.additional === additional)!
+  return method.ceiling[POTENTIAL_GRADES.indexOf(grade)] ?? null
+}
+
+// 공식 확률표의 장비 분류 코드 = 순서 + 1
+export const POTENTIAL_PARTS = [
+  '무기', '엠블렘', '보조무기 (포스실드·소울링 제외)', '포스실드 · 소울링', '방패', '모자', '상의', '한벌옷', '하의', '신발',
+  '장갑', '망토', '벨트', '어깨장식', '얼굴장식', '눈장식', '귀고리', '반지', '펜던트', '기계심장',
+] as const
+
+// 공식 확률표 검색이 받는 최대 장비 레벨
+export const OPTION_TABLE_MAX_LEVEL = 250
+
+// 세 줄 안에 같은 종류가 몇 개까지 나올 수 있는지 (공식 확률 페이지 안내)
+export const OPTION_LIMITS: { pattern: RegExp, max: number }[] = [
+  { pattern: /쓸만한/, max: 1 },
+  { pattern: /피격 후 무적시간/, max: 1 },
+  { pattern: /데미지의 \d+% 무시/, max: 2 },
+  { pattern: /피격 시 .*무적/, max: 2 },
+]

@@ -77,6 +77,8 @@ interface NexonBasic {
   character_exp_rate: string
   character_guild_name: string | null
   character_image: string
+  // 해방 퀘스트 완료 단계: "0" 미완료, "1" 제네시스 해방, "2" 데스티니 1차 해방
+  liberation_quest_clear?: string
 }
 
 interface NexonStat {
@@ -261,6 +263,29 @@ export const nexon = {
   dojang: (apiKey: string, ocid: string) => nexonGet<NexonDojang>('/character/dojang', apiKey, { ocid }),
   petEquipment: (apiKey: string, ocid: string) => nexonGet<NexonPetEquipment>('/character/pet-equipment', apiKey, { ocid }),
   cashItemEquipment: (apiKey: string, ocid: string) => nexonGet<NexonCashItemEquipment>('/character/cashitem-equipment', apiKey, { ocid }),
+  eventNotices: (apiKey: string) => nexonGet<{ event_notice: NexonEventNotice[] }>('/notice-event', apiKey),
+  eventNotice: (apiKey: string, noticeId: number) => nexonGet<NexonEventNoticeDetail>('/notice-event/detail', apiKey, { notice_id: noticeId }),
+}
+
+// 진행 중인 이벤트 공지만 최근 20건까지 온다
+export interface NexonEventNotice {
+  title: string
+  url: string
+  thumbnail_url: string | null
+  notice_id: number
+  date: string
+  date_event_start: string
+  date_event_end: string
+}
+
+export interface NexonEventNoticeDetail {
+  title: string
+  url: string
+  // 공지 본문 HTML. 썬데이 메이플은 이미지 한 장뿐이다
+  contents: string
+  date: string
+  date_event_start: string
+  date_event_end: string
 }
 
 // 넥슨이 붙여 주는 모션 옵션(예: wmotion=W02) 중에는 그림을 못 만들어 빈 대체 이미지가 오는 경우가 있어 기본 모션으로 쓴다

@@ -1,5 +1,5 @@
 import type { ObjectId } from 'mongodb'
-import type { CharacterBrief, EnhanceEvent, EnhanceKind, EnhanceSummary } from '#shared/types'
+import type { CharacterBrief, EnhanceEvent, EnhanceKind, EnhanceSummary, PotentialDay, PotentialDetail, PotentialTier, StarforceDay, StarforceDetail, StarforceStage } from '#shared/types'
 import { POTENTIAL_GRADES, resetCost, type PotentialGrade } from '#shared/data/potential'
 import { PROTECT_EXTRA, STARFORCE_REVAMP_DATE, baseCost } from '#shared/data/starforce'
 import type { EnhanceEventDoc } from './mongo'
@@ -10,7 +10,6 @@ const HISTORY_BACKFILL_DAYS = 180
 const SYNC_LOCK_MS = 60 * 1000
 // 오늘 기록을 다시 받는 간격. 기간 버튼을 누를 때마다 넥슨을 부르면 화면이 느려진다
 const TODAY_SYNC_MS = 3 * 60 * 1000
-const MAX_EVENTS_PER_ITEM = 300
 // 받는 필드가 바뀐 버전. 이보다 낮으면 처음부터 다시 받아 채운다 (2: 쓴 메소 계산용 필드, 3: 에디셔널 등급)
 const SYNC_VERSION = 3
 
@@ -135,7 +134,7 @@ export function eventMeso(doc: Pick<EnhanceEventDoc, 'kind' | 'at' | 'beforeStar
 const isAdditional = (tool: string | null) => !!tool?.includes('에디셔널')
 
 export const emptySummary = (): EnhanceSummary => ({
-  starforce: { attempts: 0, success: 0, destroy: 0 },
+  starforce: { attempts: 0, success: 0, destroy: 0, protect: 0 },
   potential: { cubes: 0, resets: 0 },
   additional: { cubes: 0, resets: 0 },
   meso: { starforce: 0, potential: 0, additional: 0 },
@@ -157,6 +156,9 @@ function toEvent(doc: EnhanceEventDoc, meso: number | null): EnhanceEvent {
     options: doc.options,
     addOptions: doc.addOptions,
     meso,
+    // 쓴 메소 필드를 받기 전(버전 1)에 저장된 기록엔 없다
+    protect: doc.protect ?? false,
+    eventDiscount: doc.eventDiscount ?? 0,
   }
 }
 
@@ -172,7 +174,7 @@ const sinceFilter = (from: string | null) => (from ? { at: { $gte: kstDayStart(f
 // 비용이 같게 나오는 기록끼리 DB에서 묶어 센다. 반년치 수천 건을 다 받아 오면 느려서
 type CostGroup = Pick<EnhanceEventDoc, 'item' | 'kind' | 'success' | 'destroyed' | 'beforeStar' | 'beforeGrade' | 'itemLevel' | 'tool' | 'protect' | 'superior' | 'scroll' | 'eventDiscount'>
 
-// 넥슨 기록엔 아이템 고유 번호가 없어서 같은 캐릭터·같은 이름으로 묶는다. 기록 목록은 장비를 고를 때 itemEvents로 따로 받는다
+// 넥슨 기록엔 아이템 고유 번호가 없어서 같은 캐릭터·같은 이름으로 묶는다. 기록 목록은 장비를 고를 때 starforceDetail·potentialDetail로 따로 받는다
 export async function summariesByItem(userId: ObjectId, character: string, items: { name: string, level: number | null }[], from: string | null): Promise<Map<string, EnhanceSummary>> {
   const { enhanceEvents } = await useCollections()
   const levels = new Map(items.map(i => [i.name, i.level]))
@@ -200,6 +202,7 @@ export async function summariesByItem(userId: ObjectId, character: string, items
       s.starforce.attempts += count
       if (g.success) s.starforce.success += count
       if (g.destroyed) s.starforce.destroy += count
+      if (g.protect) s.starforce.protect += count
       s.meso.starforce += meso
     }
     else {
@@ -214,9 +217,90 @@ export async function summariesByItem(userId: ObjectId, character: string, items
   return result
 }
 
-// 한 장비의 기록 목록. 최근 것부터 잘라 보낸다
-export async function itemEvents(userId: ObjectId, character: string, item: string, level: number | null, from: string | null): Promise<EnhanceEvent[]> {
+// 반년 동안 한 장비에 이보다 많이 누르는 일은 드물다. 넘으면 오래된 날부터 잘린다
+const MAX_DETAIL_EVENTS = 3000
+
+// 한 장비의 스타포스 기록을 ★ 구간별과 날짜별로 묶는다
+export async function starforceDetail(userId: ObjectId, character: string, item: string, level: number | null, from: string | null): Promise<StarforceDetail> {
   const { enhanceEvents } = await useCollections()
-  const docs = await enhanceEvents.find({ userId, character, item, ...sinceFilter(from) }).sort({ at: -1 }).limit(MAX_EVENTS_PER_ITEM).toArray()
-  return docs.map(doc => toEvent(doc, eventMeso(doc, level)))
+  const docs = await enhanceEvents
+    .find({ userId, character, item, kind: 'starforce', ...sinceFilter(from) })
+    .sort({ at: -1 })
+    .limit(MAX_DETAIL_EVENTS + 1)
+    .toArray()
+  const truncated = docs.length > MAX_DETAIL_EVENTS
+  if (truncated) docs.pop()
+
+  const stages = new Map<number, StarforceStage>()
+  const days = new Map<string, StarforceDay>()
+  for (const doc of docs) {
+    const meso = eventMeso(doc, level)
+    if (doc.beforeStar !== null) {
+      const stage = stages.get(doc.beforeStar) ?? stages.set(doc.beforeStar, { star: doc.beforeStar, attempts: 0, success: 0, fail: 0, destroy: 0, protect: 0, meso: 0 }).get(doc.beforeStar)!
+      stage.attempts++
+      if (doc.success) stage.success++
+      else if (doc.destroyed) stage.destroy++
+      else stage.fail++
+      if (doc.protect) stage.protect++
+      stage.meso += meso ?? 0
+    }
+    const date = kstDate(doc.at)
+    const day = days.get(date) ?? days.set(date, { date, attempts: 0, success: 0, destroy: 0, meso: 0, fromStar: null, toStar: null, events: [] }).get(date)!
+    day.attempts++
+    if (doc.success) day.success++
+    if (doc.destroyed) day.destroy++
+    day.meso += meso ?? 0
+    // 최신순으로 돌므로 처음 만난 기록이 그날 마지막, 마지막으로 만난 기록이 그날 처음이다
+    day.toStar ??= doc.afterStar
+    day.fromStar = doc.beforeStar
+    day.events.push(toEvent(doc, meso))
+  }
+  return {
+    stages: [...stages.values()].sort((a, b) => a.star - b.star),
+    days: [...days.values()],
+    truncated,
+  }
+}
+
+// 한 장비의 윗잠 또는 에디 기록을 등급 상승 단계별과 날짜별로 묶는다
+export async function potentialDetail(userId: ObjectId, character: string, item: string, level: number | null, from: string | null, additional: boolean): Promise<PotentialDetail> {
+  const { enhanceEvents } = await useCollections()
+  // 최근 것을 기준으로 자르고, 등급 단계는 오래된 것부터 세야 해서 받은 뒤 뒤집는다
+  const docs = await enhanceEvents
+    .find({ userId, character, item, kind: { $in: ['cube', 'potential'] }, tool: additional ? /에디셔널/ : { $not: /에디셔널/ }, ...sinceFilter(from) })
+    .sort({ at: -1 })
+    .limit(MAX_DETAIL_EVENTS + 1)
+    .toArray()
+  const truncated = docs.length > MAX_DETAIL_EVENTS
+  if (truncated) docs.pop()
+
+  const days = new Map<string, PotentialDay>()
+  for (const doc of docs) {
+    const meso = eventMeso(doc, level)
+    const date = kstDate(doc.at)
+    const day = days.get(date) ?? days.set(date, { date, cubes: 0, resets: 0, meso: 0, ups: 0, events: [] }).get(date)!
+    if (doc.kind === 'cube') day.cubes++
+    else day.resets++
+    if (doc.success) day.ups++
+    day.meso += meso ?? 0
+    day.events.push(toEvent(doc, meso))
+  }
+
+  const tiers: PotentialTier[] = []
+  let tries = 0
+  let since: Date | null = docs.at(-1)?.at ?? null
+  for (const doc of docs.toReversed()) {
+    tries++
+    if (doc.success && doc.grade) {
+      tiers.push({ from: doc.beforeGrade ?? null, to: doc.grade, tries, at: doc.at.toISOString() })
+      tries = 0
+      since = doc.at
+    }
+  }
+  return {
+    tiers,
+    current: { grade: docs[0]?.grade ?? null, tries, since: since?.toISOString() ?? null },
+    days: [...days.values()],
+    truncated,
+  }
 }

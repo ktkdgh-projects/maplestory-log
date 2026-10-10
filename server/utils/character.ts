@@ -152,6 +152,7 @@ async function fetchDetail(apiKey: string, ocid: string): Promise<CharacterDetai
     exp: basic.character_exp,
     expRate: Number(basic.character_exp_rate),
     guild: basic.character_guild_name,
+    liberation: Number(basic.liberation_quest_clear) || 0,
     imageUrl: characterImageUrl(basic.character_image),
     combatPower: combatPowerOf(stat),
     unionLevel: union.union_level,
