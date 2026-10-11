@@ -70,6 +70,8 @@ export interface ItemFlowEvent {
   icon: string | null
   // 들어온 메소는 양수, 나간 메소는 음수
   amount: number
+  // 장비 결산엔 날짜만 있어서, 그 줄을 같은 날 만들었으면 만든 시각을 쓴다
+  at: number | null
 }
 
 // 참고값이 아닌 직접 적은 값만 쓰고, 가계부 미반영 시트와 제외한 줄은 뺀다
@@ -85,7 +87,8 @@ export async function itemFlowEvents(userId: ObjectId, range: { from?: string, t
   const inRange = (date: string | null | undefined): date is string => !!date && (!range.from || date >= range.from) && (!range.to || date <= range.to)
   const events: ItemFlowEvent[] = []
   const push = (date: string, kind: ItemFlowEvent['kind'], row: ItemRowDoc, amount: number) => {
-    if (amount) events.push({ date, kind, name: row.name, icon: row.icon ?? null, amount })
+    const created = row._id.getTimestamp()
+    if (amount) events.push({ date, kind, name: row.name, icon: row.icon ?? null, amount, at: kstDateOf(created) === date ? created.getTime() : null })
   }
   for (const row of rows) {
     if (row.purchases?.length) {
