@@ -21,7 +21,7 @@ defineEmits<{ reset: [] }>()
           </div>
           <b class="sp-value">{{ s.value }}<small>{{ s.unit }}</small></b>
           <span class="sp-bar"><i :style="{ width: `${Math.min(100, s.progress * 100)}%` }" /></span>
-          <small class="sp-sub">{{ s.sub }}</small>
+          <small v-if="s.sub" class="sp-sub">{{ s.sub }}</small>
         </div>
       </div>
     </section>
@@ -53,7 +53,7 @@ defineEmits<{ reset: [] }>()
   gap: 10px;
   padding: 12px 14px;
   background:
-    radial-gradient(420px 120px at 0 0, rgb(183 156 255 / 0.1), transparent 70%),
+    radial-gradient(420px 120px at 0 0, color-mix(in srgb, var(--calc) 10%, transparent), transparent 70%),
     var(--panel);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
@@ -147,7 +147,7 @@ defineEmits<{ reset: [] }>()
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-@media (max-width: 640px) {
+@media (max-width: 359px) {
   .spent-items {
     grid-template-columns: 1fr;
   }
@@ -165,7 +165,8 @@ defineEmits<{ reset: [] }>()
   font-size: 13px;
 }
 .reset {
-  padding: 4px 10px;
+  min-height: 36px;
+  padding: 4px 12px;
   background: var(--panel);
   border: 1px solid var(--panel-line);
   border-radius: 999px;

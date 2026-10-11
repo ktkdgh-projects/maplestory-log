@@ -66,7 +66,6 @@ export interface SnapshotDoc {
   fetchedAt: Date
 }
 
-// 메모장: 사용자가 아무거나 적어 두는 글
 export interface MemoDoc {
   _id: ObjectId
   userId: ObjectId
@@ -96,7 +95,7 @@ export interface ItemRowDoc {
   icon: string | null
   buy: number
   sell: number
-  // 판매가에 붙는 경매장 수수료율. 손익·가계부에는 수수료를 뺀 금액이 잡힌다(내 정보 MVP가 실버 이상이면 읽을 때 3%로 본다)
+  // 경매장 수수료율. 내 정보 MVP가 실버 이상이면 읽을 때 3%로 본다
   sellFee?: number
   memo: string | null
   buyDate?: string | null
@@ -136,7 +135,7 @@ export interface EnhanceEventDoc {
   addOptions: string[]
   // 쓴 메소 계산용. 이 필드가 생기기 전에 받은 기록은 다시 받으며 채운다
   itemLevel?: number | null
-  // 재설정 전 등급(비용은 이 등급 기준)
+  // 재설정 비용은 재설정 전 등급 기준이다
   beforeGrade?: string | null
   protect?: boolean
   superior?: boolean
@@ -154,7 +153,6 @@ export interface HistorySyncDoc {
   // 가장 최근에 모은 지난날. 다음엔 이 다음 날부터 어제까지 모으고, 오늘은 매번 따로 다시 받는다
   newest: string | null
   done: boolean
-  // 오늘 기록을 마지막으로 받은 때
   todayAt?: Date | null
   lockedAt: Date | null
   // 받는 필드가 늘면 올려서 처음부터 다시 받게 한다
@@ -341,6 +339,8 @@ async function ensureIndexes(db: Db) {
       { key: { userId: 1, character: 1, item: 1, at: -1 } },
       // 강화 결산: 장비와 상관없이 캐릭터·기간으로 찾는다
       { key: { userId: 1, character: 1, at: -1 } },
+      // 썬데이 결산: 기간에 강화한 캐릭터를 distinct로 찾는다
+      { key: { userId: 1, at: -1 } },
     ]),
     db.collection('memos').createIndexes([
       { key: { userId: 1, createdAt: -1 } },
@@ -411,7 +411,6 @@ export async function useCollections() {
   }
 }
 
-// fresh면 캐시를 건너뛰고 새로 받아 캐시를 바꿔 끼운다 (사용자가 최신화를 누른 경우)
 export async function withCache<T>(key: string, ttlMs: number, load: () => Promise<T>, fresh = false): Promise<T> {
   const { cache } = await useCollections()
   const hit = fresh ? null : await cache.findOne({ _id: key, expireAt: { $gt: new Date() } })

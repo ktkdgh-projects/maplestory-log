@@ -10,14 +10,18 @@ const tabs = computed(() => [
 ].filter(tab => tab.show))
 const tab = ref(tabs.value[0]?.key)
 const abilityPreset = ref(props.character.abilityPresetNo)
+const linkPicked = ref(0)
+const setPicked = ref(0)
+const pickedLink = computed(() => props.character.linkSkills[linkPicked.value])
+const pickedSet = computed(() => props.character.setEffects[setPicked.value])
 </script>
 
 <template>
   <div v-if="tabs.length" class="summary">
-    <div class="tabs" role="group" aria-label="빌드 정보">
-      <MenuButton v-for="t in tabs" :key="t.key" :active="tab === t.key" @click="tab = t.key">{{ t.label }}</MenuButton>
+    <div class="tabs" role="tablist" aria-label="빌드 정보">
+      <MenuButton v-for="t in tabs" :key="t.key" :active="tab === t.key" role="tab" :aria-selected="tab === t.key" :aria-pressed="null" @click="tab = t.key">{{ t.label }}</MenuButton>
     </div>
-    <div class="body">
+    <div class="body" role="tabpanel">
       <Transition name="fade" mode="out-in">
         <div v-if="tab === 'ability'" key="ability" class="ability">
           <div class="preset-tabs" role="group" aria-label="어빌리티 프리셋">
@@ -34,29 +38,46 @@ const abilityPreset = ref(props.character.abilityPresetNo)
           <ul :key="abilityPreset" class="lines stagger">
             <li v-for="(line, k) in character.abilityPresets[abilityPreset - 1]" :key="k" :style="{ '--tone': potentialGradeColor(line.grade) ?? 'var(--tip-line)' }">
               <span class="grade">{{ line.grade }}</span>
-              <span class="ellipsis" :title="line.value">{{ line.value }}</span>
+              <span class="line-text">{{ line.value }}</span>
             </li>
             <li v-if="!character.abilityPresets[abilityPreset - 1]?.length" class="muted">비어 있어요</li>
           </ul>
         </div>
 
-        <ul v-else-if="tab === 'link'" key="link" class="links">
-          <li v-for="skill in character.linkSkills" :key="skill.name" :title="skill.effect">
-            <img :src="skill.icon" alt="">
-            <span class="ellipsis">{{ skill.name }}</span>
-            <b>Lv.{{ skill.level }}</b>
-          </li>
-        </ul>
+        <div v-else-if="tab === 'link'" key="link" class="pick-view">
+          <ul class="links">
+            <li v-for="(skill, i) in character.linkSkills" :key="skill.name">
+              <button type="button" class="item" :aria-pressed="linkPicked === i" @click="linkPicked = i">
+                <img :src="skill.icon" alt="">
+                <span class="ellipsis">{{ skill.name }}</span>
+                <b>Lv.{{ skill.level }}</b>
+              </button>
+            </li>
+          </ul>
+          <p class="detail" aria-live="polite">
+            <b>{{ pickedLink?.name }}</b>
+            <span>{{ pickedLink?.effect || '효과 정보가 없어요' }}</span>
+          </p>
+        </div>
 
-        <ul v-else key="set" class="sets">
-          <li v-for="set in character.setEffects" :key="set.name" :title="set.active.join('\n') || '적용 중인 효과 없음'">
-            <span class="ellipsis">{{ set.name }}</span>
-            <span class="pips" aria-hidden="true">
-              <i v-for="n in set.max" :key="n" :class="{ on: n <= set.count }" />
-            </span>
-            <b>{{ set.count }}/{{ set.max }}</b>
-          </li>
-        </ul>
+        <div v-else key="set" class="pick-view">
+          <ul class="sets">
+            <li v-for="(set, i) in character.setEffects" :key="set.name">
+              <button type="button" class="item" :aria-pressed="setPicked === i" @click="setPicked = i">
+                <span class="ellipsis">{{ set.name }}</span>
+                <span class="pips" aria-hidden="true">
+                  <i v-for="n in set.max" :key="n" :class="{ on: n <= set.count }" />
+                </span>
+                <b>{{ set.count }}/{{ set.max }}</b>
+              </button>
+            </li>
+          </ul>
+          <p class="detail" aria-live="polite">
+            <b>{{ pickedSet?.name }}</b>
+            <span v-for="line in pickedSet?.active" :key="line">{{ line }}</span>
+            <span v-if="!pickedSet?.active.length" class="muted">적용 중인 효과가 없어요</span>
+          </p>
+        </div>
       </Transition>
     </div>
   </div>
@@ -166,31 +187,65 @@ ul {
   grid-auto-rows: minmax(0, 1fr);
   gap: 6px;
 }
-.links {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.links li {
-  gap: 6px;
-  padding: 4px 8px;
-  font-size: 13px;
-}
-.links li,
-.sets li {
+.item {
   display: flex;
   align-items: center;
   gap: 7px;
+  width: 100%;
+  height: 100%;
   min-width: 0;
+  min-height: 36px;
   padding: 4px 10px;
   background: var(--panel);
   border: 1px solid var(--panel-line);
   border-radius: 8px;
+  color: var(--text);
+  font: inherit;
   font-size: 14px;
-  cursor: help;
+  text-align: left;
+  cursor: pointer;
   transition: border-color var(--fast) ease;
 }
-.links li:hover,
-.sets li:hover {
+.links .item {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.item:hover {
+  border-color: var(--tip-line);
+}
+.item[aria-pressed="true"] {
   border-color: var(--api);
+  box-shadow: inset 0 0 0 1px var(--api);
+}
+.pick-view {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+/* 높이를 잡아 둬서 다른 칸을 눌러도 위가 들썩이지 않는다 */
+.detail {
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  height: 92px;
+  margin: 0;
+  padding: 8px 12px;
+  overflow-y: auto;
+  background: var(--bar);
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+  color: var(--sub);
+  font-size: 13px;
+  line-height: 1.5;
+  scrollbar-width: thin;
+}
+.detail b {
+  color: var(--api);
+  font-size: 14px;
+}
+.line-text {
+  min-width: 0;
+  line-height: 1.35;
 }
 .links img {
   flex: none;

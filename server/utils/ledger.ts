@@ -1,24 +1,40 @@
-import { ObjectId } from 'mongodb'
+import { ObjectId, type Collection, type Filter } from 'mongodb'
 import type { BossClear, BossLoot, BossPick, BossRosterCharacter, DropSale, DropSaleInput, HuntEntry, HuntInput, MesoEntry, MesoEntryInput } from '#shared/types'
 import { findMesoEntryType } from '#shared/data/mesoEntries'
 import { MAX_BOSS_CHARACTERS, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, findBoss } from '#shared/data/bosses'
+import { dropSaleNet, effectiveFee, mesoEntryDelta } from '#shared/calc/meso'
+import { clearMeso } from '#shared/calc/boss'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 import type { BossClearDoc, DropSaleDoc, HuntDoc, MesoEntryDoc } from './mongo'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const COUNT_MAX = 1e6
 const MEMO_MAX = 200
+// 사냥·판매·직접 등록은 하루 몇 줄이라 몇 년을 적어도 넘지 않는다. 마구 쌓아 DB를 채우는 것만 막는다
+const MAX_LEDGER_RECORDS = 5000
 
 const fail = (message: string) => createError({ statusCode: 400, message })
 
+// 형식만 맞는 2026-13-01 같은 날짜는 Date로 바꿨다 되돌리면 달라진다
+const realDate = (value: string) => {
+  const ms = Date.parse(`${value}T00:00:00Z`)
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === value
+}
+
+export async function assertLedgerRoom<T extends { userId: ObjectId }>(collection: Collection<T>, userId: ObjectId) {
+  const used = await collection.countDocuments({ userId } as Filter<T>, { limit: MAX_LEDGER_RECORDS })
+  if (used >= MAX_LEDGER_RECORDS) throw createError({ statusCode: 409, message: `가계부 기록은 종류마다 ${MAX_LEDGER_RECORDS.toLocaleString()}개까지 남길 수 있어요. 오래된 기록을 지우고 다시 적어 주세요.` })
+}
+
 export function parseDate(value: unknown): string {
-  if (typeof value !== 'string' || !DATE_PATTERN.test(value) || value > kstToday()) throw fail('날짜를 오늘이나 그 전으로 골라 주세요.')
+  if (typeof value !== 'string' || !DATE_PATTERN.test(value) || !realDate(value) || value > kstToday()) throw fail('날짜를 오늘이나 그 전으로 골라 주세요.')
   return value
 }
 
 function count(value: unknown, label: string, max = COUNT_MAX): number {
   if (value === null || value === undefined || value === '') return 0
   const n = Number(value)
-  if (!Number.isSafeInteger(n) || n < 0 || n > max) throw fail(`${label}를 0 이상의 숫자로 적어 주세요.`)
+  if (!Number.isSafeInteger(n) || n < 0 || n > max) throw fail(`${label}을(를) 0 이상의 숫자로 적어 주세요.`)
   return n
 }
 
@@ -59,6 +75,8 @@ export function parseDropSale(body: Record<string, unknown> | null | undefined, 
 
 const CASH_MAX = 1e10
 const ENTRY_ITEM_MAX = 40
+// 아이콘은 넥슨 아이콘이나 사이트에 둔 그림만 받는다. 끝까지 맞춰 봐서 ..이나 다른 경로가 끼어들 수 없게 한다
+const ICON_PATTERN = /^(?:https:\/\/open\.api\.nexon\.com\/static\/maplestory\/[\w/-]{1,200}|\/icons\/[\w-]{1,60}\.(?:png|svg|webp))$/
 
 export function parseMesoEntry(body: Record<string, unknown> | null | undefined, defaultFee: number): MesoEntryInput {
   const info = findMesoEntryType(String(body?.type))
@@ -72,8 +90,7 @@ export function parseMesoEntry(body: Record<string, unknown> | null | undefined,
     amount,
     cash: info.cash ? count(body?.cash, '현금', CASH_MAX) || null : null,
     item: info.item ? text(body?.item, ENTRY_ITEM_MAX) : null,
-    // 아이콘은 넥슨 아이콘이나 사이트에 둔 그림만 받는다
-    icon: info.item && typeof body?.icon === 'string' && /^(https:\/\/open\.api\.nexon\.com\/|\/icons\/)/.test(body.icon) ? body.icon.slice(0, 300) : null,
+    icon: info.item && typeof body?.icon === 'string' && ICON_PATTERN.test(body.icon) ? body.icon : null,
     fee: info.fee ? (isAuctionFee(body?.fee) ? body.fee : defaultFee) : null,
     memo: text(body?.memo, MEMO_MAX),
   }
@@ -84,13 +101,20 @@ export function toMesoEntry(doc: MesoEntryDoc): MesoEntry {
   return { id: _id.toHexString(), ...input, icon: input.icon ?? null }
 }
 
+// 이름만 치고 목록에서 고르지 않은 물건은 아이콘 사전에서 같은 이름을 찾아 붙인다
+export async function toMesoEntries(docs: MesoEntryDoc[]): Promise<MesoEntry[]> {
+  const entries = docs.map(toMesoEntry)
+  const known = await lookupItems(entries.flatMap(e => (e.item && !e.icon ? [e.item] : [])))
+  return entries.map(e => (e.item && !e.icon ? { ...e, icon: known.get(iconKey(e.item))?.icon ?? null } : e))
+}
+
 export function toDropSale(doc: DropSaleDoc): DropSale {
   const { _id, userId: _userId, createdAt: _createdAt, ...input } = doc
   return { id: _id.toHexString(), ...input }
 }
 
 // 수수료를 고르기 전에 저장된 물욕템은 기본 수수료로 본다
-const lootOf = (doc: Pick<BossClearDoc, 'loot'>): BossLoot[] => (doc.loot ?? []).map(l => ({ ...l, fee: l.fee ?? DEFAULT_AUCTION_FEE }))
+export const bossLootOf = (doc: Pick<BossClearDoc, 'loot'>): BossLoot[] => (doc.loot ?? []).map(l => ({ ...l, fee: l.fee ?? DEFAULT_AUCTION_FEE }))
 
 export function toBossClear(doc: BossClearDoc): BossClear {
   return {
@@ -103,7 +127,7 @@ export function toBossClear(doc: BossClearDoc): BossClear {
     party: doc.party,
     date: doc.date,
     meso: doc.meso,
-    loot: lootOf(doc),
+    loot: bossLootOf(doc),
   }
 }
 
@@ -128,7 +152,7 @@ export async function loadLedgerSettings(userId: ObjectId) {
     ledgerSettings.findOne({ _id: userId }),
     users.findOne({ _id: userId }, { projection: { mvpDiscount: 1 } }),
   ])
-  return { feeRate: hasMvpFee(user?.mvpDiscount) ? MVP_FEE : doc?.feeRate ?? DEFAULT_AUCTION_FEE, balanceDate: doc?.balanceDate ?? null, balance: doc?.balance ?? null }
+  return { feeRate: effectiveFee(doc?.feeRate, user?.mvpDiscount), balanceDate: doc?.balanceDate ?? null, balance: doc?.balance ?? null }
 }
 
 // 마지막으로 고른 수수료를 다음 판매의 기본값으로 기억한다
@@ -150,7 +174,7 @@ export async function currentBalance(userId: ObjectId, balanceDate: string, bala
   ])
   let total = balance
   for (const h of huntDocs) total += h.meso
-  for (const c of clearDocs) total += clearMeso({ meso: c.meso, loot: lootOf(c) })
+  for (const c of clearDocs) total += clearMeso({ meso: c.meso, loot: bossLootOf(c) })
   for (const f of flows) total += f.earned - f.bought - f.enhanced
   for (const s of saleDocs) total += dropSaleNet(s)
   for (const e of entryDocs) total += mesoEntryDelta(e)
@@ -168,7 +192,7 @@ function parsePicks(value: unknown): BossPick[] {
   const picks: BossPick[] = []
   for (const raw of value as Record<string, unknown>[]) {
     const boss = findBoss(String(raw?.bossId))
-    if (!boss || !(String(raw?.difficulty) in boss.prices)) throw fail('없는 보스나 난이도가 있어요.')
+    if (!boss || !Object.hasOwn(boss.prices, String(raw?.difficulty))) throw fail('없는 보스나 난이도가 있어요.')
     if (picks.some(p => p.bossId === boss.id)) throw fail(`${boss.name}은(는) 한 난이도만 고를 수 있어요.`)
     const party = Number(raw?.party)
     if (!Number.isInteger(party) || party < 1 || party > MAX_PARTY) throw fail(`파티 인원은 1~${MAX_PARTY}명이에요.`)

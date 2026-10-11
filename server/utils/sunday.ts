@@ -4,11 +4,14 @@ import type { SundayDoc } from './mongo'
 // 공지 목록은 짧게만 캐시한다. 보통 금요일 10시(공휴일이면 목·수요일)에 올라와서 그 무렵에도 금방 보이게
 const CHECK_MS = 10 * 60 * 1000
 const HISTORY = 12
+// 공지 원문 링크는 화면에서 href로 쓰이니 넥슨 홈페이지 주소만 믿고, 아니면 이벤트 목록으로 돌린다
+const NOTICE_URL_FALLBACK = 'https://maplestory.nexon.com/News/Event'
+const safeNoticeUrl = (url: string) => url.startsWith('https://maplestory.nexon.com/') ? url : NOTICE_URL_FALLBACK
 
 const toNotice = (doc: SundayDoc): SundayNotice => ({
   id: doc._id,
   title: doc.title,
-  url: doc.url,
+  url: safeNoticeUrl(doc.url),
   image: doc.image,
   start: doc.start.toISOString(),
   end: doc.end.toISOString(),
@@ -16,8 +19,7 @@ const toNotice = (doc: SundayDoc): SundayNotice => ({
   effects: doc.effects ?? null,
 })
 
-// 넥슨 이벤트 공지에서 썬데이 메이플을 찾아 본문 이미지와 함께 남긴다.
-// 처음 보는 공지와, 아직 안 끝난 공지(넥슨이 내용을 고칠 수 있다)만 본문을 다시 받는다
+// 처음 보는 공지와 넥슨이 고칠 수 있는 아직 안 끝난 공지만 본문을 다시 받는다
 async function collectSundays(apiKey: string) {
   const { sundays } = await useCollections()
   const now = Date.now()
@@ -29,7 +31,7 @@ async function collectSundays(apiKey: string) {
     await sundays.updateOne({ _id: notice.notice_id }, {
       $set: {
         title: notice.title,
-        url: notice.url,
+        url: safeNoticeUrl(notice.url),
         image,
         start: new Date(notice.date_event_start),
         end: new Date(notice.date_event_end),
@@ -41,12 +43,12 @@ async function collectSundays(apiKey: string) {
 
 export async function sundayOverview(): Promise<SundayResponse> {
   const apiKey = useRuntimeConfig().nexonApiKey
-  // 서버 키가 없거나 넥슨이 실패해도 지난번까지 모은 썬데이는 보여준다
+  // 서버 키가 없거나 넥슨이 실패해도 지난번까지 모은 썬데이는 보여준다. 실패도 확인한 것으로 남겨 페이지를 열 때마다 다시 부르지 않게 한다
   if (apiKey) {
     await withCache('sunday-check', CHECK_MS, async () => {
-      await collectSundays(apiKey)
+      await collectSundays(apiKey).catch(error => console.warn('[sunday] 공지 확인 실패', redactApiKeys(String(error))))
       return new Date().toISOString()
-    }).catch(error => console.warn('[sunday] 공지 확인 실패', redactApiKeys(String(error))))
+    }).catch(error => console.warn('[sunday] 공지 확인 기록 실패', String(error)))
   }
   const { sundays } = await useCollections()
   const docs = await sundays.find().sort({ start: -1 }).limit(HISTORY + 1).toArray()

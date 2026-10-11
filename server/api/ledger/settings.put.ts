@@ -1,3 +1,5 @@
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
+
 // 수수료 기본값은 판매할 때 고른 값으로 자동 기억되므로 여기서는 보유 메소 맞추기만 받는다
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)

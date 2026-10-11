@@ -1,6 +1,6 @@
 import { MVP_DISCOUNTS } from '#shared/data/starforce'
 
-// 스타포스 MVP 할인율. 넥슨 기록에 없어 사용자가 고른 값을 강화 비용 계산에 쓴다
+// MVP 할인은 넥슨 기록에 없어 사용자가 고른 값을 강화 비용 계산에 쓴다
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const { rate } = await readBody<{ rate?: unknown }>(event)

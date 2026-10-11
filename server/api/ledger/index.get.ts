@@ -32,7 +32,7 @@ export default defineEventHandler(async (event): Promise<LedgerResponse> => {
     clears: clearDocs.map(toBossClear),
     items,
     sales: saleDocs.map(toDropSale),
-    entries: entryDocs.map(toMesoEntry),
+    entries: await toMesoEntries(entryDocs),
     stock: {
       fragments: (gained[0]?.fragments ?? 0) - soldOf('fragments'),
       traces: (gained[0]?.traces ?? 0) - soldOf('traces'),

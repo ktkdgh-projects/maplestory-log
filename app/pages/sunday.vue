@@ -38,15 +38,14 @@ onBeforeUnmount(() => {
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
-// 한국 시각의 날짜·요일·시각
 function kst(ms: number) {
   const d = new Date(ms + 9 * HOUR)
   return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate(), w: d.getUTCDay(), h: d.getUTCHours(), min: d.getUTCMinutes() }
 }
 const dayText = (iso: string | number) => {
   const p = kst(typeof iso === 'number' ? iso : Date.parse(iso))
-  return `${p.m + 1}/${p.d} (${WEEKDAYS[p.w]})`
+  const year = p.y === kst(now.value).y ? '' : `${p.y}년 `
+  return `${year}${p.m + 1}/${p.d} (${WEEKDAYS[p.w]})`
 }
 const timeText = (iso: string) => {
   const p = kst(Date.parse(iso))
@@ -80,15 +79,19 @@ const showLastWeek = ref(false)
 <template>
   <GameWindow title="썬데이 메이플" sub="넥슨 이벤트 공지에서 자동으로 가져와요" accent="green">
     <div class="sunday">
-      <p v-if="error" class="form-error">{{ errorMessage(error) }}</p>
-      <div v-if="pending && !data" class="skeleton hero-skel" />
+      <div v-if="error && !data" class="form-error retry">
+        <span>{{ errorMessage(error) }}</span>
+        <button type="button" class="btn ghost compact" :disabled="pending" @click="refresh()">다시 불러오기</button>
+      </div>
+      <!-- 브라우저에서만 받아서 처음엔 data가 비어 있다. 그동안 자리를 잡아 둔다 -->
+      <div v-else-if="!data" class="skeleton hero-skel" />
 
-      <template v-else-if="data">
+      <template v-else>
         <section v-if="current" class="current">
           <header class="head">
             <span class="badge" :class="status(current).tone">{{ status(current).label }}</span>
             <h3>{{ dayText(current.start) }} {{ current.title }}</h3>
-            <span class="muted small">{{ status(current).left }} · {{ timeText(current.publishedAt) }} 발표</span>
+            <span class="muted small">{{ [status(current).left, `${timeText(current.publishedAt)} 발표`].filter(Boolean).join(' · ') }}</span>
             <a :href="current.url" target="_blank" rel="noopener" class="origin">공지 원문 →</a>
           </header>
           <div v-if="current.effects?.length" class="effects">
@@ -96,7 +99,7 @@ const showLastWeek = ref(false)
             <span v-for="key in current.effects" :key="key" class="effect">{{ SUNDAY_STARFORCE_EFFECTS.find(e => e.key === key)?.label }}</span>
             <NuxtLink to="/calc/starforce" class="origin">계산기에서 이 효과로 보기 →</NuxtLink>
           </div>
-          <!-- 공지 이미지 오른쪽에 내 결산. 공지 보고 → 강화하고 → 여기서 결과를 본다 -->
+          <!-- 공지를 보고 강화한 결과를 바로 옆에서 본다 -->
           <div class="with-settle">
             <img v-if="current.image" :src="current.image" :alt="`${current.title} 이벤트 내용`" class="poster">
             <p v-else class="muted">공지에 이미지가 없어요. 원문에서 확인해 주세요.</p>
@@ -125,7 +128,11 @@ const showLastWeek = ref(false)
               <span class="last-text"><small>지난주 썬데이</small><b>{{ dayText(lastWeek.start) }} {{ lastWeek.title }}</b></span>
               <span class="caret" aria-hidden="true">{{ showLastWeek ? '접기 ▴' : '펼쳐 보기 ▾' }}</span>
             </button>
-            <img v-if="showLastWeek && lastWeek.image" :src="lastWeek.image" :alt="`${lastWeek.title} 이벤트 내용`" class="poster">
+            <div v-if="lastWeek.image" class="expand" :class="{ open: showLastWeek }">
+              <div class="expand-in">
+                <img :src="lastWeek.image" :alt="`${lastWeek.title} 이벤트 내용`" class="poster" loading="lazy">
+              </div>
+            </div>
           </div>
         </section>
 
@@ -182,18 +189,42 @@ h3 {
   white-space: nowrap;
 }
 .badge.live {
-  background: rgb(127 217 154 / 0.15);
+  background: color-mix(in srgb, var(--gain) 15%, transparent);
   color: var(--gain);
 }
 .badge.soon {
-  background: rgb(242 193 78 / 0.12);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
   color: var(--gold);
 }
 .badge.done {
   color: var(--sub);
 }
-.small {
+.sunday .small {
   font-size: 12px;
+}
+.retry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 100%;
+  opacity: 0;
+  transition: grid-template-rows var(--normal) var(--ease-out), opacity var(--normal) ease;
+}
+.expand.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.expand-in {
+  display: grid;
+  justify-items: center;
+  min-height: 0;
+  overflow: hidden;
 }
 .gold {
   color: var(--gold);
@@ -215,8 +246,8 @@ h3 {
 }
 .effect {
   padding: 2px 10px;
-  background: rgb(242 193 78 / 0.12);
-  border: 1px solid rgb(242 193 78 / 0.5);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 50%, transparent);
   border-radius: 999px;
   color: var(--gold);
   font-size: 12.5px;
@@ -250,7 +281,6 @@ h3 {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* 발표 전: 해가 떠오르길 기다리는 카드 */
 .waiting {
   display: grid;
   justify-items: center;
@@ -263,8 +293,8 @@ h3 {
   width: 100%;
   max-width: 876px;
   padding: 28px 32px;
-  background: linear-gradient(135deg, rgb(127 217 154 / 0.1), rgb(242 193 78 / 0.06) 60%, transparent);
-  border: 1px solid rgb(127 217 154 / 0.35);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--gain) 10%, transparent), color-mix(in srgb, var(--gold) 6%, transparent) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gain) 35%, transparent);
   border-radius: 16px;
 }
 .sun {
@@ -335,7 +365,9 @@ h3 {
   font-weight: 400;
 }
 .caret {
+  min-width: 5.5em;
   color: var(--sub);
+  text-align: right;
   font-size: 13px;
 }
 .history {

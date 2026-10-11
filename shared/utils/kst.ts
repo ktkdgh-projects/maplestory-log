@@ -29,3 +29,15 @@ export function recentKstDates(count: number): string[] {
   const end = kstYesterday()
   return Array.from({ length: count }, (_, i) => addDays(end, i - count + 1))
 }
+
+export const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
+
+// 한국 날짜의 요일(0=일). 한국 정오는 UTC로도 같은 날이라 UTC 요일이 곧 한국 요일이다
+export function kstWeekday(date: string): number {
+  return new Date(`${date}T12:00:00+09:00`).getUTCDay()
+}
+
+// 시각의 한국 시:분:초. 1초에 한 번씩 누르는 강화 기록처럼 초까지 봐야 할 때
+export function kstTime(at: Date | string): string {
+  return new Date(at).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+}

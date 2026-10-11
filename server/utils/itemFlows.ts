@@ -1,5 +1,6 @@
 import type { ObjectId } from 'mongodb'
 import type { ItemFlow, ItemPurchase } from '#shared/types'
+import { afterFee, effectiveFee } from '#shared/calc/meso'
 import type { ItemRowDoc, ItemSheetDoc } from './mongo'
 
 // shared: 같은 캐릭터에 같은 이름 장비가 여러 줄이라 기록을 어느 줄에 붙일지 몰라 비운 것. *Days: 날짜별 내역
@@ -8,8 +9,7 @@ export interface RowReference { starforce: number, potential: number, shared: bo
 // 강화 기록이 수백 건이라 비용 계산(eventMeso)에 쓰는 필드만 받는다
 const REFERENCE_FIELDS = { _id: 0, kind: 1, character: 1, item: 1, at: 1, beforeStar: 1, beforeGrade: 1, itemLevel: 1, tool: 1, scroll: 1, superior: 1, protect: 1, eventDiscount: 1 }
 
-// 캐릭터를 연결한 시트의 장비마다, 같은 캐릭터·같은 이름 장비의 강화 기록 중 구매일 이후 것으로 강화 비용 참고값을 센다.
-// 강화 기록 페이지와 같은 계산(MVP 할인, 파괴 뒤 복구 메소 포함)이다
+// 구매일 이후 강화 기록으로 비용 참고값을 센다. 강화 기록 페이지와 같은 계산(MVP 할인·복구 메소 포함)이다
 export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], rows: ItemRowDoc[], mvp: number): Promise<Map<string, RowReference>> {
   const characterOf = new Map(sheets.filter(s => s.characterName).map(s => [s._id.toHexString(), s.characterName!]))
   const linked = rows.filter(r => characterOf.has(r.sheetId.toHexString()))
@@ -71,7 +71,7 @@ export interface ItemFlowEvent {
   amount: number
 }
 
-// 장비 결산에서 가계부로 넘어오는 금액을 장비·날짜별 한 건씩. 직접 적은 값만 쓰고, 가계부 미반영 시트와 제외한 줄은 뺀다
+// 참고값이 아닌 직접 적은 값만 쓰고, 가계부 미반영 시트와 제외한 줄은 뺀다
 export async function itemFlowEvents(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlowEvent[]> {
   const { itemSheets, itemRows, users } = await useCollections()
   const [excludedSheets, allRows, user] = await Promise.all([
@@ -92,7 +92,6 @@ export async function itemFlowEvents(userId: ObjectId, range: { from?: string, t
       for (const p of row.purchases) if (inRange(p.date)) push(p.date, 'buy', row, -p.amount)
     }
     else if (row.buy && inRange(row.buyDate)) push(row.buyDate, 'buy', row, -row.buy)
-    // 강화 비용도 날짜별 내역이 있으면 건마다 그 날짜로
     for (const [kind, entries, total, date] of [['starforce', row.starforceEntries, row.starforce, row.starforceDate], ['potential', row.potentialEntries, row.potential, row.potentialDate]] as const) {
       if (entries?.length) {
         for (const e of entries) if (inRange(e.date)) push(e.date, kind, row, -e.amount)
@@ -104,7 +103,6 @@ export async function itemFlowEvents(userId: ObjectId, range: { from?: string, t
   return events.sort((a, b) => a.date.localeCompare(b.date))
 }
 
-// 장비 결산에서 가계부로 넘어오는 날별 금액
 export async function itemFlows(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlow[]> {
   const days = new Map<string, ItemFlow>()
   for (const e of await itemFlowEvents(userId, range)) {

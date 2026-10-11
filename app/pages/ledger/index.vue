@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { LedgerSettings, MesoEntry, MesoHistoryKind, MesoHistoryRef, MesoHistoryResponse, MesoHistoryRow } from '#shared/types'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 
 const PERIODS = [
   { key: 'month', label: '이번 달' },
@@ -7,7 +8,6 @@ const PERIODS = [
   { key: '3m', label: '3개월' },
   { key: '1y', label: '1년' },
 ] as const
-// 줄 앞 아이콘(24칸 선 그림)
 const KINDS: { key: Exclude<MesoHistoryKind, 'base'>, label: string, color: string, icon: string }[] = [
   { key: 'hunt', label: '사냥', color: 'var(--exp)', icon: 'M14.5 4H20v5.5L9.5 20 4 14.5 14.5 4ZM7 12l5 5M4 20l2.5-2.5' },
   { key: 'boss', label: '보스', color: 'var(--api)', icon: 'M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8Z' },
@@ -15,7 +15,6 @@ const KINDS: { key: Exclude<MesoHistoryKind, 'base'>, label: string, color: stri
   { key: 'item', label: '장비', color: 'var(--loss)', icon: 'M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6l8-3Z' },
   { key: 'entry', label: '직접 등록', color: 'var(--calc)', icon: 'M4 20h4L19 9l-4-4L4 16v4ZM13 7l4 4' },
 ]
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
 const { me } = await useMe()
 const today = kstToday()
@@ -37,12 +36,11 @@ const [{ data, error, refresh, status }, { data: settings, refresh: refreshSetti
   useFetch<MesoHistoryResponse>('/api/ledger/history', { query: range, immediate: !!me.value, server: false }),
   useFetch<LedgerSettings>('/api/ledger/settings', { key: 'ledger-settings', immediate: !!me.value, getCachedData }),
 ])
-revalidate(refresh, refreshSettings)
+revalidate(refreshSettings)
 async function refreshAll() {
   await Promise.all([refresh(), refreshSettings()])
 }
 
-// 종류 칩으로 걸러 보기. 맞추기 줄은 늘 보인다
 const shown = ref(new Set(KINDS.map(k => k.key)))
 function toggleKind(key: Exclude<MesoHistoryKind, 'base'>) {
   const next = new Set(shown.value)
@@ -56,7 +54,6 @@ const days = computed(() => (data.value?.days ?? [])
 
 const BASE_KIND = { label: '맞추기', color: 'var(--tip-line)', icon: 'M12 2v4M12 18v4M2 12h4M18 12h4M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z' }
 const kindOf = (kind: MesoHistoryKind) => KINDS.find(k => k.key === kind) ?? BASE_KIND
-const dayLabel = (date: string) => `${formatDay(date)} (${WEEKDAYS[new Date(`${date}T12:00:00+09:00`).getUTCDay()]})`
 const totals = computed(() => data.value?.totals ?? { income: 0, spent: 0, byKind: {} })
 const kindLine = (sign: 'income' | 'spent') => KINDS
   .filter(k => totals.value.byKind[k.key]?.[sign])
@@ -66,8 +63,8 @@ const kindLine = (sign: 'income' | 'spent') => KINDS
 // 여러 건을 묶은 줄은 눌러서 펼치고, 직접 등록은 눌러서 고친다. 나머지는 적은 화면으로 간다
 const open = ref<string | null>(null)
 function closeOutside(event: MouseEvent) {
-  const grp = (event.target as HTMLElement).closest('[data-row]')
-  if (!grp || grp.getAttribute('data-row') !== open.value) open.value = null
+  const row = (event.target as HTMLElement).closest('[data-row]')
+  if (!row || row.getAttribute('data-row') !== open.value) open.value = null
 }
 watch(open, (value) => {
   if (value) setTimeout(() => document.addEventListener('click', closeOutside))
@@ -90,7 +87,6 @@ function pick(row: MesoHistoryRow) {
   else if (row.children.length) open.value = open.value === row.key ? null : row.key
 }
 
-// 보유 메소 흐름 그래프: 날마다 그날 끝 잔액
 const W = 300
 const H = 170
 const PAD = { left: 46, right: 10, top: 14, bottom: 24 }
@@ -109,7 +105,6 @@ const chart = computed(() => {
   const y = (v: number) => PAD.top + (1 - (v - min) / span) * (H - PAD.top - PAD.bottom)
   const line = series.map((s, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(s.balance).toFixed(1)}`).join(' ')
   const ticks = [max, (max + min) / 2, min].map(v => ({ y: y(v), label: formatShortNumber(v) }))
-  // 하루에 가장 크게 줄어든 날을 짚는다
   let drop = { i: -1, by: 0 }
   series.forEach((s, i) => {
     const by = i ? s.balance - series[i - 1]!.balance : 0
@@ -127,35 +122,19 @@ const chart = computed(() => {
   }
 })
 
-// 지우기: 확인 모달에서 한 번 더 묻고 그 기록을 적은 곳의 API로 지운다
+// 지우기 실패는 확인 모달 안에 뜬다
 const DELETE_PATHS: Record<MesoHistoryRef['kind'], string> = { hunt: 'hunts', sale: 'sales', clear: 'clears', entry: 'entries' }
-const removing = ref<{ ref: MesoHistoryRef, label: string, amount: number, date: string } | null>(null)
-const removeOpen = computed({
-  get: () => !!removing.value,
-  set: (value) => {
-    if (!value) removing.value = null
-  },
-})
-const removeBusy = ref(false)
-const removeFailure = ref('')
-function askRemove(ref: MesoHistoryRef, label: string, amount: number, date: string) {
-  removeFailure.value = ''
-  removing.value = { ref, label, amount, date }
-}
-async function confirmRemove() {
-  if (!removing.value) return
-  removeBusy.value = true
-  try {
-    await $fetch(`/api/ledger/${DELETE_PATHS[removing.value.ref.kind]}/${removing.value.ref.id}`, { method: 'DELETE' })
-    removing.value = null
-    await refreshAll()
-  }
-  catch (error) {
-    removeFailure.value = errorMessage(error)
-  }
-  finally {
-    removeBusy.value = false
-  }
+const { ask } = useConfirm()
+async function askRemove(target: MesoHistoryRef, label: string, amount: number, date: string) {
+  const ok = await ask({
+    title: '기록 지우기',
+    name: label,
+    detail: formatDay(date),
+    amount,
+    note: '지우면 보유 메소와 일별 기록에서도 빠지고 되돌릴 수 없어요.',
+    run: () => $fetch(`/api/ledger/${DELETE_PATHS[target.kind]}/${target.id}`, { method: 'DELETE' }),
+  })
+  if (ok) await refreshAll()
 }
 
 useHead({ title: '메소 내역 · 메이플스토리로그' })
@@ -170,14 +149,10 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
     </template>
 
     <LedgerWallet :settings="settings ?? null" @changed="refreshAll" />
-    <p v-if="error" class="form-error">{{ errorMessage(error) }}</p>
+    <p class="load-error" :class="{ show: error }" role="alert">{{ error ? errorMessage(error) : ' ' }}</p>
 
+    <!-- 지금 보유 메소는 위 지갑 줄에 있으므로 여기선 기간 흐름만 -->
     <div class="tiles stagger">
-      <div class="tile" style="--tone: var(--gold)">
-        <span class="tile-label">지금 보유 메소</span>
-        <span class="tile-value">{{ settings?.balance ? formatKoreanNumber(settings.balance.current) : '-' }}</span>
-        <span class="tile-label">{{ settings?.balance ? `${formatDay(settings.balance.checkedAt)}에 ${formatKoreanNumber(settings.balance.checked)}으로 맞춤` : '보유 메소를 맞추면 잔액을 따라가요' }}</span>
-      </div>
       <div class="tile" style="--tone: var(--gain)">
         <span class="tile-label">들어온 메소</span>
         <span class="tile-value gain">{{ data ? `+${formatKoreanNumber(totals.income)}` : '-' }}</span>
@@ -208,8 +183,8 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
       <div class="list" :class="{ loading: status === 'pending' && !!data }">
         <div v-for="d in days" :key="d.date" class="day">
           <div class="day-h">
-            <b>{{ dayLabel(d.date) }}</b>
-            <span class="muted">{{ d.rows.filter(r => r.kind !== 'base').length }}줄</span>
+            <b>{{ formatDayWeek(d.date) }}</b>
+            <span class="muted">{{ d.rows.filter(r => r.kind !== 'base').length }}건</span>
             <span class="net" :class="d.net < 0 ? 'loss' : 'gain'">{{ d.net ? formatSigned(d.net) : '' }}</span>
           </div>
           <div v-for="r in d.rows" :key="r.key" class="grp" :class="{ open: open === r.key, base: r.kind === 'base' }" :data-row="r.key" :style="{ '--c': kindOf(r.kind).color }">
@@ -217,8 +192,7 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
               <button type="button" class="row-main" :disabled="r.kind === 'base' || (!r.entry && !r.children.length)" :aria-expanded="r.children.length ? open === r.key : undefined" @click="pick(r)">
                 <span class="ic" :class="{ item: r.icon }">
                   <img v-if="r.icon" :src="r.icon" alt="">
-                  <!-- 사냥은 메소 동전 -->
-                  <svg v-else-if="r.kind === 'hunt'" viewBox="0 0 24 24" class="coin" aria-hidden="true"><circle cx="12" cy="12" r="9" class="coin-face" /><circle cx="12" cy="12" r="5.5" class="coin-ring" /><path d="M9.5 14.5v-5l2.5 3 2.5-3v5" class="coin-mark" /></svg>
+                  <LedgerCoinIcon v-else-if="r.kind === 'hunt'" />
                   <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path :d="kindOf(r.kind).icon" /></svg>
                 </span>
                 <span class="what">
@@ -228,12 +202,10 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
                 <span class="amt" :class="r.kind === 'base' ? '' : r.amount < 0 ? 'loss' : 'gain'">{{ r.kind === 'base' ? '기준' : formatSigned(r.amount) }}</span>
                 <span class="bal">{{ r.balance === null ? '' : formatKoreanNumber(r.balance) }}</span>
               </button>
-              <!-- 지우기·이동 버튼. 없는 줄도 자리는 잡아 둔다 -->
+              <!-- 버튼이 없는 줄도 자리는 잡아 둔다 -->
               <span class="acts">
-                <button v-if="r.ref" type="button" class="act del" title="지우기" aria-label="지우기" @click="askRemove(r.ref, r.title, r.amount, d.date)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4.5h6V7M6 7l1 13h10l1-13" /></svg></button>
-                <span v-else class="act-space" />
-                <NuxtLink v-if="sourceOf(r, d.date)" :to="sourceOf(r, d.date)!" class="act go" :title="`${kindOf(r.kind).label} 화면으로`" aria-label="적은 화면으로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></NuxtLink>
-                <span v-else class="act-space" />
+                <LedgerAct v-if="r.ref" kind="del" label="지우기" @click="askRemove(r.ref, r.title, r.amount, d.date)" />
+                <LedgerAct v-if="sourceOf(r, d.date)" kind="go" :label="`${kindOf(r.kind).label} 화면으로`" :to="sourceOf(r, d.date)!" />
               </span>
             </div>
             <div v-if="r.children.length" class="children-wrap">
@@ -280,33 +252,33 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
           <circle :cx="chart.end.x" :cy="chart.end.y" r="4.5" class="end" />
         </svg>
         <p v-else class="muted small chart-empty">보유 메소를 맞추고 기록이 이틀 이상 쌓이면 그래프가 그려져요.</p>
-        <p v-if="chart?.drop" class="muted small">가장 크게 줄어든 날 <b class="loss">{{ formatDay(chart.drop.date) }} {{ formatSigned(chart.drop.by) }}</b></p>
+        <!-- 줄어든 날이 없어도 자리는 잡아 둔다 -->
+        <p class="muted small drop-line" :class="{ off: !chart?.drop }">가장 크게 줄어든 날 <b class="loss">{{ chart?.drop ? `${formatDay(chart.drop.date)} ${formatSigned(chart.drop.by)}` : '-' }}</b></p>
       </aside>
     </div>
-
-    <AppModal v-model="removeOpen" title="기록 지우기" :width="376">
-      <div v-if="removing" class="confirm">
-        <div class="confirm-row">
-          <span><b>{{ removing.label }}</b><small class="muted">{{ formatDay(removing.date) }}</small></span>
-          <b :class="removing.amount < 0 ? 'loss' : 'gain'">{{ formatSigned(removing.amount) }}</b>
-        </div>
-        <p class="muted small">지우면 보유 메소와 일별 기록에서도 빠지고 되돌릴 수 없어요.</p>
-        <p v-if="removeFailure" class="form-error">{{ removeFailure }}</p>
-        <div class="confirm-actions">
-          <button type="button" class="btn ghost compact" @click="removeOpen = false">취소</button>
-          <button type="button" class="btn compact remove-btn" :disabled="removeBusy" @click="confirmRemove">지우기</button>
-        </div>
-      </div>
-    </AppModal>
 
     <LedgerEntryModal v-model="entryOpen" :entry="editing" :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" :balance="settings?.balance?.current ?? null" @saved="refreshAll" />
   </GameWindow>
 </template>
 
 <style scoped>
+.load-error {
+  height: 18px;
+  margin: -8px 0 -10px;
+  overflow: hidden;
+  color: var(--loss);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+}
+.load-error.show {
+  opacity: 1;
+}
 .tiles {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .tile-value.gain {
@@ -445,29 +417,14 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
-/* 줄 끝 둥근 버튼 두 개 */
+/* 폭을 버튼 두 개 자리로 고정해 하나뿐인 줄도 금액이 흔들리지 않게 한다 */
 .acts {
   display: flex;
+  justify-content: flex-end;
   gap: 2px;
+  width: 70px;
   padding-right: 8px;
 }
-.act,
-.act-space {
-  width: 28px;
-  height: 28px;
-}
-.act {
-  display: grid;
-  place-items: center;
-  padding: 0;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 50%;
-  color: var(--sub);
-  cursor: pointer;
-  transition: color var(--fast) ease, background var(--fast) ease, border-color var(--fast) ease;
-}
-.act svg,
 .child-del svg {
   width: 15px;
   height: 15px;
@@ -477,20 +434,10 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   stroke-linejoin: round;
   stroke-width: 2;
 }
-.act.del:hover {
-  background: rgb(255 138 122 / 0.12);
-  border-color: rgb(255 138 122 / 0.4);
-  color: var(--loss);
-}
-.act.go:hover {
-  background: rgb(242 193 78 / 0.12);
-  border-color: rgb(242 193 78 / 0.4);
-  color: var(--gold);
-}
 .child-del,
 .child-del-space {
   grid-column: 5;
-  justify-self: start;
+  justify-self: end;
   width: 24px;
   height: 24px;
 }
@@ -506,41 +453,8 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   transition: color var(--fast) ease, background var(--fast) ease;
 }
 .child-del:hover {
-  background: rgb(255 138 122 / 0.12);
+  background: color-mix(in srgb, var(--loss) 12%, transparent);
   color: var(--loss);
-}
-.confirm {
-  display: grid;
-  gap: 10px;
-}
-.confirm-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-left: 3px solid var(--loss);
-  border-radius: 8px;
-}
-.confirm-row > span {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.confirm-row small {
-  font-size: 12px;
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.remove-btn {
-  background: var(--loss);
-  border-color: var(--loss);
-  color: #2a1210;
 }
 .grp.base {
   background: repeating-linear-gradient(135deg, var(--panel), var(--panel) 8px, rgb(255 255 255 / 0.015) 8px, rgb(255 255 255 / 0.015) 16px);
@@ -574,31 +488,8 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   border-radius: 7px;
   color: var(--c);
 }
-/* 아이템 아이콘은 칸 없이 그림만 */
 .ic.item {
   background: none;
-}
-.ic svg.coin {
-  width: 20px;
-  height: 20px;
-}
-.coin-face {
-  fill: #f2c14e;
-  stroke: #b98a1e;
-  stroke-width: 1.4;
-}
-.coin-ring {
-  fill: none;
-  stroke: #fff2b8;
-  stroke-width: 1.2;
-  opacity: 0.8;
-}
-.coin-mark {
-  fill: none;
-  stroke: #8a5d10;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.6;
 }
 .ic img {
   width: 24px;
@@ -612,7 +503,7 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   object-fit: contain;
   image-rendering: pixelated;
 }
-.ic svg {
+.ic svg:not(.coin) {
   width: 16px;
   height: 16px;
   fill: none;
@@ -762,6 +653,9 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   stroke: var(--page);
   stroke-width: 1.5;
 }
+.drop-line.off {
+  visibility: hidden;
+}
 .chart-empty {
   padding: 30px 0;
   text-align: center;
@@ -770,19 +664,108 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   font-size: 12.5px;
 }
 @media (max-width: 1000px) {
-  .tiles {
-    grid-template-columns: 1fr 1fr;
-  }
   .body {
     grid-template-columns: 1fr;
   }
 }
+@media (max-width: 720px) {
+  /* 칸마다 이름과 금액을 한 줄에 두어 금액이 두 줄로 꺾이지 않게 한다 */
+  .tiles {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .tile {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: 12px;
+    padding: 8px 12px;
+  }
+  .tile > :first-child {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .tile > .tile-value {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+    font-size: 19px;
+    white-space: nowrap;
+  }
+  .tile > :nth-child(3) {
+    grid-column: 1 / -1;
+    font-size: 12px;
+  }
+}
 @media (max-width: 520px) {
+  .filters {
+    display: grid;
+    gap: 6px;
+  }
+  .seg button {
+    flex: 1;
+    min-height: 34px;
+  }
+  /* 종류 칩은 한 줄로 두고 옆으로 밀어서 본다 */
+  .kinds {
+    flex-wrap: nowrap;
+    margin: 0 -2px;
+    padding: 0 2px 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .kind {
+    flex: none;
+    min-height: 32px;
+  }
+  .list {
+    padding-right: 0;
+    scrollbar-gutter: auto;
+  }
+  /* 좁으면 이름 줄을 통째로 쓰고, 금액은 덧말 줄 오른쪽으로 내린다. 잔액 칸은 숨긴다 */
   .row-main {
     grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-areas: "ic title title" "ic detail amt";
+    column-gap: 8px;
+    row-gap: 1px;
+    padding: 7px 2px 7px 8px;
+  }
+  .row-main > .ic {
+    grid-area: ic;
+  }
+  .what {
+    display: contents;
+  }
+  .what > .title {
+    grid-area: title;
+  }
+  .what > small {
+    grid-area: detail;
+    align-self: center;
+  }
+  .amt {
+    grid-area: amt;
+    font-size: 14.5px;
   }
   .bal {
     display: none;
+  }
+  .acts {
+    width: auto;
+    min-width: 40px;
+    padding-right: 4px;
+  }
+  .children {
+    padding-left: 12px;
+  }
+  .children li {
+    grid-template-columns: 20px minmax(0, 1fr) auto 36px;
+    gap: 8px;
+  }
+  .child-del,
+  .child-del-space {
+    grid-column: 4;
+    width: 32px;
+    height: 32px;
   }
 }
 </style>

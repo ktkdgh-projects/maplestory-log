@@ -4,7 +4,7 @@ const ALLOWED_DAYS = [7, 14, 30]
 // 한 번 부를 때 채우는 시간. 남은 날은 화면이 다시 불러 이어서 채운다
 const FILL_BUDGET_MS = 5000
 
-// 캐릭터 이름만으로 최근 성장 기록을 본다. 로그인하지 않았으면 서버 키를 쓰고, 채운 기록은 다른 사용자와 같이 쓴다
+// 채운 스냅샷은 ocid 기준이라 다른 사용자와 같이 쓴다
 export default defineEventHandler(async (event): Promise<SnapshotsResponse> => {
   const query = getQuery(event)
   const name = typeof query.name === 'string' ? query.name.trim() : ''
@@ -15,7 +15,7 @@ export default defineEventHandler(async (event): Promise<SnapshotsResponse> => {
   try {
     // 캐릭터 정보와 오늘 값은 10분 캐시라, 기간만 바꾸거나 다시 들어오면 넥슨을 부르지 않는다
     let [live, paused] = await Promise.all([resolveOcid(apiKey, name).then(ocid => fetchLive(apiKey, ocid)), isCollectionPaused()])
-    // 이름이 다르면 캐시된 ocid가 이름을 바꾼 다른 캐릭터이거나 캐시가 이름을 바꾸기 전 것이라 새로 찾는다
+    // 캐시된 ocid나 캐시 값이 닉네임 변경 전 것일 수 있어 새로 찾는다
     if (live.character.name !== name) {
       const ocid = (await nexon.ocid(apiKey, name)).ocid
       live = await fetchLive(apiKey, ocid, ocid === live.character.ocid)

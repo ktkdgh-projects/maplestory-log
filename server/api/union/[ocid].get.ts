@@ -6,7 +6,6 @@ const IMAGE_FRESH_MS = 24 * 60 * 60 * 1000
 const IMAGE_BUDGET_MS = 4000
 const UNION_CACHE_MS = 10 * 60 * 1000
 
-// 남의 캐릭터(또는 로그인 전): 유니온 등급과 공격대에 배치된 캐릭터의 직업·레벨
 async function raiderUnion(event: H3Event, ocid: string): Promise<UnionResponse> {
   const apiKey = await searchApiKey(event, 'search')
   const world = typeof getQuery(event).world === 'string' ? getQuery(event).world as string : ''
@@ -31,7 +30,6 @@ export default defineEventHandler(async (event): Promise<UnionResponse> => {
 
   const characters = await accountCharacters(user._id, async () => apiKey)
   const owner = characters.find(c => c.ocid === ocid)
-  // 내 계정 캐릭터가 아니면 공격대 정보로 보여 준다
   if (!owner) return raiderUnion(event, ocid)
 
   // 유니온은 월드마다 따로라 월드별 최고 레벨 캐릭터로 확인한다. 닫힌 월드는 유니온 정보가 비어서 온다

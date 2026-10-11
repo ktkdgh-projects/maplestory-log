@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import type { MesoEntry } from '#shared/types'
+import type { ItemIcon, MesoEntry } from '#shared/types'
 import { MESO_ENTRY_TYPES, findMesoEntryType, type MesoEntryType } from '#shared/data/mesoEntries'
+import { afterFee, mesoEntryDelta } from '#shared/calc/meso'
 
-// 메소 판매·경매장 구매처럼 다른 화면에서 세지 않는 지출·수입을 직접 적는다. entry가 있으면 고치기
 const props = defineProps<{ entry: MesoEntry | null, date?: string, feeRate: number, balance: number | null }>()
 const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{ saved: [] }>()
 
-// 종류 카드: 금액 칸 이름, 한 줄 설명, 아이콘(24칸 선 그림)
 const TYPE_UI: Record<MesoEntryType, { amount: string, hint: string, icon: string }> = {
   'meso-sell': { amount: '판 메소', hint: '현금 거래로 팔았어요', icon: 'M12 20V7M6 12l6-6 6 6M5 3h14' },
   'auction-buy': { amount: '쓴 메소', hint: '주문서·소비·캐시템', icon: 'M3 4h2l2.4 11h11L21 7H6.5M9 20h.01M18 20h.01' },
@@ -26,16 +25,17 @@ const item = ref('')
 const fee = ref(props.feeRate)
 const memo = ref('')
 const icon = ref<string | null>(null)
+// 목록에서 고른 이름을 직접 고치면 아이콘을 뗀다
 let pickedName = ''
 watch(item, (value) => {
   if (value !== pickedName) icon.value = null
 })
-watch(icon, (value) => {
-  pickedName = value ? item.value : ''
-})
+function pickItem(picked: ItemIcon) {
+  pickedName = picked.name
+  icon.value = picked.icon
+}
 const busy = ref(false)
 const failure = ref('')
-const confirming = ref(false)
 
 watch(open, (value) => {
   if (!value) return
@@ -51,7 +51,6 @@ watch(open, (value) => {
   fee.value = e?.fee ?? props.feeRate
   memo.value = e?.memo ?? ''
   failure.value = ''
-  confirming.value = false
 })
 
 const info = computed(() => findMesoEntryType(type.value)!)
@@ -63,7 +62,7 @@ function pickDirection(value: 'out' | 'in') {
   type.value = types.value[0]!.key
 }
 
-// 큰 금액은 쉼표를 넣어 보여 주고 숫자만 저장한다
+// 쉼표를 넣어 보여 주고 숫자만 저장한다
 const digitsModel = (target: Ref<number | null>) => computed({
   get: () => (target.value === null ? '' : target.value.toLocaleString('ko-KR')),
   set: (input: string) => {
@@ -106,34 +105,32 @@ async function save() {
   }
 }
 
+const { ask } = useConfirm()
 async function remove() {
-  if (!props.entry) return
-  busy.value = true
-  try {
-    await $fetch(`/api/ledger/entries/${props.entry.id}`, { method: 'DELETE' })
-    emit('saved')
-    open.value = false
-  }
-  catch (error) {
-    failure.value = errorMessage(error)
-    confirming.value = false
-  }
-  finally {
-    busy.value = false
-  }
+  const entry = props.entry
+  if (!entry) return
+  const ok = await ask({
+    title: '기록 지우기',
+    name: mesoEntryLabel(entry.type),
+    detail: formatDay(entry.date),
+    amount: mesoEntryDelta(entry),
+    note: '지우면 보유 메소와 메소 내역에서도 빠지고 되돌릴 수 없어요.',
+    run: () => $fetch(`/api/ledger/entries/${entry.id}`, { method: 'DELETE' }),
+  })
+  if (!ok) return
+  emit('saved')
+  open.value = false
 }
 </script>
 
 <template>
-  <AppModal v-model="open" :title="entry ? '직접 등록 고치기' : '메소 직접 등록'" :width="500">
+  <AppModal v-model="open" :title="entry ? '직접 등록 고치기' : '메소 직접 등록'" :width="480">
     <form class="form" :class="direction" novalidate @submit.prevent="save">
-      <!-- 나간·들어온 메소 -->
       <div class="direction" role="radiogroup" aria-label="나간 메소 · 들어온 메소">
         <button type="button" role="radio" class="out" :aria-checked="direction === 'out'" @click="pickDirection('out')"><span class="sign">−</span>나간 메소</button>
         <button type="button" role="radio" class="in" :aria-checked="direction === 'in'" @click="pickDirection('in')"><span class="sign">+</span>들어온 메소</button>
       </div>
 
-      <!-- 종류 카드 -->
       <div class="types" role="radiogroup" aria-label="종류">
         <button v-for="t in types" :key="t.key" type="button" role="radio" class="type" :aria-checked="type === t.key" @click="type = t.key">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="TYPE_UI[t.key].icon" /></svg>
@@ -142,21 +139,19 @@ async function remove() {
         </button>
       </div>
 
-      <!-- 금액: 가장 크게 -->
       <div class="amount">
         <label for="entry-amount" class="label">{{ ui.amount }}</label>
         <span class="amount-box">
           <input id="entry-amount" v-model="amountText" inputmode="numeric" autocomplete="off" placeholder="0">
           <small>만 메소</small>
         </span>
-        <!-- 수수료가 붙는 종류는 왼쪽에 수수료, 오른쪽에 실제로 들어올 금액. 줄 높이는 늘 같다 -->
+        <!-- 수수료가 있든 없든 줄 높이는 같다 -->
         <span class="amount-foot">
-          <LedgerFeeLine v-if="info.fee" v-model="fee" />
+          <LedgerFeeLine v-if="info.fee" v-model="fee" :keep="!!entry" />
           <span class="reading">{{ amount ? (info.fee ? `받는 메소 ${formatKoreanNumber(afterFee(amount, fee))}` : formatKoreanNumber(amount)) : '만 단위로 적어요 · 1을 치면 1만 메소' }}</span>
         </span>
       </div>
 
-      <!-- 날짜·메모는 늘 같은 줄 -->
       <div class="grid">
         <div class="field">
           <label for="entry-date" class="label">날짜</label>
@@ -168,7 +163,7 @@ async function remove() {
         </label>
       </div>
 
-      <!-- 종류마다 다른 칸은 같은 높이의 한 줄에 바꿔 끼워, 종류를 바꿔도 아래가 움직이지 않는다 -->
+      <!-- 종류마다 다른 칸을 같은 높이의 한 줄에 바꿔 끼워 아래가 움직이지 않는다 -->
       <div class="extra">
         <template v-if="info.cash">
           <label for="entry-cash" class="field">
@@ -185,14 +180,13 @@ async function remove() {
             <span class="label">{{ direction === 'out' ? '산 물건' : '판 물건' }} <small>선택 · 검색해서 고르면 아이콘도 남아요</small></span>
             <div class="item-pick">
               <img v-if="icon" :src="icon" alt="" class="picked-icon">
-              <ItemsNameSearch v-model="item" class="item-search" placeholder="아이템 이름 검색" label="아이템 이름" :enter="false" :required="false" @pick="icon = $event.icon" />
+              <ItemsNameSearch v-model="item" class="item-search" placeholder="아이템 이름 검색" label="아이템 이름" :enter="false" @pick="pickItem" />
             </div>
           </div>
         </template>
         <p v-else class="etc muted">금액·날짜·메모만 적으면 돼요.</p>
       </div>
 
-      <!-- 바뀔 보유 메소 · 안내 · 버튼 -->
       <div class="foot">
         <div class="preview">
           <template v-if="before !== null">
@@ -203,17 +197,10 @@ async function remove() {
         </div>
         <p class="hint" :class="{ show: failure }" role="alert">{{ failure || ' ' }}</p>
         <div class="actions">
-          <template v-if="confirming">
-            <span class="confirm-text">이 기록을 지울까요?</span>
-            <button type="button" class="btn ghost compact" @click="confirming = false">아니요</button>
-            <button type="button" class="btn compact remove" :disabled="busy" @click="remove">지우기</button>
-          </template>
-          <template v-else>
-            <button v-if="entry" type="button" class="text-btn" @click="confirming = true">지우기</button>
-            <span class="spacer" />
-            <button type="button" class="btn ghost compact" @click="open = false">취소</button>
-            <button class="btn compact" :disabled="busy">{{ entry ? '고치기' : '등록' }}</button>
-          </template>
+          <button v-if="entry" type="button" class="text-btn" :disabled="busy" @click="remove">지우기</button>
+          <span class="spacer" />
+          <button type="button" class="btn ghost compact" @click="open = false">취소</button>
+          <button class="btn compact" :disabled="busy">{{ entry ? '고치기' : '등록' }}</button>
         </div>
       </div>
     </form>
@@ -257,11 +244,11 @@ async function remove() {
   line-height: 1;
 }
 .direction .out[aria-checked="true"] {
-  background: rgb(255 138 122 / 0.16);
+  background: color-mix(in srgb, var(--loss) 16%, transparent);
   color: var(--loss);
 }
 .direction .in[aria-checked="true"] {
-  background: rgb(127 217 154 / 0.16);
+  background: color-mix(in srgb, var(--gain) 16%, transparent);
   color: var(--gain);
 }
 .types {
@@ -317,7 +304,6 @@ async function remove() {
   color: var(--tip-line);
   font-size: 11px;
 }
-/* 금액 */
 .amount {
   display: grid;
   gap: 4px;
@@ -392,7 +378,6 @@ async function remove() {
   color: var(--sub);
   transform: translateY(-50%);
 }
-/* 종류별 칸: 높이를 잡아 둔다 */
 .extra {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -405,8 +390,8 @@ async function remove() {
 }
 .chip-line {
   padding: 6px 10px;
-  background: rgb(127 178 255 / 0.08);
-  border: 1px solid rgb(127 178 255 / 0.35);
+  background: color-mix(in srgb, var(--api) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--api) 35%, transparent);
   border-radius: 8px;
   color: var(--sub);
   font-size: 12.5px;
@@ -442,7 +427,6 @@ async function remove() {
   flex: 1;
   min-width: 0;
 }
-/* 아래: 바뀔 보유 메소와 버튼 */
 .foot {
   display: grid;
   gap: 6px;
@@ -476,6 +460,7 @@ async function remove() {
   color: var(--gain);
 }
 .hint {
+  contain: inline-size;
   height: 18px;
   margin: 0;
   overflow: hidden;
@@ -508,22 +493,14 @@ async function remove() {
 .text-btn:hover {
   text-decoration: underline;
 }
-.confirm-text {
-  flex: 1;
-  color: var(--loss);
-  font-size: 13px;
-}
-.remove {
-  background: var(--loss);
-  border-color: var(--loss);
-  color: #2a1210;
-}
 @media (max-width: 480px) {
-  .types {
-    grid-template-columns: 1fr;
+  .type {
+    padding: 8px;
   }
-  .grid,
-  .extra {
+  .type small {
+    font-size: 11px;
+  }
+  .grid {
     grid-template-columns: 1fr;
   }
 }

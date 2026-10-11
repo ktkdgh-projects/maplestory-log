@@ -3,6 +3,7 @@ import type { CharacterBrief, SessionInfo } from '#shared/types'
 import { MVP_DISCOUNTS } from '#shared/data/starforce'
 
 const { me, refresh } = await useMe()
+const { flush: flushMemos, forget: forgetMemos } = useMemos()
 if (!me.value) await navigateTo('/login')
 
 const KEY_STATUS = {
@@ -21,16 +22,25 @@ const busy = ref(false)
 const message = ref('')
 const failure = ref('')
 
+// 알림은 화면 아래에 잠깐 떴다가 사라져서 창들을 밀지 않는다
+let noticeTimer: ReturnType<typeof setTimeout> | undefined
+function notify(done: string, error = '') {
+  message.value = done
+  failure.value = error
+  clearTimeout(noticeTimer)
+  if (done || error) noticeTimer = setTimeout(() => notify(''), error ? 6000 : 3500)
+}
+onBeforeUnmount(() => clearTimeout(noticeTimer))
+
 async function run(action: () => Promise<unknown>, done: string) {
   busy.value = true
-  failure.value = ''
-  message.value = ''
+  notify('')
   try {
     await action()
-    message.value = done
+    notify(done)
   }
   catch (error) {
-    failure.value = errorMessage(error)
+    notify('', errorMessage(error))
   }
   finally {
     busy.value = false
@@ -55,36 +65,47 @@ const mvp = ref(me.value?.mvpDiscount ?? 0)
 async function pickMvp(rate: number) {
   const before = mvp.value
   mvp.value = rate
-  failure.value = ''
+  notify('')
   try {
     await $fetch('/api/me/mvp', { method: 'PUT', body: { rate } })
     await refresh()
   }
   catch (error) {
     mvp.value = before
-    failure.value = errorMessage(error)
+    notify('', errorMessage(error))
   }
 }
 
 const newKey = ref('')
-const replaceKey = () => run(async () => {
-  await $fetch('/api/me/key', { method: 'PUT', body: { apiKey: newKey.value } })
-  newKey.value = ''
-  await Promise.all([refresh(), refreshSessions()])
-}, '키를 바꿨어요. 다른 기기는 모두 로그아웃됐어요.')
+const newKeyHint = ref('')
+const newKeyInput = ref<HTMLInputElement | null>(null)
+function replaceKey() {
+  if (!newKey.value.trim()) {
+    newKeyHint.value = '새 키를 붙여 넣어 주세요.'
+    newKeyInput.value?.focus()
+    return
+  }
+  return run(async () => {
+    await $fetch('/api/me/key', { method: 'PUT', body: { apiKey: newKey.value } })
+    newKey.value = ''
+    await Promise.all([refresh(), refreshSessions()])
+  }, '키를 바꿨어요. 다른 기기는 모두 로그아웃됐어요.')
+}
 
 const logoutDevice = (id: string) => run(async () => {
   await $fetch(`/api/me/sessions/${id}`, { method: 'DELETE' })
   await refreshSessions()
 }, '그 기기에서 로그아웃했어요.')
 
-async function leave(path: string, body?: object) {
-  await run(async () => {
-    await $fetch(path, { method: 'DELETE', body })
-    await refresh()
-    await navigateTo('/')
-  }, '')
+// 나가기 전에 쓰던 메모를 서버에 저장하고, 나간 뒤엔 이 브라우저의 임시본을 지운다
+async function signOut(path: string, body?: object) {
+  await flushMemos()
+  await $fetch(path, { method: 'DELETE', body })
+  forgetMemos()
+  await refresh()
+  await navigateTo('/')
 }
+const leave = (path: string) => run(() => signOut(path), '')
 
 const EXPORTS = [
   { label: '전체 JSON', format: 'json', table: null },
@@ -101,15 +122,45 @@ const download = (item: typeof EXPORTS[number]) => run(async () => {
   a.href = URL.createObjectURL(blob)
   a.download = `maplelog-${item.table ?? 'all'}-${kstToday()}.${item.format}`
   a.click()
-  URL.revokeObjectURL(a.href)
+  // 바로 풀면 브라우저가 내려받기를 시작하기 전에 주소가 사라질 수 있다
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000)
 }, '내려받았어요.')
 
+// 키 삭제·탈퇴는 모달에서 키를 다시 받아 확인한다
 const confirmTarget = ref<'key' | 'account' | null>(null)
+const confirmOpen = computed({
+  get: () => !!confirmTarget.value,
+  set: (open) => {
+    if (!open && !busy.value) confirmTarget.value = null
+  },
+})
 const confirmKey = ref('')
+const confirmHint = ref('')
+const confirmInput = ref<HTMLInputElement | null>(null)
 const confirmLabels = { key: '키 삭제', account: '탈퇴' }
-function confirmDanger() {
-  const path = confirmTarget.value === 'key' ? '/api/me/key' : '/api/me'
-  return leave(path, { apiKey: confirmKey.value })
+function openConfirm(target: 'key' | 'account') {
+  confirmTarget.value = target
+  confirmKey.value = ''
+  confirmHint.value = ''
+}
+async function confirmDanger() {
+  if (!confirmKey.value.trim()) {
+    confirmHint.value = '지금 등록된 API 키를 입력해 주세요.'
+    confirmInput.value?.focus()
+    return
+  }
+  confirmHint.value = ''
+  busy.value = true
+  try {
+    await signOut(confirmTarget.value === 'key' ? '/api/me/key' : '/api/me', { apiKey: confirmKey.value })
+    confirmTarget.value = null
+  }
+  catch (error) {
+    confirmHint.value = errorMessage(error)
+  }
+  finally {
+    busy.value = false
+  }
 }
 
 useHead({ title: '내 정보 · 메이플스토리로그' })
@@ -117,10 +168,14 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
 
 <template>
   <div v-if="me" class="page fit">
-    <Transition name="fade">
-      <p v-if="message" class="notice" role="status">{{ message }}</p>
-    </Transition>
-    <p v-if="failure" class="form-error" role="alert">{{ failure }}</p>
+    <Teleport to="body">
+      <Transition name="fade">
+        <p v-if="message || failure" class="toast" :class="{ bad: failure }" :role="failure ? 'alert' : 'status'">
+          <span>{{ failure || message }}</span>
+          <button type="button" class="toast-close" aria-label="알림 닫기" @click="notify('')">×</button>
+        </p>
+      </Transition>
+    </Teleport>
 
     <div class="board">
       <GameWindow title="대표 캐릭터" accent="green">
@@ -139,7 +194,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <div><button class="btn" :disabled="busy" @click="openPicker">고르기</button></div>
         </template>
         <div class="mvp">
-          <span class="mvp-label">MVP 등급 <small>스타포스 비용 할인(강화 기록·계산기)과 경매장 수수료(실버 이상 3%)에 써요</small></span>
+          <span class="mvp-label">MVP 등급 <small>스타포스 할인·경매장 수수료에 써요</small></span>
           <div class="mvp-chips" role="group" aria-label="MVP 등급">
             <button v-for="d in MVP_DISCOUNTS" :key="d.label" type="button" :aria-pressed="mvp === d.rate" :disabled="busy" @click="pickMvp(d.rate)">{{ d.label }}</button>
           </div>
@@ -155,12 +210,13 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <div><dt>상태</dt><dd :class="KEY_STATUS[me.keyStatus].tone">{{ KEY_STATUS[me.keyStatus].label }}</dd></div>
           <div><dt>마지막 확인</dt><dd>{{ me.keyCheckedAt ? formatDateTime(me.keyCheckedAt) : '-' }}</dd></div>
         </dl>
-        <form class="row" @submit.prevent="replaceKey" novalidate>
+        <form class="row" novalidate @submit.prevent="replaceKey">
           <label class="sr-only" for="new-key">새 API 키</label>
-          <input id="new-key" v-model="newKey" class="field-input" type="password" autocomplete="off" placeholder="새 키로 바꾸기">
+          <input id="new-key" ref="newKeyInput" v-model="newKey" class="field-input" type="password" autocomplete="off" placeholder="새 키로 바꾸기" :aria-invalid="!!newKeyHint" aria-describedby="new-key-hint" @input="newKeyHint = ''">
           <button class="btn" :disabled="busy">교체</button>
         </form>
-        <p class="muted small">같은 넥슨 계정에서 발급한 키만 바꿀 수 있어요. 기록은 그대로 이어져요.</p>
+        <!-- 빈 칸으로 누르면 같은 자리의 안내 글이 바뀐다 -->
+        <p id="new-key-hint" class="muted small" :class="{ loss: newKeyHint }" role="status">{{ newKeyHint || '같은 넥슨 계정에서 발급한 키만 바꿀 수 있어요. 기록은 그대로 이어져요.' }}</p>
       </GameWindow>
 
       <GameWindow title="로그인된 기기" :sub="`${sessions.length}대`" accent="blue" fill>
@@ -185,28 +241,31 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <div><dt>수집 동의</dt><dd>{{ formatDateTime(me.consentAt) }}</dd></div>
         </dl>
         <div class="export">
-          <label for="export-key">내 기록 내려받기 (가계부·장비 결산·강화 기록) — 지금 등록된 API 키를 다시 입력해 주세요</label>
-          <input id="export-key" v-model="exportKey" class="field-input" type="password" autocomplete="off">
+          <label for="export-key">내 기록 내려받기</label>
+          <input id="export-key" v-model="exportKey" class="field-input" type="password" autocomplete="off" placeholder="지금 등록된 API 키를 입력해 주세요">
           <div class="row">
             <button v-for="item in EXPORTS" :key="item.label" type="button" class="btn ghost compact" :disabled="busy || !exportKey" @click="download(item)">{{ item.label }}</button>
           </div>
         </div>
 
-        <div v-if="!confirmTarget" class="row">
-          <button class="btn danger" :disabled="!me.keyLast4" @click="confirmTarget = 'key'">키만 삭제</button>
-          <button class="btn danger" @click="confirmTarget = 'account'">탈퇴</button>
+        <div class="row">
+          <button type="button" class="btn danger" :disabled="busy || !me.keyLast4" @click="openConfirm('key')">키만 삭제</button>
+          <button type="button" class="btn danger" :disabled="busy" @click="openConfirm('account')">탈퇴</button>
         </div>
-        <form v-else class="confirm" @submit.prevent="confirmDanger" novalidate>
+      </GameWindow>
+      <AppModal v-model="confirmOpen" :title="confirmTarget ? confirmLabels[confirmTarget] : ''" :width="440">
+        <form v-if="confirmTarget" class="confirm" novalidate @submit.prevent="confirmDanger">
           <p v-if="confirmTarget === 'key'">키를 지우면 자동 수집이 멈추고 모든 기기에서 로그아웃돼요. 지금까지의 기록은 남아요.</p>
           <p v-else>키와 계정 정보, 로그인 기기가 바로 지워지고 되돌릴 수 없어요.</p>
-          <label for="confirm-key">확인을 위해 지금 등록된 API 키를 다시 입력해 주세요</label>
-          <input id="confirm-key" v-model="confirmKey" class="field-input" type="password" autocomplete="off">
-          <div class="row">
+          <label for="confirm-key">확인을 위해 지금 등록된 API 키를 입력해 주세요</label>
+          <input id="confirm-key" ref="confirmInput" v-model="confirmKey" class="field-input" type="password" autocomplete="off" :aria-invalid="!!confirmHint" aria-describedby="confirm-hint" @input="confirmHint = ''">
+          <p id="confirm-hint" class="hint-line" role="status">{{ confirmHint || ' ' }}</p>
+          <div class="row end">
+            <button type="button" class="btn ghost" :disabled="busy" @click="confirmTarget = null">취소</button>
             <button class="btn danger" :disabled="busy">{{ confirmLabels[confirmTarget] }}</button>
-            <button type="button" class="btn ghost" @click="confirmTarget = null; confirmKey = ''">취소</button>
           </div>
         </form>
-      </GameWindow>
+      </AppModal>
     </div>
   </div>
 </template>
@@ -218,7 +277,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
 }
 .board {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
   align-items: start;
 }
@@ -234,9 +293,6 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   flex: 1;
   width: auto;
 }
-.small {
-  font-size: 13px;
-}
 .main {
   display: flex;
   align-items: center;
@@ -248,7 +304,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   width: 96px;
   height: 104px;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 60%, rgb(127 209 154 / 0.3), transparent 70%), var(--bar);
+  background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--gain) 30%, transparent), transparent 70%), var(--bar);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
 }
@@ -279,7 +335,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   gap: 6px;
 }
 .mvp-chips button {
-  height: 32px;
+  height: 36px;
   padding: 0 6px;
   background: rgb(255 255 255 / 0.02);
   border: 1px solid var(--panel-line);
@@ -296,7 +352,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   color: var(--text);
 }
 .mvp-chips button[aria-pressed="true"] {
-  background: rgb(242 193 78 / 0.12);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
   border-color: var(--gold);
   color: var(--gold);
 }
@@ -309,8 +365,11 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   font-size: 26px;
   font-weight: 400;
 }
+/* 기기가 많아도 창이 끝없이 길어지지 않게 목록 안에서 스크롤한다 */
 .devices {
   display: grid;
+  max-height: 340px;
+  overflow-x: hidden;
   align-content: start;
   gap: 8px;
   margin: 0;
@@ -346,13 +405,49 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   color: var(--gold);
   font-size: 11px;
 }
-.notice {
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
   margin: 0;
-  padding: 8px 12px;
+  padding: 6px 6px 6px 14px;
+  translate: -50% 0;
   background: var(--bar);
   border: 1px solid var(--gain);
-  border-radius: 6px;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.45);
   color: var(--gain);
+  font-size: 14px;
+}
+.toast.bad {
+  border-color: var(--loss);
+  color: var(--loss);
+}
+.toast-close {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: 0;
+  color: var(--sub);
+  font-size: 18px;
+  cursor: pointer;
+}
+.hint-line {
+  min-height: 20px;
+  margin: 0;
+  color: var(--loss);
+  font-size: 13px;
+  line-height: 20px;
+}
+.row.end {
+  justify-content: flex-end;
 }
 .export {
   display: grid;
@@ -365,9 +460,6 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
 .confirm {
   display: grid;
   gap: 8px;
-  padding: 12px;
-  border: 1px dashed var(--loss);
-  border-radius: 6px;
 }
 .confirm p {
   margin: 0;
@@ -375,6 +467,15 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
 .confirm label {
   color: var(--sub);
   font-size: 13px;
+}
+/* 휴대폰은 하단 탭바 위로 띄우고, MVP 칩은 두 줄로 나눈다 */
+@media (max-width: 640px) {
+  .mvp-chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .toast {
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  }
 }
 @media (min-width: 1100px) and (min-height: 700px) {
   .board {
@@ -387,6 +488,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
   .devices {
     flex: 1;
     min-height: 0;
+    max-height: none;
   }
 }
 </style>

@@ -8,7 +8,7 @@ const TIMEOUT_MS = 10_000
 
 const decode = (text: string) => text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, '\'').replace(/&amp;/g, '&').trim()
 
-// 공식 페이지는 줄마다 <table class="cube_data _1|_2|_3">에 (옵션, 확률) 행을 그린다. 응답 위쪽의 조건 글자는 고정 문구라 믿지 않는다
+// 응답 위쪽의 조건 글자는 고정 문구라 믿지 않고 줄별 표만 읽는다
 const TABLES = [/<table class="cube_data _1">([\s\S]*?)<\/table>/, /<table class="cube_data _2">([\s\S]*?)<\/table>/, /<table class="cube_data _3">([\s\S]*?)<\/table>/]
 const ROW = /<tr>\s*<td>([\s\S]*?)<\/td>[\s\S]*?<td>([\d.]+)%<\/td>\s*<\/tr>/g
 
@@ -18,7 +18,7 @@ function parseOptionTable(html: string): PotentialOptionTable {
   }
 }
 
-// 공식 잠재 옵션 확률표를 받아 캐시한다. cube: 큐브 아이템 id, grade: 1(레어)~4(레전드리), part: 장비 분류 코드
+// grade: 1(레어)~4(레전드리), part: 넥슨 장비 분류 코드
 export default defineEventHandler(async (event): Promise<PotentialOptionTable> => {
   const query = getQuery(event)
   const cube = Number(query.cube)
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event): Promise<PotentialOptionTable> =
   }
 
   return withCache(`potential-options:${cube}:${grade}:${part}:${level}`, CACHE_MS, async () => {
-    // 캐시에 없을 때만 넥슨에 묻는다. 같은 IP가 짧은 시간에 너무 많이 새 조건을 부르면 막는다
+    // 넥슨을 부르는 캐시 미스만 IP당 제한한다
     await rateLimit(event, 'potential-options', 30, 60)
     const html = await $fetch<string>(SOURCE_URL, {
       method: 'POST',
@@ -43,7 +43,7 @@ export default defineEventHandler(async (event): Promise<PotentialOptionTable> =
       responseType: 'text',
       timeout: TIMEOUT_MS,
     }).catch(() => {
-      throw createError({ statusCode: 502, message: '넥슨 확률표를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.' })
+      throw createError({ statusCode: 502, message: '넥슨 확률표를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.' })
     })
     const table = parseOptionTable(html)
     if (!table.lines[0]!.length) throw createError({ statusCode: 404, message: '이 조건의 확률표가 없어요.' })

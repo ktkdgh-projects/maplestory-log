@@ -5,9 +5,23 @@ import type { EnhanceEventDoc } from './mongo'
 
 // 날짜 칩에 점을 찍고 가장 가까운 기록 날을 찾을 만큼만 본다
 const RECORD_DAYS_BACK = 60
+// 결산 한 번에 볼 수 있는 기간. 이번 주·썬데이보다 넉넉하게, 반년치를 한 번에 묶지는 않게
+const REVIEW_MAX_DAYS = 31
 
 interface Range { from: string, to: string }
 const rangeFilter = (range: Range) => ({ at: { $gte: kstDayStart(range.from), $lt: kstDayStart(addDays(range.to, 1)) } })
+
+export function parseReviewRange(query: { from?: unknown, to?: unknown }, today = kstToday()): Range {
+  const from = query.from ? parseDate(query.from) : today
+  const to = query.to ? parseDate(query.to) : from
+  if (to < from || addDays(from, REVIEW_MAX_DAYS - 1) < to) throw createError({ statusCode: 400, message: '기간을 다시 골라 주세요.' })
+  return { from, to }
+}
+
+export async function hasRecords(userId: ObjectId, names: string[], range: Range) {
+  const { enhanceEvents } = await useCollections()
+  return !!(await enhanceEvents.findOne({ userId, character: { $in: names }, ...rangeFilter(range) }, { projection: { _id: 1 } }))
+}
 
 // 장비 결산에서 이 캐릭터·장비에 이 기간 날짜로 직접 적은 강화 비용
 async function manualCosts(userId: ObjectId, names: string[], range: Range) {
@@ -33,8 +47,8 @@ async function manualCosts(userId: ObjectId, names: string[], range: Range) {
 // 그 기간에 걸친 썬데이에 운영자가 고른 스타포스 효과
 async function sundayEffectsIn(range: Range) {
   const { sundays } = await useCollections()
-  const docs = await sundays.find({ start: { $lt: kstDayStart(addDays(range.to, 1)) }, end: { $gte: kstDayStart(range.from) } }, { projection: { start: 1, end: 1, effects: 1 } }).toArray()
-  return (at: Date) => docs.find(s => at >= s.start && at <= s.end)?.effects ?? []
+  const docs = await sundays.find({ start: { $lt: kstDayStart(addDays(range.to, 1)) }, end: { $gte: kstDayStart(addDays(range.from, -1)) } }, { projection: { start: 1, end: 1, effects: 1 } }).toArray()
+  return (at: Date) => docs.find(s => inSunday(at, s))?.effects ?? []
 }
 
 export async function recordDays(userId: ObjectId, names: string[], today: string): Promise<string[]> {
@@ -47,22 +61,32 @@ export async function recordDays(userId: ObjectId, names: string[], today: strin
   return days.map(d => d._id)
 }
 
-// 고른 기간의 스타포스 기록을 장비별로 묶는다. 비용은 강화 기록 페이지와 같은 계산(MVP 할인·복구 메소 포함)
+const toolName = (d: Pick<EnhanceEventDoc, 'kind' | 'tool'>) => (d.kind === 'potential' ? '메소 재설정' : d.tool ?? '큐브')
+// 이름은 달라도(카르마·대적자 등) 확률·천장이 같은 도구끼리 한 묶음. 결산 계산기의 도구 구분(methodOfTool)과 같은 기준이다
+const TOOL_FAMILIES = ['블랙 큐브', '레드 큐브', '에디셔널 큐브']
+const toolFamily = (name: string) => TOOL_FAMILIES.find(f => name.includes(f)) ?? name
+const monthDay = (at: Date) => kstDateOf(at).slice(5).split('-').map(Number).join('/')
+
+// 썬데이·할인 이벤트와 평소가 섞이면 기대값 조건이 달라 같은 장비도 조건별로 나눈다
 export async function reviewStarforce(userId: ObjectId, names: string[], range: Range, equipped: EquipmentItem[], mvp: number): Promise<ReviewStarforce[]> {
   const { enhanceEvents } = await useCollections()
-  const match = { character: { $in: names }, ...rangeFilter(range) }
-  const docs = await enhanceEvents.find({ userId, kind: 'starforce', ...match }).sort({ at: 1 }).toArray()
+  const match = { character: { $in: names } }
+  const docs = await enhanceEvents.find({ userId, kind: 'starforce', ...match, ...rangeFilter(range) }).sort({ at: 1 }).toArray()
   if (!docs.length) return []
   const gear = new Map(equipped.map(i => [i.name, i]))
   const levelOf = (item: string) => gear.get(item)?.requiredLevel || null
   const [restores, effectsAt, manual] = await Promise.all([
-    restoresOf(userId, match, levelOf),
+    restoresOf(userId, match, levelOf, kstDayStart(range.from), kstDayStart(addDays(range.to, 1))),
     sundayEffectsIn(range),
     manualCosts(userId, names, range),
   ])
   const restoreOf = new Map(restores.map(r => [r.eventId, r.restore]))
 
-  return [...Map.groupBy(docs.filter(d => d.beforeStar !== null && !d.scroll), d => d.item)].map(([item, list]) => {
+  const parts = [...Map.groupBy(docs.filter(d => d.beforeStar !== null && !d.scroll), d => d.item)].flatMap(([item, all]) => {
+    const groups = [...Map.groupBy(all, d => `${[...effectsAt(d.at)].sort().join(',')}|${(d.eventDiscount ?? 0) > 0}`).values()]
+    return groups.map(list => ({ item, list, split: groups.length > 1 }))
+  })
+  return parts.map(({ item, list, split }) => {
     const level = levelOf(item)
     const stages = new Map<number, ReviewStarforce['stages'][number]>()
     const path: ReviewStarforce['path'] = []
@@ -94,15 +118,18 @@ export async function reviewStarforce(userId: ObjectId, names: string[], range: 
         tries = 0
       }
     }
+    const firstDoc = list[0]!
     const lastDoc = list.at(-1)!
     if (tries) path.push({ star: lastDoc.beforeStar!, tries, result: 'stop', restore: null })
     const g = gear.get(item)
+    const sundayEffects = effectsAt(firstDoc.at)
+    const discount = (firstDoc.eventDiscount ?? 0) > 0
     return {
       item,
       slot: g?.slot ?? null,
       icon: g?.icon ?? null,
       level,
-      from: list[0]!.beforeStar!,
+      from: firstDoc.beforeStar!,
       to: lastDoc.afterStar ?? lastDoc.beforeStar!,
       attempts: list.length,
       destroys: list.filter(d => d.destroyed).length,
@@ -110,27 +137,64 @@ export async function reviewStarforce(userId: ObjectId, names: string[], range: 
       restoreMeso,
       copies,
       protectStars: [...protectStars].sort((a, b) => a - b),
-      discount: list.some(d => (d.eventDiscount ?? 0) > 0),
-      sundayEffects: effectsAt(list[0]!.at),
+      discount,
+      sundayEffects,
+      condition: split ? `${sundayEffects.length ? '썬데이' : discount ? '할인 이벤트' : '평소'} ${monthDay(firstDoc.at)}~` : null,
       stages: [...stages.values()].sort((a, b) => a.star - b.star),
       path,
-      first: list[0]!.at.toISOString(),
+      first: firstDoc.at.toISOString(),
       last: lastDoc.at.toISOString(),
-      manual: manual.starforce.get(item) ?? null,
+      // 조건별로 나눈 장비는 장비 결산에 적은 값을 어느 쪽에 넣을지 몰라 기록으로 센 값으로 비교한다
+      manual: split ? null : manual.starforce.get(item) ?? null,
     }
   })
 }
 
-// 고른 기간의 큐브·메소 재설정 기록을 장비·윗잠/에디별로 묶는다
+// 기간 첫 기록 전에 같은 등급에서 이미 돌린 횟수(천장). 천장은 도구 묶음마다 따로 쌓여서 마지막으로 등급이 오른 뒤 같은 묶음으로 돌린 것만 센다
+async function stacksBefore(userId: ObjectId, names: string[], since: Date, wanted: { item: string, additional: boolean, tool: string }[]) {
+  if (!wanted.length) return new Map<string, number>()
+  const { enhanceEvents } = await useCollections()
+  const additional = { $regexMatch: { input: { $ifNull: ['$tool', ''] }, regex: '에디셔널' } }
+  const base = { userId, character: { $in: names }, item: { $in: [...new Set(wanted.map(w => w.item))] }, kind: { $in: ['cube', 'potential'] }, at: { $lt: since } }
+  const ups = await enhanceEvents.aggregate<{ _id: { item: string, additional: boolean }, at: Date }>([
+    { $match: { ...base, success: true } },
+    { $group: { _id: { item: '$item', additional }, at: { $max: '$at' } } },
+  ]).toArray()
+  const upAt = new Map(ups.map(u => [`${u._id.item}\n${u._id.additional}`, u.at]))
+  const counts = await enhanceEvents.aggregate<{ _id: { item: string, additional: boolean, tool: string }, count: number }>([
+    { $match: base },
+    { $addFields: { additional, family: { $switch: {
+      branches: [
+        { case: { $eq: ['$kind', 'potential'] }, then: '메소 재설정' },
+        ...TOOL_FAMILIES.map(f => ({ case: { $regexMatch: { input: { $ifNull: ['$tool', ''] }, regex: f } }, then: f })),
+      ],
+      default: { $ifNull: ['$tool', '큐브'] },
+    } } } },
+    { $match: { $or: wanted.map((w) => {
+      const up = upAt.get(`${w.item}\n${w.additional}`)
+      return { item: w.item, additional: w.additional, family: toolFamily(w.tool), ...(up && { at: { $gt: up } }) }
+    }) } },
+    { $group: { _id: { item: '$item', additional: '$additional', tool: '$family' }, count: { $sum: 1 } } },
+  ]).toArray()
+  return new Map(counts.map(c => [`${c._id.item}\n${c._id.additional}\n${c._id.tool}`, c.count]))
+}
+
 export async function reviewPotential(userId: ObjectId, names: string[], range: Range, equipped: EquipmentItem[]): Promise<ReviewPotential[]> {
   const { enhanceEvents } = await useCollections()
   const docs = await enhanceEvents.find({ userId, character: { $in: names }, kind: { $in: ['cube', 'potential'] }, ...rangeFilter(range) }).sort({ at: 1 }).toArray()
   if (!docs.length) return []
   const gear = new Map(equipped.map(i => [i.name, i]))
-  const manual = await manualCosts(userId, names, range)
+  const groups = [...Map.groupBy(docs, d => `${d.item}\n${isAdditional(d.tool)}`).values()].map((list) => {
+    // 결산 계산은 가장 많이 쓴 도구(같은 수면 먼저 쓴 것) 기준이라 천장도 그 도구로 센다
+    const tools = [...Map.groupBy(list, toolName)].map(([name, l]) => ({ name, count: l.length }))
+    return { list, tools, main: [...tools].sort((a, b) => b.count - a.count)[0]!.name }
+  })
+  const [manual, stacks] = await Promise.all([
+    manualCosts(userId, names, range),
+    stacksBefore(userId, names, kstDayStart(range.from), groups.map(g => ({ item: g.list[0]!.item, additional: isAdditional(g.list[0]!.tool), tool: g.main }))),
+  ])
 
-  const groups = [...Map.groupBy(docs, d => `${d.item}\n${isAdditional(d.tool)}`).values()]
-  return Promise.all(groups.map(async (list) => {
+  return groups.map(({ list, tools, main }) => {
     const first = list[0]!
     const additional = isAdditional(first.tool)
     const level = first.itemLevel ?? gear.get(first.item)?.requiredLevel ?? null
@@ -145,10 +209,6 @@ export async function reviewPotential(userId: ObjectId, names: string[], range: 
         tries = 0
       }
     }
-    // 기간 첫 기록 전에 같은 등급에서 이미 돌린 횟수(천장). 마지막으로 등급이 오른 뒤부터 센다
-    const side = additional ? /에디셔널/ : { $not: /에디셔널/ }
-    const lastUp = await enhanceEvents.findOne({ userId, character: { $in: names }, item: first.item, kind: { $in: ['cube', 'potential'] }, tool: side, success: true, at: { $lt: first.at } }, { sort: { at: -1 }, projection: { at: 1 } })
-    const stackBefore = await enhanceEvents.countDocuments({ userId, character: { $in: names }, item: first.item, kind: { $in: ['cube', 'potential'] }, tool: side, at: { $lt: first.at, ...(lastUp && { $gt: lastUp.at }) } })
 
     const last = list.at(-1)!
     const optionsOf = (d: EnhanceEventDoc) => (additional ? d.addOptions : d.options)
@@ -165,11 +225,11 @@ export async function reviewPotential(userId: ObjectId, names: string[], range: 
       icon: g?.icon ?? null,
       level,
       additional,
-      tools: [...Map.groupBy(list, d => (d.kind === 'potential' ? '메소 재설정' : d.tool ?? '큐브'))].map(([name, l]) => ({ name, count: l.length })),
+      tools,
       meso,
       fromGrade: first.beforeGrade ?? null,
       toGrade: last.grade,
-      stackBefore,
+      stackBefore: stacks.get(`${first.item}\n${additional}\n${toolFamily(main)}`) ?? 0,
       tiers,
       optionTries: run.length,
       optionAt: at < 0 ? null : at + 1,
@@ -179,5 +239,5 @@ export async function reviewPotential(userId: ObjectId, names: string[], range: 
       last: last.at.toISOString(),
       manual: manual.potential.get(first.item) ?? null,
     }
-  }))
+  })
 }

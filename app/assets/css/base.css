@@ -28,7 +28,7 @@ body {
   background: var(--gold);
   color: var(--on-gold);
 }
-/* 펼친 선택 목록은 운영체제가 흰 바탕으로 그려서, 글자색만 물려받으면 흰 글씨가 안 보인다. 바탕도 어둡게 맞춘다 */
+/* 펼친 목록은 운영체제가 흰 바탕으로 그려 흰 글씨가 안 보이므로 바탕도 어둡게 맞춘다 */
 select {
   color-scheme: dark;
 }
@@ -61,6 +61,15 @@ select optgroup {
 .fade-leave-to {
   opacity: 0;
   transform: translateY(4px);
+}
+.pop-enter-active,
+.pop-leave-active {
+  transition: opacity var(--fast) ease, translate var(--fast) var(--ease-out);
+}
+.pop-enter-from,
+.pop-leave-to {
+  opacity: 0;
+  translate: 0 -4px;
 }
 
 @keyframes rise-in {
@@ -143,7 +152,6 @@ select optgroup {
   font: inherit;
   transition: border-color var(--fast) ease, box-shadow var(--fast) ease;
 }
-/* 숫자 칸의 위아래 화살표는 쓰지 않는다 */
 .field-input[type="number"] {
   appearance: textfield;
 }
@@ -221,12 +229,16 @@ select optgroup {
   color: var(--loss);
 }
 .btn.danger:hover:not(:disabled) {
-  background: rgb(255 138 122 / 0.1);
+  background: color-mix(in srgb, var(--loss) 10%, transparent);
 }
 
 .muted {
   margin: 0;
   color: var(--sub);
+}
+
+.small {
+  font-size: 13px;
 }
 
 .footnote {
@@ -238,8 +250,8 @@ select optgroup {
 .form-error {
   margin: 0;
   padding: 8px 12px;
-  background: rgb(255 138 122 / 0.08);
-  border: 1px solid rgb(255 138 122 / 0.4);
+  background: color-mix(in srgb, var(--loss) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--loss) 40%, transparent);
   border-radius: 6px;
   color: var(--loss);
   font-size: 14px;
@@ -309,40 +321,6 @@ select optgroup {
 }
 .warn {
   color: var(--gold);
-}
-
-.prose {
-  display: grid;
-  gap: 12px;
-  max-width: 72ch;
-}
-.prose h2 {
-  margin: 8px 0 0;
-  color: var(--gold);
-  font-family: var(--f-title);
-  font-size: 19px;
-  font-weight: 400;
-}
-.prose p,
-.prose ol,
-.prose ul {
-  margin: 0;
-}
-.prose ol,
-.prose ul {
-  display: grid;
-  gap: 4px;
-  padding-left: 20px;
-}
-.prose a {
-  color: var(--api);
-}
-.prose code {
-  padding: 0 5px;
-  background: var(--bar);
-  border: 1px solid var(--panel-line);
-  border-radius: 4px;
-  font-size: 13px;
 }
 
 @media (prefers-reduced-motion: reduce) {

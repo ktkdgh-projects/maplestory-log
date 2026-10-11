@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// 가계부 페이지에 떠 있는 메모장 버튼. 페이지를 옮기지 않고 모달로 연다
 // 본문 오른쪽 빈 곳 안에서만 끌어 옮길 수 있고, 옮긴 자리는 이 브라우저에 남긴다
 const SIZE = 52
 const EDGE = 12
@@ -12,7 +11,7 @@ watch(open, (value) => {
   if (!value) flush()
 })
 
-// 오른쪽 끝에서 떨어진 거리, 아래 끝에서 떨어진 거리
+// 화면 오른쪽·아래 끝에서 떨어진 거리로 남겨 창 크기가 바뀌어도 같은 구석에 붙는다
 const saved = ref<{ right: number, bottom: number } | null>(null)
 const pos = ref<{ left: number, top: number } | null>(null)
 const button = ref<HTMLButtonElement | null>(null)
@@ -40,7 +39,18 @@ function place() {
   }
 }
 
+// 좁은 화면에서는 내려 읽는 동안 버튼을 아래로 숨겨 줄 끝 버튼을 가리지 않게 하고, 올리면 다시 보여 준다
+const tucked = ref(false)
+let lastY = 0
+function onScroll() {
+  const y = window.scrollY
+  if (window.innerWidth > 640 || Math.abs(y - lastY) < 8) return
+  tucked.value = y > lastY && y > 80
+  lastY = y
+}
+
 onMounted(() => {
+  window.addEventListener('scroll', onScroll, { passive: true })
   try {
     const raw = JSON.parse(localStorage.getItem(POS_KEY) ?? 'null')
     if (typeof raw?.right === 'number' && typeof raw?.bottom === 'number') saved.value = raw
@@ -49,7 +59,10 @@ onMounted(() => {
   place()
   window.addEventListener('resize', place)
 })
-onBeforeUnmount(() => window.removeEventListener('resize', place))
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', place)
+  window.removeEventListener('scroll', onScroll)
+})
 
 let start: { x: number, y: number, left: number, top: number } | null = null
 const dragging = ref(false)
@@ -92,7 +105,7 @@ function click() {
     ref="button"
     type="button"
     class="fab"
-    :class="{ dragging }"
+    :class="{ dragging, tucked: tucked && !open }"
     :style="pos ? { left: `${pos.left}px`, top: `${pos.top}px`, right: 'auto', bottom: 'auto' } : undefined"
     aria-label="메모장 열기"
     title="메모장 · 끌어서 옮기기"
@@ -153,8 +166,20 @@ function click() {
 /* 모바일은 아래 탭바 위로 올린다 */
 @media (max-width: 640px) {
   .fab {
-    right: 16px;
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    right: 14px;
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    transition: transform var(--normal) var(--ease-out), opacity var(--normal) ease, border-color var(--fast) ease;
+  }
+  .fab:hover {
+    transform: none;
+  }
+  .fab.tucked {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(24px) scale(0.9);
   }
 }
 </style>

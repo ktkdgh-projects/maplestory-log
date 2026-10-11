@@ -2,7 +2,7 @@ import { ObjectId, type AnyBulkWriteOperation } from 'mongodb'
 import { bossPeriod, crystalPrice, findBoss } from '#shared/data/bosses'
 import type { BossClearDoc } from '../../../utils/mongo'
 
-// 세팅한 주간 보스를 한 번에 체크한다. ocid가 없으면 세팅한 캐릭터 전부. 이미 체크한 보스(물욕템 기록 포함)는 그대로 둔다
+// $setOnInsert라 이미 체크한 보스는 물욕템 기록까지 그대로 남는다
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const body = await readBody<{ ocid?: unknown, date?: unknown }>(event)

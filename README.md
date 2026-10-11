@@ -37,27 +37,52 @@ Node.js 20 이상 필요 (개발 환경: Node 24 LTS).
 
 ## 폴더 구조
 
-Nuxt 4 기본 디렉터리 구조를 따른다. 컴포넌트 파일 이름은 자동 등록되는 이름과 같게 짓는다(`character/CharacterProfile.vue` → `<CharacterProfile>`).
+Nuxt 4 기본 디렉터리 구조를 따른다.
+
+- **컴포넌트**: 폴더는 묶음용이라 태그 이름에 폴더가 붙지 않는다(`nuxt.config`의 `pathPrefix: false`). 파일 이름이 곧 태그 이름이고(`ui/AppModal.vue` → `<AppModal>`), 기능 폴더 안 파일은 기능 이름으로 시작한다(`review/ReviewStarforceRow.vue`). 같은 파일 이름을 두 폴더에 두지 않는다.
+- **계산식**: 순수 계산(Vue·DB·fetch 없음)은 `shared/calc`에 모아 화면·서버·Worker가 같이 쓴다. 자동 import 대상이 아니라 `import { planStarforce } from '#shared/calc/starforce'`처럼 직접 가져온다. 공식 비용표·확률표와 그 표를 찾는 함수는 `shared/data`에 출처와 함께 둔다.
+- **자동 import**: `app/utils`, `app/composables`, `shared/utils`, `shared/types`, `server/utils`(최상위 파일만)는 Nuxt·Nitro가 자동으로 가져온다.
 
 ```
 app/
-├ assets/css/           # tokens.css(색·폰트·모션), base.css(공통 스타일)
-├ components/           # 게임 창·슬롯·툴팁 등 공용 UI
-│ ├ character/          # 캐릭터 화면
-│ └ growth/             # 성장 화면
-├ composables/useMe.ts  # 로그인 상태
+├ assets/               # css(tokens·base·calc), 보스·물욕템 아이콘
+├ components/
+│ ├ ui/                 # 공용 입력·모달·선택·툴팁 (AppModal, AppSelect, DatePicker, MesoInput, ConfirmHost …)
+│ ├ game/               # 게임 화면 모양 조각 (GameWindow, GameTooltip, ItemSlot, ExpBar, NpcSay, FieldScene)
+│ ├ layout/             # 헤더·탭바·배경·검색
+│ ├ auth/               # 키 등록 안내(KeyGate)·키 로그인
+│ ├ admin/ legal/       # 관리자 썬데이 효과, 약관·개인정보 문서
+│ ├ character/          # 캐릭터 화면 + 캐릭터 고르기·스프라이트·썸네일
+│ └ growth/ ledger/ items/ enhance/ review/ memo/   # 페이지별 화면 조각
+├ composables/          # useMe, useMemos, useEnhanceRecords, useReviewCompute, useStarforceWorker …
 ├ layouts/default.vue   # 메뉴 바 + 검색 + 출처 표기
-├ pages/                # index(캐릭터), growth, login, me, guide/api-key, terms, privacy
-└ utils/                # 숫자 표기, 성장 계산, 프리셋 조합 추정, 장비 등급 색
+├ pages/                # index(캐릭터), growth, ledger/*, items, starforce, potential, review, calc/*, sunday, me, login …
+├ utils/                # 화면 도우미: 숫자·날짜 표기(format), 메뉴(nav), 키 안내(keyGates), 가계부 색·달력(ledger) …
+└ workers/              # 스타포스 계산 Worker
 shared/
-├ data/                 # 헥사·심볼 강화 비용표 (출처 주석)
-├ types/                # 앱·서버 공용 타입
-└ utils/kst.ts          # 한국시간 날짜
+├ calc/                 # 계산식 (아래 표)
+├ data/                 # 공식 비용표·확률표·보스·해방·경매장 수수료 (출처 주석)
+├ types/                # 앱·서버 공용 타입. 도메인별 파일, index.ts가 모두 다시 내보낸다
+└ utils/                # 한국시간 날짜(kst), 큰 수 표기(number), 만 단위 메소 입력(meso), 썬데이 일정 …
 server/
 ├ middleware/auth.ts    # CSRF 확인, 쿠키 → 세션 → 사용자
-├ utils/                # mongo(컬렉션·캐시), nexon, crypto, session, userKey, rateLimit, snapshot, character
-└ api/                  # auth, me, character, snapshots, union, cron
+├ utils/                # mongo(컬렉션·캐시), nexon, crypto, session, 강화 기록·가계부·장비 결산 DB 처리
+└ api/                  # auth, me, character, growth, ledger, items, enhance, review, sunday, memos, admin, cron …
 ```
+
+| `shared/calc` | 계산 |
+| --- | --- |
+| `starforce.ts` | 한 번 누르는 비용, 흔적 복구 메소, 목표까지 기대값·분포 |
+| `potential.ts` | 옵션 목표·조합 확률, 이룬 목표, 등급·옵션 모의 실험 |
+| `liberation.ts` | 해방 단계별 끝나는 주 |
+| `review.ts` | 강화 결산: 실제 비용을 기대값과 견준 운 |
+| `combatPower.ts` | 프리셋 조합별 전투력 추정 |
+| `growth.ts` | 날마다 얻은 경험치, 기간 요약·레벨업 예상일 |
+| `ledger.ts` | 가계부 날짜별 수입·지출 합계, 시간당 메소 |
+| `items.ts` | 장비 결산 판매 실수령·손익·합계 |
+| `meso.ts` | 경매장 수수료, 조각 판매·직접 등록 금액 |
+| `boss.ts` | 보스 수익(결정석 + 판 물욕템) |
+| `random.ts` | 시드 고정 난수 |
 
 ## 환경 변수
 

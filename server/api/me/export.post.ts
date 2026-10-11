@@ -1,11 +1,14 @@
 import type { BossDifficulty } from '#shared/data/bosses'
 import { DIFFICULTY_LABELS, findBoss } from '#shared/data/bosses'
+import { dropSaleNet } from '#shared/calc/meso'
 
 const CSV_TABLES = ['hunts', 'sales', 'clears', 'items', 'enhance'] as const
 type CsvTable = typeof CSV_TABLES[number]
 
 function csvCell(value: unknown): string {
-  const text = value == null ? '' : value instanceof Date ? value.toISOString() : String(value)
+  // 엑셀이 =·+·-·@로 시작하는 글을 수식으로 실행하지 않게 글자 칸만 앞에 '를 붙인다. 숫자 칸(음수)은 그대로 둔다
+  const raw = value == null ? '' : value instanceof Date ? value.toISOString() : String(value)
+  const text = typeof value === 'string' && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 

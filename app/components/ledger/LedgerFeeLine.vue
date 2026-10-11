@@ -1,20 +1,23 @@
 <script setup lang="ts">
 import type { MeResponse } from '#shared/types'
+import { hasMvpFee } from '#shared/calc/meso'
+import { DEFAULT_AUCTION_FEE, MVP_FEE } from '#shared/data/auction'
 
-// 경매장 수수료. 내 정보의 MVP 등급이 실버 이상이면 3%로 정해지고, 아니면 5%에서 PC방일 때만 3%로 바꾼다
+// MVP 실버 이상이면 3%로 고정한다. keep(기존 기록 고치기)이면 열기만 해선 그때 고른 수수료를 바꾸지 않는다
+const props = defineProps<{ keep?: boolean }>()
 const fee = defineModel<number>({ required: true })
 
 const PC_FEE = MVP_FEE
 const { data: me } = useNuxtData<MeResponse>('me')
 const mvp = computed(() => hasMvpFee(me.value?.user?.mvpDiscount))
 watch(mvp, (value) => {
-  if (value) fee.value = PC_FEE
+  if (value && !props.keep) fee.value = PC_FEE
 }, { immediate: true })
 </script>
 
 <template>
   <span class="fee-line">
-    <template v-if="mvp">
+    <template v-if="mvp && fee === PC_FEE">
       <span class="rate">수수료 <b>3%</b></span>
       <NuxtLink to="/me" class="why" title="내 정보에서 MVP 등급 바꾸기">MVP 실버 이상 · 내 정보</NuxtLink>
     </template>
@@ -52,7 +55,7 @@ watch(mvp, (value) => {
   cursor: pointer;
 }
 .pc[aria-pressed="true"] {
-  background: rgb(242 193 78 / 0.12);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
   border-color: var(--gold);
   color: var(--gold);
 }

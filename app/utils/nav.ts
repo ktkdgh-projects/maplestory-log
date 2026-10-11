@@ -65,7 +65,21 @@ export function isNavItemActive(item: NavItem, path: string): boolean {
   return path === item.to || (!item.exact && item.to !== '/' && path.startsWith(`${item.to}/`))
 }
 
-// 지금 주소가 속한 메뉴 묶음. 로그인·내 정보처럼 묶음 밖 페이지면 null
+// 로그인·내 정보처럼 묶음 밖 페이지면 null
 export function navGroupOf(path: string): NavGroup | null {
   return NAV_GROUPS.find(group => group.items.some(item => isNavItemActive(item, path))) ?? null
+}
+
+// 캐릭터를 보던 중이면 성장 기록도 그 캐릭터로 연다. 헤더와 휴대폰 탭바가 같이 쓴다
+export function navLinkOf(item: NavItem, query: Record<string, unknown>) {
+  const name = query.name
+  return item.to === '/growth' && typeof name === 'string' && name ? { path: '/growth', query: { name } } : item.to
+}
+
+// 배지는 점·숫자뿐이라 화면 읽기 프로그램엔 글로 알려 준다
+export function sundayBadgeLabel(badge: { kind: string, days?: number }): string {
+  if (badge.kind === 'new') return '이번 주 썬데이 발표됨'
+  if (badge.kind === 'upcoming') return `썬데이 D-${badge.days}`
+  if (badge.kind === 'today') return '오늘 썬데이'
+  return '썬데이 발표 전'
 }

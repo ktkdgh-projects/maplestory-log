@@ -17,6 +17,14 @@
   --gain: #7fd99a;
   --loss: #ff8a7a;
   --exp: #e8d44d;
+  --on-gain: #10261a;
+  --gold-warm: #ffb347;
+  --gold-light: #ffe08a;
+  --orange: #ff9f5a;
+  --purple: #c48bff;
+  --lamp-off: #3a4366;
+  --lamp-gold: #ffe7a3;
+  --lamp-green: #c9f5d6;
 
   /* SourceBadge 색: API · 계산 · 입력 · 불가 */
   --api: #7fb2ff;

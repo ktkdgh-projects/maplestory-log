@@ -1,5 +1,4 @@
-// 출처: 나무위키 「HEXA 매트릭스」 HEXA 스킬 강화 표 (2026-10-05 수정판)
-// 각 배열의 i번째 값은 i레벨 → i+1레벨에 드는 양. 0번째는 코어 개방(0→1)
+// 출처: 나무위키 「HEXA 매트릭스」 강화 표(2026-10-05판). i번째 값은 i→i+1레벨에 드는 양(0번째는 코어 개방)
 
 export type HexaCostKind = 'skill' | 'skill3' | 'mastery' | 'enhance' | 'common' | 'jobCommon'
 

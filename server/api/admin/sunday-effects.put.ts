@@ -1,6 +1,6 @@
 import { SUNDAY_STARFORCE_EFFECTS } from '#shared/data/starforce'
 
-// 운영자가 그 주 썬데이의 스타포스 효과를 고른다. 공지가 이미지라 사람이 보고 체크한다
+// 썬데이 공지는 이미지뿐이라 운영자가 보고 효과를 직접 고른다
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const { id, effects } = await readBody<{ id?: unknown, effects?: unknown }>(event)

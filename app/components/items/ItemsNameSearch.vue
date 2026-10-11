@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { ItemIcon } from '#shared/types'
 
-// 장비 이름 칸. 치는 대로 넥슨 API에서 본 장비·펫·캐시템을 아이콘과 함께 보여주고, 고르면 그 이름으로 채운다
+// 후보는 넥슨 API에서 한 번이라도 본 장비·펫·캐시템뿐이다
 const name = defineModel<string>({ required: true })
 const emit = defineEmits<{ pick: [item: ItemIcon] }>()
-withDefaults(defineProps<{ placeholder?: string, label?: string, enter?: boolean, required?: boolean }>(), { placeholder: '장비 이름으로 추가', label: '추가할 장비 이름', enter: true, required: false })
+withDefaults(defineProps<{ placeholder?: string, label?: string, enter?: boolean }>(), { placeholder: '장비 이름으로 추가', label: '추가할 장비 이름', enter: true })
+const listId = useId()
 
 const DEBOUNCE_MS = 200
 const KIND_LABELS: Record<ItemIcon['kind'], string> = { equipment: '장비', pet: '펫', cash: '캐시', symbol: '심볼', etc: '기타' }
@@ -20,7 +21,10 @@ function onInput(event: Event) {
   clearTimeout(timer)
   const q = (event.target as HTMLInputElement).value.trim()
   if (!q) {
+    // 지운 뒤에 늦게 온 검색 결과가 다시 뜨지 않게 한다
+    latest++
     results.value = []
+    open.value = false
     return
   }
   timer = setTimeout(async () => {
@@ -52,7 +56,11 @@ function onKeydown(event: KeyboardEvent) {
     event.preventDefault()
     pick(results.value[active.value]!)
   }
-  else if (event.key === 'Escape') open.value = false
+  else if (event.key === 'Escape') {
+    // 모달 안에서 목록만 닫고 모달은 그대로 둔다
+    event.stopPropagation()
+    open.value = false
+  }
 }
 
 onBeforeUnmount(() => clearTimeout(timer))
@@ -67,17 +75,21 @@ onBeforeUnmount(() => clearTimeout(timer))
       :placeholder="placeholder"
       :aria-label="label"
       autocomplete="off"
-      :required="required"
+      role="combobox"
+      aria-autocomplete="list"
+      :aria-expanded="open && results.length > 0"
+      :aria-controls="listId"
+      :aria-activedescendant="open && active >= 0 ? `${listId}-${active}` : undefined"
       @input="onInput"
       @keydown="onKeydown"
       @focus="open = results.length > 0"
       @blur="open = false"
     >
     <kbd v-if="enter" aria-hidden="true">Enter</kbd>
-    <ul v-if="open && results.length" class="results" role="listbox">
-      <li v-for="(item, i) in results" :key="item.name" role="option" :aria-selected="i === active">
+    <ul v-if="open && results.length" :id="listId" class="results" role="listbox">
+      <li v-for="(item, i) in results" :id="`${listId}-${i}`" :key="item.name" role="option" :aria-selected="i === active">
         <!-- blur보다 먼저 고르도록 mousedown에서 처리한다 -->
-        <button type="button" :class="{ on: i === active }" @mousedown.prevent="pick(item)">
+        <button type="button" tabindex="-1" :class="{ on: i === active }" @mousedown.prevent="pick(item)">
           <img :src="item.icon" alt="">
           <span class="ellipsis">{{ item.name }}</span>
           <small>{{ item.part || KIND_LABELS[item.kind] }}</small>
@@ -88,7 +100,6 @@ onBeforeUnmount(() => clearTimeout(timer))
 </template>
 
 <style scoped>
-/* 헤더 검색칸과 같은 알약 모양, 조금 더 크게 */
 .name-search {
   position: relative;
   display: flex;
@@ -133,7 +144,7 @@ kbd {
   font: 11px/1.3 var(--f-body);
 }
 .name-search:focus-within kbd {
-  border-color: rgb(242 193 78 / 0.5);
+  border-color: color-mix(in srgb, var(--gold) 50%, transparent);
   color: var(--gold);
 }
 /* 추가 칸은 화면 맨 아래라 목록을 위로 펼친다 */
@@ -171,7 +182,7 @@ kbd {
 }
 .results button:hover,
 .results button.on {
-  background: rgb(242 193 78 / 0.12);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
 }
 .results img {
   flex: none;

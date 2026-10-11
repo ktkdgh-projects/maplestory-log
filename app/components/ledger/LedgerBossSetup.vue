@@ -2,16 +2,15 @@
 import type { BossPick, BossRosterCharacter } from '#shared/types'
 import { BOSSES, BOSS_PRICE_DATE, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, crystalPrice, findBoss, type BossInfo } from '#shared/data/bosses'
 
-// 보스 수입 표에서 캐릭터를 누르면 그 줄 아래로 펼쳐지는 보스 세팅
-const props = defineProps<{ character: BossRosterCharacter, others: BossRosterCharacter[], busy: boolean }>()
+const props = defineProps<{ character: BossRosterCharacter, others: BossRosterCharacter[] }>()
 const emit = defineEmits<{ save: [bosses: BossPick[]], copy: [ocid: string, bosses: BossPick[]], close: [] }>()
 
-// 보스 목록 복사. 반응형으로 감싼 항목이 섞이면 structuredClone이 실패해 저장이 멈추므로 JSON으로 복사한다
+// 반응형 항목이 섞이면 structuredClone이 실패해 저장이 멈추므로 JSON으로 복사한다
 const copyPicks = (list: BossPick[]): BossPick[] => JSON.parse(JSON.stringify(list))
 const bosses = ref<BossPick[]>(copyPicks(props.character.bosses))
 const SAVE_DELAY_MS = 600
 
-// 고르면 잠시 뒤 자동으로 저장한다. 연달아 누르면 마지막 것만 보낸다
+// 연달아 고르면 마지막 것만 잠시 뒤 저장한다
 let timer: ReturnType<typeof setTimeout> | null = null
 let sent: string | null = null
 function flush() {
@@ -26,7 +25,7 @@ watch(bosses, () => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(flush, SAVE_DELAY_MS)
 }, { deep: true })
-// 보스를 체크할 때도 표를 새로 받으므로, 저장된 세팅이 실제로 바뀐 때만 덮는다. 내가 보낸 저장이 돌아온 거면 그사이 고친 걸 지키려고 덮지 않는다
+// 체크할 때도 표를 새로 받으므로 세팅이 실제로 바뀐 때만 덮고, 내가 보낸 저장이 돌아온 거면 그사이 고친 걸 지키려고 덮지 않는다
 watch(() => JSON.stringify(props.character.bosses), (value) => {
   if (value === sent) {
     sent = null
@@ -34,10 +33,8 @@ watch(() => JSON.stringify(props.character.bosses), (value) => {
   }
   if (!timer) bosses.value = JSON.parse(value)
 })
-// 닫을 때 아직 안 보낸 고침이 있으면 바로 보낸다
 onBeforeUnmount(flush)
 
-// 세팅 바깥(빈 곳, 다른 줄)을 누르면 닫는다. 모달 안을 누른 건 빼고
 const root = ref<HTMLElement | null>(null)
 function outside(event: MouseEvent) {
   const target = event.target as HTMLElement
@@ -54,9 +51,9 @@ const MONTHLY = BOSSES.filter(b => b.cycle === 'monthly')
 
 const pickOf = (bossId: string) => bosses.value.find(b => b.bossId === bossId)
 const weeklyCount = computed(() => bosses.value.filter(b => findBoss(b.bossId)?.cycle === 'weekly').length)
-const expected = computed(() => bosses.value.reduce((sum, b) => sum + (crystalPrice(b.bossId, b.difficulty, b.party) ?? 0), 0))
+const expectedOf = (cycle: 'weekly' | 'monthly') => bosses.value.filter(b => findBoss(b.bossId)?.cycle === cycle).reduce((sum, b) => sum + (crystalPrice(b.bossId, b.difficulty, b.party) ?? 0), 0)
+const expected = computed(() => ({ weekly: expectedOf('weekly'), monthly: expectedOf('monthly') }))
 const full = computed(() => weeklyCount.value >= WEEKLY_BOSS_LIMIT)
-// 12개를 다 고르면 안 고른 주간 보스는 잠가서 더 못 고르게 한다
 const locked = (boss: BossInfo) => boss.cycle === 'weekly' && full.value && !pickOf(boss.id)
 
 function setDifficulty(boss: BossInfo, difficulty: string) {
@@ -70,22 +67,11 @@ function setParty(bossId: string, delta: number) {
   const pick = pickOf(bossId)
   if (pick) pick.party = Math.min(MAX_PARTY, Math.max(1, pick.party + delta))
 }
-// 세팅 복사: 버튼을 누르면 아래로 캐릭터 목록이 뜬다(아래 칸을 밀지 않게 띄워서 보여 준다)
 const copyOpen = ref(false)
-const RESET_CONFIRM_MS = 3000
-const resetArmed = ref(false)
-let resetTimer: ReturnType<typeof setTimeout> | undefined
-function resetAll() {
-  if (!resetArmed.value) {
-    resetArmed.value = true
-    resetTimer = setTimeout(() => (resetArmed.value = false), RESET_CONFIRM_MS)
-    return
-  }
-  clearTimeout(resetTimer)
-  resetArmed.value = false
-  bosses.value = []
+const { ask } = useConfirm()
+async function resetAll() {
+  if (await ask({ title: '보스 세팅 비우기', name: `${props.character.name}의 보스 세팅`, detail: `고른 보스 ${bosses.value.length}개`, note: '고른 보스를 모두 비워요. 이미 체크한 기록은 가계부에 그대로 남아요.', action: '비우기' })) bosses.value = []
 }
-onBeforeUnmount(() => clearTimeout(resetTimer))
 
 function copyTo(ocid: string) {
   if (timer) clearTimeout(timer)
@@ -107,11 +93,11 @@ onBeforeUnmount(() => window.removeEventListener('click', closeCopy))
   <div ref="root" class="setup">
     <div class="head">
       <h3>{{ character.name }}의 보스 세팅</h3>
-      <span class="muted">주간 <b :class="{ full }">{{ weeklyCount }}/{{ WEEKLY_BOSS_LIMIT }}</b> · 다 잡으면 <b class="gold">{{ formatKoreanNumber(expected) }}</b></span>
-      <span class="footnote">결정석 {{ BOSS_PRICE_DATE }} 기준 · 고른 카드의 빈 곳을 누르면 빠져요</span>
+      <span class="muted">주간 <b :class="{ full }">{{ weeklyCount }}/{{ WEEKLY_BOSS_LIMIT }}</b> · 다 잡으면 <b class="gold">{{ formatKoreanNumber(expected.weekly) }}</b><template v-if="expected.monthly"> · 월간 <b class="gold">{{ formatKoreanNumber(expected.monthly) }}</b></template></span>
+      <span class="footnote">결정석 {{ formatDay(BOSS_PRICE_DATE) }} 기준 · 고른 카드의 빈 곳을 누르면 빠져요</span>
       <div class="tools">
         <div v-if="others.length" class="copy">
-          <button type="button" class="btn ghost compact" :aria-expanded="copyOpen" :disabled="busy" @click="copyOpen = !copyOpen">
+          <button type="button" class="btn ghost compact" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></svg>
             다른 캐릭터에 복사
           </button>
@@ -130,10 +116,9 @@ onBeforeUnmount(() => window.removeEventListener('click', closeCopy))
         <button
           type="button"
           class="reset-btn"
-          :class="{ armed: resetArmed }"
-          :disabled="busy || !bosses.length"
-          :title="resetArmed ? '한 번 더 누르면 고른 보스를 모두 비워요' : '고른 보스 모두 비우기'"
-          :aria-label="resetArmed ? '한 번 더 눌러 초기화' : '고른 보스 모두 비우기'"
+          :disabled="!bosses.length"
+          title="고른 보스 모두 비우기"
+          aria-label="고른 보스 모두 비우기"
           @click="resetAll"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v4.5h4.5" /></svg>
@@ -241,11 +226,6 @@ h4 {
   stroke-width: 2;
 }
 .reset-btn:hover:not(:disabled) {
-  border-color: var(--tip-line);
-  color: var(--text);
-}
-.reset-btn.armed {
-  background: rgb(255 138 122 / 0.14);
   border-color: var(--loss);
   color: var(--loss);
 }
@@ -262,7 +242,6 @@ h4 {
   stroke-linejoin: round;
   stroke-width: 2;
 }
-/* 버튼 아래로 뜨는 목록 */
 .copy-menu {
   position: absolute;
   right: 0;
@@ -322,7 +301,6 @@ h4 {
   grid-auto-flow: column;
   gap: 3px 10px;
 }
-/* 제목 줄 아래에 카드를 두고, 카드는 주간 칸 하나와 같은 너비로 맞춘다 */
 .monthly {
   display: grid;
   gap: 4px;
@@ -337,6 +315,7 @@ h4 {
 .monthly-head small {
   font-size: 12px;
 }
+/* 주간 칸 하나와 같은 너비 */
 .monthly > :deep(.card) {
   width: calc((100% - 20px) / 3);
 }

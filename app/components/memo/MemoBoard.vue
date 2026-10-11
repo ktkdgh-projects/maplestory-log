@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { Memo } from '#shared/types'
 
-// 메모 목록 + 편집. 가계부 페이지의 메모장 버튼이 여는 모달 안에 들어간다
 const { memos, state, failure, busy, load, edit, create, remove } = useMemos()
 onMounted(load)
 
@@ -18,19 +17,10 @@ async function add() {
   titleInput.value?.focus()
 }
 
-// 지우기 전에 한 번 더 묻는다
-const removing = ref<Memo | null>(null)
-const removeOpen = computed({
-  get: () => !!removing.value,
-  set: (value) => {
-    if (!value) removing.value = null
-  },
-})
+// 실패하면 확인 모달이 그 자리에 이유를 보여 준다
+const { ask } = useConfirm()
 function askRemove(memo: Memo) {
-  removing.value = memo
-}
-async function confirmRemove() {
-  if (removing.value && await remove(removing.value)) removing.value = null
+  ask({ title: '메모 지우기', name: titleOf(memo), detail: restOf(memo).split('\n')[0]?.slice(0, 60) || undefined, run: () => remove(memo) })
 }
 
 // 제목을 안 적었으면 본문 첫 줄을 제목처럼 보여 준다
@@ -40,8 +30,7 @@ const restOf = (m: Memo) => (m.title ? lines(m) : lines(m).slice(1)).join('\n').
 const timeOf = (iso: string) => {
   const date = kstDateOf(iso)
   const time = new Date(iso).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false })
-  if (date === kstToday()) return `오늘 ${time}`
-  return date.slice(0, 4) === kstToday().slice(0, 4) ? `${formatMonthDay(date)} ${time}` : date.replaceAll('-', '.')
+  return `${date === kstToday() ? '오늘' : formatDay(date)} ${time}`
 }
 const stateText = computed(() => {
   if (state.value === 'pending') return '브라우저에 임시 저장됨'
@@ -101,20 +90,6 @@ const stateText = computed(() => {
       <p v-if="failure" class="form-error">{{ failure }}</p>
     </div>
     <div v-else class="skeleton editor-skeleton" />
-
-    <AppModal v-model="removeOpen" title="메모 지우기" :width="420">
-      <div v-if="removing" class="confirm">
-        <div class="confirm-memo">
-          <b class="ellipsis">{{ titleOf(removing) }}</b>
-          <span class="confirm-preview">{{ restOf(removing) || '본문 없음' }}</span>
-        </div>
-        <p class="muted small">지우면 되돌릴 수 없어요.</p>
-        <div class="confirm-actions">
-          <button type="button" class="btn ghost compact" @click="removeOpen = false">취소</button>
-          <button type="button" class="btn danger compact" :disabled="busy" @click="confirmRemove">지우기</button>
-        </div>
-      </div>
-    </AppModal>
   </div>
 </template>
 
@@ -234,34 +209,6 @@ const stateText = computed(() => {
 .blank img {
   animation: bob 2.4s ease-in-out infinite;
 }
-.confirm {
-  display: grid;
-  gap: 12px;
-}
-.confirm-memo {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-left: 3px solid var(--loss);
-  border-radius: 8px;
-}
-/* 본문은 세 줄까지만 보여 준다 */
-.confirm-preview {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--sub);
-  font-size: 13px;
-  white-space: pre-line;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
 .item-skeleton {
   height: 68px;
   border-radius: 8px;
@@ -269,9 +216,6 @@ const stateText = computed(() => {
 .editor-skeleton {
   min-height: 300px;
   border-radius: 6px;
-}
-.small {
-  font-size: 13px;
 }
 @media (max-width: 800px) {
   .memo {

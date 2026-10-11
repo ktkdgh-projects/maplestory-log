@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   const { accountId, characters } = await fetchAccountCharacters(apiKey)
   if (!accountId) throw createError({ statusCode: 400, message: '이 키로 조회되는 메이플스토리 계정이 없어요.' })
 
-  const { users } = await useCollections()
+  const { users, sessions } = await useCollections()
   const now = new Date()
   const user = await users.findOneAndUpdate(
     { nexonAccountId: accountId },
@@ -29,6 +29,8 @@ export default defineEventHandler(async (event) => {
   )
   if (!user) throw createError({ statusCode: 500, message: '로그인에 실패했어요.' })
 
+  // 로그인한 채로 다시 로그인하면 이전 세션이 쿠키만 잃고 남으므로 지운다
+  if (event.context.session) await sessions.deleteOne({ _id: event.context.session._id })
   await createSession(event, user._id, body.remember !== false)
   return { needsMain: !user.mainOcid, characters }
 })

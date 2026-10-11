@@ -30,7 +30,6 @@ async function noteRename(ocid: string, oldName: string, newName: string) {
   ])
 }
 
-// 계정 캐릭터 목록을 받을 때마다 저장된 이름과 비교해 닉네임 변경을 잡는다
 async function checkRenames(list: CharacterBrief[]) {
   const { characters } = await useCollections()
   const saved = await characters.find({ ocid: { $in: list.map(c => c.ocid) } }, { projection: { ocid: 1, name: 1 } }).toArray()
@@ -41,7 +40,6 @@ async function checkRenames(list: CharacterBrief[]) {
   }))
 }
 
-// 이 캐릭터가 강화 기록에 남았을 수 있는 이름들(지금 이름 먼저)
 export async function characterNames(character: Pick<CharacterBrief, 'ocid' | 'name'>): Promise<string[]> {
   const { characters } = await useCollections()
   const doc = await characters.findOne({ ocid: character.ocid }, { projection: { pastNames: 1 } })
@@ -137,7 +135,6 @@ function toEquipmentItem(item: NexonItem): EquipmentItem {
   }
 }
 
-// 칭호·안드로이드처럼 이름·아이콘·설명만 있는 칸
 function toSimpleItem(slot: string, name: string, icon: string, description: string | null): EquipmentItem {
   return {
     slot,

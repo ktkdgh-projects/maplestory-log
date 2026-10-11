@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import type { LedgerDay } from '~/utils/ledger'
+import { dayIncome, type LedgerDay } from '#shared/calc/ledger'
 
 const props = defineProps<{ month: string, days: Map<string, LedgerDay> }>()
 const selected = defineModel<string>({ required: true })
 
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 const LOOT_SHOWN = 4
 const today = kstToday()
-const cells = computed(() => calendarCells(props.month))
+const cells = computed(() => calendarCells(props.month).map((date) => {
+  const day = date ? props.days.get(date) : undefined
+  // 그날 패널의 순수익과 맞게 장비 지출과 직접 등록 지출을 같이 센다
+  return { date, day, income: day ? dayIncome(day) : 0, spent: day ? day.itemSpent + day.entryOut : 0 }
+}))
 // 그 달에서 가장 많이 번 날을 기준으로 칸 배경 진하기를 정한다
 const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncome)))
 </script>
@@ -15,27 +18,27 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
 <template>
   <div class="calendar">
     <div v-for="(w, i) in WEEKDAYS" :key="w" class="weekday" :class="{ sun: i === 0, sat: i === 6 }">{{ w }}</div>
-    <template v-for="(date, i) in cells" :key="date ?? `blank${i}`">
+    <template v-for="({ date, day, income, spent }, i) in cells" :key="date ?? `blank${i}`">
       <span v-if="!date" class="cell blank" />
       <button
         v-else
         type="button"
         class="cell"
         :class="{ on: date === selected, today: date === today, future: date > today, sun: i % 7 === 0, sat: i % 7 === 6, reset: i % 7 === 4 }"
-        :style="{ '--heat': days.get(date) ? dayIncome(days.get(date)!) / best : 0 }"
+        :style="{ '--heat': income / best }"
         :aria-pressed="date === selected"
-        :aria-label="`${formatMonthDay(date)} 선택`"
+        :aria-label="`${formatDay(date)} 선택`"
         :disabled="date > today"
         @click="selected = date"
       >
         <span class="num">{{ Number(date.slice(8)) }}</span>
-        <template v-if="days.get(date)">
-          <b v-if="dayIncome(days.get(date)!)" class="income">+{{ formatShortNumber(dayIncome(days.get(date)!)) }}</b>
-          <b v-if="days.get(date)!.itemSpent" class="spent">-{{ formatShortNumber(days.get(date)!.itemSpent) }}</b>
-          <small v-if="days.get(date)!.fragments" class="frag">조각 {{ days.get(date)!.fragments }}</small>
-          <span v-if="days.get(date)!.loot.length" class="loot">
-            <LedgerLootIcon v-for="(item, k) in days.get(date)!.loot.slice(0, LOOT_SHOWN)" :key="k" :item="item" :size="22" />
-            <small v-if="days.get(date)!.loot.length > LOOT_SHOWN">+{{ days.get(date)!.loot.length - LOOT_SHOWN }}</small>
+        <template v-if="day">
+          <b v-if="income" class="income">+{{ formatShortNumber(income) }}</b>
+          <b v-if="spent" class="spent">-{{ formatShortNumber(spent) }}</b>
+          <small v-if="day.fragments" class="frag">조각 {{ day.fragments }}</small>
+          <span v-if="day.loot.length" class="loot">
+            <LedgerLootIcon v-for="(item, k) in day.loot.slice(0, LOOT_SHOWN)" :key="k" :item="item" :size="22" />
+            <small v-if="day.loot.length > LOOT_SHOWN">+{{ day.loot.length - LOOT_SHOWN }}</small>
           </span>
         </template>
       </button>
@@ -77,7 +80,7 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
   min-height: 64px;
   padding: 5px 7px;
   background:
-    linear-gradient(180deg, rgb(242 193 78 / calc(var(--heat, 0) * 0.28)), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--gold) calc(var(--heat, 0) * 28%), transparent), transparent),
     var(--panel);
   border: 1px solid var(--panel-line);
   border-radius: 8px;
@@ -116,7 +119,7 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
 }
 .cell.on {
   border: 2px solid var(--text);
-  box-shadow: 0 0 14px rgb(242 193 78 / 0.3);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--gold) 30%, transparent);
 }
 .num {
   font-family: var(--f-title);
@@ -143,11 +146,10 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
   line-height: 1.2;
 }
 .frag {
-  color: #c9b6ff;
+  color: var(--calc);
   font-size: 11px;
   line-height: 1.2;
 }
-/* 물욕템을 먹은 날만 칸 아래에 작게 남긴다 */
 .loot {
   display: flex;
   align-items: center;
@@ -156,7 +158,42 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
 }
 .loot small {
   margin-left: 2px;
-  color: #ffd36b;
+  color: var(--gold);
   font-size: 11px;
+}
+.income,
+.spent {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+/* 칸이 40px 남짓이라 금액은 작게, 조각·물욕템은 줄인다 */
+@media (max-width: 520px) {
+  .calendar {
+    gap: 3px;
+  }
+  .cell {
+    min-height: 54px;
+    padding: 4px 3px;
+    border-radius: 6px;
+  }
+  .num {
+    font-size: 13px;
+  }
+  .cell.today .num::after,
+  .cell.reset::after,
+  .frag {
+    display: none;
+  }
+  .income,
+  .spent {
+    font-size: 10.5px;
+    letter-spacing: -0.03em;
+  }
+  .loot > :nth-child(n + 2),
+  .loot small {
+    display: none;
+  }
 }
 </style>

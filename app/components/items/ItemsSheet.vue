@@ -1,14 +1,27 @@
 <script setup lang="ts">
 import type { ItemIcon, ItemPurchase, ItemRow, ItemSheet, MeResponse } from '#shared/types'
+import { itemProfit, itemSellNet, itemTotals, rowInvest } from '#shared/calc/items'
+import { hasMvpFee } from '#shared/calc/meso'
+import { AUCTION_FEES, DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 
 const props = defineProps<{ sheet: ItemSheet }>()
 const emit = defineEmits<{ changed: [], removed: [] }>()
 
 const busy = ref(false)
+const helpOpen = ref(false)
+// 머리글은 좁아서 설명을 못 붙이므로 모아서 모달로 보여 준다
+const columnHelp = computed(() => [
+  { name: '스타포스', text: '직접 적은 값이 가계부에 들어가요. 연결한 캐릭터의 강화 기록으로 센 값은 칸 아래에 참고로 보여 드려요.' },
+  { name: '잠재', text: '메소 잠재 재설정 비용이에요. 강화 기록으로 센 값은 공식 비용표 기준이라 그대로 써도 돼요.' },
+  ...(mvpFee.value ? [] : [{ name: '수수료', text: '경매장 판매 수수료예요. 대금을 받을 때 MVP 실버 이상이거나 프리미엄 PC방이면 3%예요.' }]),
+  { name: '받은 메소', text: '판매가에서 수수료를 뺀 금액이에요.' },
+  { name: '손익', text: '받은 메소에서 들인 메소를 뺀 값이에요. 판매가를 적은 장비만 계산해요.' },
+  { name: '합계', text: '제외한 장비는 합계·손익과 가계부에서 빠져요.' },
+])
 const failure = ref('')
 const notice = ref('')
 const newName = ref('')
-// 자동완성에서 고른 아이템. 저장 전 임시 줄에도 아이콘·부위가 바로 보이게 한다
+// 저장 전 임시 줄에도 아이콘·부위가 바로 보이게 자동완성에서 고른 아이템을 둔다
 const picked = ref<ItemIcon | null>(null)
 const renaming = ref(false)
 const title = ref(props.sheet.title)
@@ -28,7 +41,6 @@ watch(() => props.sheet.rows, (value) => {
   rows.value = [...value]
 })
 
-// 끄는 동안 화면 순서를 바로 바꾸고, 놓으면 서버에 저장한다
 const dragId = ref<string | null>(null)
 function dragStart(id: string, event: DragEvent) {
   dragId.value = id
@@ -52,13 +64,12 @@ function dropRow() {
 
 const totals = computed(() => itemTotals(rows.value))
 
-async function run(action: () => Promise<unknown>, done = '') {
+async function run(action: () => Promise<unknown>) {
   busy.value = true
   failure.value = ''
   notice.value = ''
   try {
     await action()
-    notice.value = done
     emit('changed')
   }
   catch (error) {
@@ -69,8 +80,7 @@ async function run(action: () => Promise<unknown>, done = '') {
   }
 }
 
-// 고친 값은 화면에 바로 반영하고 저장은 뒤에서 한다. 실패하면 원래 값으로 되돌린다
-// 연달아 고칠 때 앞선 새로고침이 옛 값을 잠깐 덮지 않도록, 저장이 다 끝난 뒤 한 번만 새로 불러온다
+// 연달아 고칠 때 앞선 새로고침이 옛 값을 잠깐 덮지 않도록 저장이 다 끝난 뒤 한 번만 새로 불러온다
 async function saveInBackground(save: () => Promise<unknown>, undo: () => void) {
   failure.value = ''
   saving++
@@ -163,15 +173,22 @@ function addRow() {
 const importEquipment = () => run(async () => {
   const { added } = await $fetch<{ added: number }>(`/api/items/sheets/${props.sheet.id}/import`, { method: 'POST' })
   notice.value = added ? `장비 ${added}개를 불러왔어요.` : '새로 불러올 장비가 없어요.'
-}, '')
+})
 const rename = () => run(async () => {
   await $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'PATCH', body: { title: title.value } })
   renaming.value = false
 })
+// 확인 창 안에서 지우므로 실패도 거기서 알리고, 끝나면 부모가 한 번만 다시 불러온다
 async function removeSheet() {
-  if (!await ask({ title: '시트 삭제', name: props.sheet.title, detail: `장비 ${rows.value.length}줄`, note: '시트의 장비와 가계부에 잡힌 금액이 같이 사라지고 되돌릴 수 없어요.', action: '삭제' })) return
-  await run(() => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'DELETE' }))
-  if (!failure.value) emit('removed')
+  const ok = await ask({
+    title: '시트 삭제',
+    name: props.sheet.title,
+    detail: `장비 ${rows.value.length}줄`,
+    note: '시트의 장비와 가계부에 잡힌 금액이 같이 사라지고 되돌릴 수 없어요.',
+    action: '삭제',
+    run: () => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'DELETE' }),
+  })
+  if (ok) emit('removed')
 }
 </script>
 
@@ -196,11 +213,21 @@ async function removeSheet() {
         <button type="button" class="btn ghost compact" :disabled="busy" @click="removeSheet">시트 삭제</button>
       </div>
     </header>
-    <p v-if="failure" class="form-error">{{ failure }}</p>
-    <p v-if="notice" class="notice">{{ notice }}</p>
+    <!-- 저장 실패·불러오기 결과는 늘 자리를 잡아 둔 한 줄에 보여서 표가 밀리지 않는다 -->
+    <div class="status-line">
+      <p class="status" :class="{ bad: failure }" role="status">
+        {{ failure || notice || '금액은 억 단위 · 칸을 눌러 만 단위로 적어요' }}
+      </p>
+      <button type="button" class="col-help" @click="helpOpen = true">ⓘ 열 설명</button>
+    </div>
+    <AppModal v-model="helpOpen" title="열 설명" :width="440">
+      <dl class="col-list">
+        <div v-for="c in columnHelp" :key="c.name"><dt>{{ c.name }}</dt><dd>{{ c.text }}</dd></div>
+      </dl>
+    </AppModal>
 
     <div class="table-wrap">
-      <table>
+      <table :class="{ mvp: mvpFee }">
         <colgroup>
           <col class="c-handle">
           <col class="c-no">
@@ -210,7 +237,7 @@ async function removeSheet() {
           <col class="c-num">
           <col class="c-num">
           <col class="c-num">
-          <col class="c-fee">
+          <col v-if="!mvpFee" class="c-fee">
           <col class="c-num">
           <col class="c-num">
           <col class="c-num">
@@ -224,14 +251,14 @@ async function removeSheet() {
             <th>부위</th>
             <th>장비</th>
             <th class="num">구매</th>
-            <th class="num" title="직접 적은 값이 가계부에 들어가요. 연결한 캐릭터의 강화 기록으로 센 값은 칸 아래에 참고로 보여줘요">스타포스</th>
-            <th class="num" title="메소 잠재 재설정 비용. 강화 기록으로 센 값은 공식 비용표 기준이라 그대로 써도 돼요">잠재</th>
+            <th class="num">스타포스</th>
+            <th class="num">잠재</th>
             <th class="num">판매</th>
-            <th class="center" title="경매장 판매 수수료. 대금을 받을 때 MVP 실버 이상·프리미엄 PC방이면 3%">수수료</th>
-            <th class="num" title="판매가에서 수수료를 뺀 금액">받은 메소</th>
+            <th v-if="!mvpFee" class="center">수수료</th>
+            <th class="num">{{ mvpFee ? '받은 메소 · 3%' : '받은 메소' }}</th>
             <th class="num">들인 메소</th>
-            <th class="num" title="받은 메소 - 들인 메소. 판매가를 적은 장비만 계산해요">손익</th>
-            <th class="center" title="제외한 장비는 합계·손익과 가계부에서 빠져요">합계</th>
+            <th class="num">손익</th>
+            <th class="center">합계</th>
             <th />
           </tr>
         </thead>
@@ -246,22 +273,21 @@ async function removeSheet() {
             <td class="handle" draggable="true" title="끌어서 순서 바꾸기" @dragstart="dragStart(row.id, $event)" @dragend="dragEnd">⠿</td>
             <td class="center sub">{{ i + 1 }}</td>
             <td class="sub ellipsis">{{ row.part || '-' }}</td>
-            <td>
+            <td class="name-cell">
               <div class="name">
                 <img v-if="row.icon" :src="row.icon" alt="">
-                <span class="ellipsis" :title="row.name">{{ row.name }}</span>
+                <span class="name-text">{{ row.name }}</span>
               </div>
             </td>
             <td class="num cell">
-              <ItemsPurchaseCell v-if="isMultiPurchase(row)" :name="row.name" :purchases="row.purchases" @save="savePurchases(row, $event)" />
+              <ItemsEntriesCell v-if="isMultiPurchase(row)" label="구매" :name="row.name" :entries="row.purchases" intro="살 때마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." @save="savePurchases(row, $event)" />
               <ItemsMoneyCell v-else :value="row.buy" :date="row.buyDate" label="구매" @save="saveField(row, 'buy', $event)" @date="saveDate(row, 'buy', $event)" />
             </td>
-            <td class="num cell"><ItemsEnhanceCell label="스타포스" :name="row.name" :entries="row.starforceEntries" :reference="row.reference.starforce" :reference-days="row.reference.starforceDays" :shared="row.reference.shared" :ocid="sheet.ocid" estimated @save="saveEntries(row, 'starforce', $event)" /></td>
-            <td class="num cell"><ItemsEnhanceCell label="잠재" :name="row.name" :entries="row.potentialEntries" :reference="row.reference.potential" :reference-days="row.reference.potentialDays" :shared="row.reference.shared" :ocid="sheet.ocid" @save="saveEntries(row, 'potential', $event)" /></td>
+            <td class="num cell"><ItemsEntriesCell label="스타포스" intro="강화한 날마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." :name="row.name" :entries="row.starforceEntries" :reference="row.reference.starforce" :reference-days="row.reference.starforceDays" :shared="row.reference.shared" :ocid="sheet.ocid" estimated @save="saveEntries(row, 'starforce', $event)" /></td>
+            <td class="num cell"><ItemsEntriesCell label="잠재" intro="강화한 날마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." :name="row.name" :entries="row.potentialEntries" :reference="row.reference.potential" :reference-days="row.reference.potentialDays" :shared="row.reference.shared" :ocid="sheet.ocid" @save="saveEntries(row, 'potential', $event)" /></td>
             <td class="num cell"><ItemsMoneyCell :value="row.sell" :date="row.sellDate" label="판매" @save="saveField(row, 'sell', $event)" @date="saveDate(row, 'sell', $event)" /></td>
-            <td class="center">
-              <span v-if="mvpFee" class="fee mvp locked" :class="{ idle: !row.sell }" title="내 정보의 MVP 등급이 실버 이상이라 3%예요">3%</span>
-              <button v-else type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'PC방 3% → 누르면 5%' : '5% → PC방이면 눌러서 3%'" @click="toggleFee(row)">
+            <td v-if="!mvpFee" class="center">
+              <button type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'PC방 3% → 누르면 5%' : '5% → PC방이면 눌러서 3%'" @click="toggleFee(row)">
                 {{ Math.round(row.sellFee * 100) }}%
               </button>
             </td>
@@ -278,7 +304,7 @@ async function removeSheet() {
             <td class="center"><button type="button" class="icon-btn" :aria-label="`${row.name} 지우기`" :disabled="busy" @click="removeRow(row)">×</button></td>
           </tr>
           <tr v-if="!rows.length">
-            <td colspan="14" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
+            <td :colspan="mvpFee ? 13 : 14" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
           </tr>
         </tbody>
         <tfoot>
@@ -288,7 +314,7 @@ async function removeSheet() {
             <td class="num">{{ formatEok(totals.starforce) }}</td>
             <td class="num">{{ formatEok(totals.potential) }}</td>
             <td class="num">{{ formatEok(totals.sellGross) }}</td>
-            <td />
+            <td v-if="!mvpFee" />
             <td class="num sell">{{ formatEok(totals.sell) }}</td>
             <td class="num invest">{{ formatEok(totals.invest) }}</td>
             <td class="num" :class="profitTone(totals.sold ? totals.net : null)" :title="`판매한 ${totals.sold}개 기준`">{{ totals.sold ? formatEok(totals.net) : '-' }}</td>
@@ -300,7 +326,7 @@ async function removeSheet() {
     <div class="bottom">
       <slot name="tabs" />
       <!-- 입력칸 하나뿐이라 엔터만 누르면 이 시트에 추가된다 -->
-      <form class="add" title="금액은 억 단위로 적고, 가계부에는 칸 아래 날짜로 들어가요" @submit.prevent="busy || addRow()" novalidate>
+      <form class="add" novalidate @submit.prevent="busy || addRow()">
         <ItemsNameSearch v-model="newName" class="name-input" @pick="picked = $event" />
       </form>
     </div>
@@ -360,10 +386,59 @@ h3 {
   gap: 6px;
   margin-left: auto;
 }
-.notice {
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.status {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
   margin: 0;
-  color: var(--gain);
-  font-size: 14px;
+  overflow: hidden;
+  color: var(--sub);
+  font-size: 12.5px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status.bad {
+  color: var(--loss);
+}
+.col-help {
+  flex: none;
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  color: var(--sub);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.col-help:hover {
+  color: var(--text);
+  border-color: var(--sub);
+}
+.col-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+.col-list div {
+  display: grid;
+  gap: 2px;
+}
+.col-list dt {
+  color: var(--gold);
+  font-weight: 700;
+}
+.col-list dd {
+  margin: 0;
+  color: var(--sub);
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 .table-wrap {
   flex: 1;
@@ -377,6 +452,7 @@ h3 {
 /* 칸 너비를 고정해야 머리글·값·합계가 같은 세로줄에 선다 */
 table {
   width: 100%;
+  min-width: 1220px;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 14px;
@@ -416,13 +492,13 @@ tbody tr {
 tbody tr:hover {
   background: rgb(255 255 255 / 0.03);
 }
-/* 저장 중인 새 줄은 서버 id를 받을 때까지 흐리게 */
+/* 서버 id를 받기 전엔 고칠 수 없어 흐리게 둔다 */
 tbody tr.pending {
   opacity: 0.55;
   pointer-events: none;
 }
 tbody tr.dragging {
-  background: rgb(242 193 78 / 0.1);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
   outline: 1px dashed var(--gold);
 }
 .center {
@@ -485,23 +561,18 @@ td.cell {
   border-color: var(--gold);
 }
 .fee.mvp {
-  background: rgb(242 193 78 / 0.15);
+  background: color-mix(in srgb, var(--gold) 15%, transparent);
   border-color: var(--gold);
   color: var(--gold);
 }
 /* 아직 안 판 줄은 수수료가 의미 없어 흐리게만 둔다 */
-.fee.locked {
-  display: inline-block;
-  text-align: center;
-  cursor: default;
-}
 .fee.idle {
   opacity: 0.45;
 }
 .exclude {
   min-height: 30px;
   padding: 2px 12px;
-  background: rgb(127 217 154 / 0.12);
+  background: color-mix(in srgb, var(--gain) 12%, transparent);
   border: 1px solid var(--gain);
   border-radius: 999px;
   color: var(--gain);
@@ -567,5 +638,74 @@ tfoot td {
 }
 .add .name-input {
   width: 300px;
+}
+/* 긴 이름은 잘라 숨기지 않고 두 줄까지 보여 준다 */
+.name-text {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.3;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* 표는 옆으로 밀어 보고 장비 이름 칸은 왼쪽에 붙어 따라온다 */
+@media (max-width: 640px) {
+  table {
+    min-width: 1030px;
+  }
+  /* 수수료 칸이 없으면 그만큼 줄여 이름 칸 너비를 같게 둔다 */
+  table.mvp {
+    min-width: 958px;
+  }
+  /* 끌어 옮기기(손가락으론 안 됨)와 부위 칸은 접어서 장비 이름과 구매 칸이 첫 화면에 보이게 한다 */
+  .c-handle,
+  .c-part { width: 0; }
+  .c-no { width: 30px; }
+  .c-num { width: 96px; }
+  tr > :nth-child(1),
+  tr > :nth-child(3) {
+    padding: 0;
+    overflow: hidden;
+    font-size: 0;
+    visibility: hidden;
+  }
+  tfoot tr > :nth-child(1) {
+    padding: 0 6px;
+    font-size: 15px;
+    visibility: visible;
+  }
+  th,
+  td {
+    padding: 0 6px;
+  }
+  thead th:nth-child(4),
+  .name-cell {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--win);
+    box-shadow: 1px 0 0 var(--panel-line);
+  }
+  thead th:nth-child(4) {
+    z-index: 3;
+    background: var(--title);
+  }
+  .name-text {
+    font-size: 13px;
+  }
+  .name img {
+    width: 22px;
+    height: 22px;
+  }
+  .add {
+    flex: 1;
+    margin-left: 0;
+  }
+  .add .name-input {
+    width: 100%;
+  }
+  .head-actions {
+    margin-left: 0;
+  }
 }
 </style>

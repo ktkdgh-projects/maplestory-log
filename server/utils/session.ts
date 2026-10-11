@@ -92,7 +92,8 @@ export async function loadSession(event: H3Event) {
 
   if (session.tokenHash === tokenHash && session.remember && now.getTime() - session.rotatedAt.getTime() > ROTATE_AFTER_MS) {
     const nextToken = randomToken()
-    await sessions.updateOne({ _id: session._id }, {
+    // 동시에 들어온 요청이 먼저 바꿨으면 그쪽 토큰이 쿠키로 가므로, 여기선 바꾸지 않고 옛 토큰(잠시 허용)으로 이어 간다
+    const { modifiedCount } = await sessions.updateOne({ _id: session._id, tokenHash }, {
       $set: {
         tokenHash: sha256(nextToken),
         prevTokenHash: tokenHash,
@@ -102,7 +103,7 @@ export async function loadSession(event: H3Event) {
         expiresAt: new Date(now.getTime() + REMEMBER_MS),
       },
     })
-    setSessionCookie(event, nextToken, true)
+    if (modifiedCount === 1) setSessionCookie(event, nextToken, true)
   }
   else if (now.getTime() - session.lastUsedAt.getTime() > TOUCH_INTERVAL_MS) {
     await Promise.all([

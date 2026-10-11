@@ -1,6 +1,5 @@
 import type { StarforceDetail } from '#shared/types'
 
-// 장비 하나의 스타포스 기록을 ★ 구간별·날짜별로 묶어 돌려준다
 export default defineEventHandler(async (event): Promise<StarforceDetail> => {
   const user = requireUser(event)
   const query = getQuery(event)

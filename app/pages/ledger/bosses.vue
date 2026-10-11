@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { BossBoardResponse, LedgerSettings } from '#shared/types'
 import { BOSS_PRICE_DATE, bossPeriod } from '#shared/data/bosses'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 
 const { me } = await useMe()
 const route = useRoute()
 const today = kstToday()
 // 메소 내역에서 보스 줄을 눌러 오면 그 주를 연다
-const queryDate = typeof route.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.date) && route.query.date <= today ? route.query.date : today
-const week = ref(bossPeriod('weekly', queryDate))
+const week = ref(bossPeriod('weekly', queryDate(route.query, today) ?? today))
 
 const { getCachedData, revalidate } = useRevisitCache()
-const [{ data: board, refresh }, { data: settings, refresh: refreshSettings }] = await Promise.all([
+const [{ data: board, error, refresh }, { data: settings, refresh: refreshSettings }] = await Promise.all([
   useFetch<BossBoardResponse>('/api/ledger/bosses', { query: { week }, immediate: !!me.value, getCachedData }),
   useFetch<LedgerSettings>('/api/ledger/settings', { key: 'ledger-settings', immediate: !!me.value, getCachedData }),
 ])
@@ -28,55 +28,32 @@ useHead({ title: '보스 수입 · 메이플스토리로그' })
 
   <GameWindow v-else class="fit" title="보스 수입" fill>
     <template #sub>
-      <span class="pager">
-        <button type="button" aria-label="지난주" @click="week = addDays(week, -7)">‹</button>
-        <span>{{ formatMonthDay(week) }}(목) ~ {{ formatMonthDay(addDays(week, 6)) }}(수)</span>
-        <button type="button" aria-label="다음주" :disabled="addDays(week, 7) > today" @click="week = addDays(week, 7)">›</button>
-      </span>
+      <LedgerPager prev-label="지난주" next-label="다음주" :next-disabled="addDays(week, 7) > today" @prev="week = addDays(week, -7)" @next="week = addDays(week, 7)">
+        {{ formatDay(week) }}(목) ~ {{ formatDay(addDays(week, 6)) }}(수)
+      </LedgerPager>
     </template>
 
     <LedgerWallet :settings="settings ?? null" @changed="refreshAll">
-      <span class="sources"><SourceBadge type="calc" /> 결정석({{ BOSS_PRICE_DATE }})</span>
+      <SourceBadge type="calc" /> 결정석 {{ formatDay(BOSS_PRICE_DATE) }} 기준
     </LedgerWallet>
+    <p class="load-error" :class="{ show: error }" role="alert">{{ error ? errorMessage(error) : ' ' }}</p>
     <LedgerBossBoard :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" :week="week" :roster="board?.roster ?? []" :clears="board?.clears ?? []" @changed="refreshAll" />
   </GameWindow>
 </template>
 
 <style scoped>
-.pager {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text);
-}
-.pager button {
-  width: 30px;
-  height: 30px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: border-color var(--fast) ease;
-}
-.pager button:hover:not(:disabled) {
-  border-color: var(--gold);
-}
-.pager button:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-.sources {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--sub);
+.load-error {
+  height: 18px;
+  margin: -8px 0 -10px;
+  overflow: hidden;
+  color: var(--loss);
   font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
 }
-.sources :deep(.badge) {
-  padding: 2px 6px;
-  font-size: 11px;
+.load-error.show {
+  opacity: 1;
 }
 </style>

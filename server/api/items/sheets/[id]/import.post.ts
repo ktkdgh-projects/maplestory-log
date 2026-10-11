@@ -1,6 +1,5 @@
 import { ObjectId } from 'mongodb'
 
-// 연결한 캐릭터가 지금 낀 장비를 행으로 채운다. 이미 있는 장비 이름은 건너뛴다
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const id = parseId(getRouterParam(event, 'id'))
@@ -35,11 +34,12 @@ export default defineEventHandler(async (event) => {
       order: existing.length + i,
     })))
   }
-  // 이미 있던 장비도 착용 레벨이 비어 있으면 채운다 (스타포스 참고값 계산용)
-  for (const item of equipment.item_equipment) {
+  // 착용 레벨은 스타포스 참고값 계산에 쓰여 이미 있던 줄도 비어 있으면 채운다
+  const levelFills = equipment.item_equipment.flatMap((item) => {
     const level = Number(item.item_base_option?.base_equipment_level) || null
     const old = existing.find(r => r.name === item.item_name)
-    if (level && old && !old.level) await itemRows.updateOne({ _id: old._id }, { $set: { level } })
-  }
+    return level && old && !old.level ? [{ updateOne: { filter: { _id: old._id, userId: user._id }, update: { $set: { level } } } }] : []
+  })
+  if (levelFills.length) await itemRows.bulkWrite(levelFills, { ordered: false })
   return { added: fresh.length }
 })

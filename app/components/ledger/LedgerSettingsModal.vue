@@ -17,16 +17,17 @@ watch(open, (value) => {
   failure.value = ''
 })
 
-async function save(clearBalance = false) {
-  if (!clearBalance && amount.value === null) {
+const putBalance = (balance: { date: string, amount: number } | null) => $fetch('/api/ledger/settings', { method: 'PUT', body: { balance } })
+
+async function save() {
+  if (amount.value === null) {
     failure.value = '보유 메소를 적어 주세요.'
     return
   }
   busy.value = true
   failure.value = ''
   try {
-    const balance = clearBalance ? null : { date: date.value, amount: amount.value }
-    await $fetch('/api/ledger/settings', { method: 'PUT', body: { balance } })
+    await putBalance({ date: date.value, amount: amount.value })
     emit('saved')
     open.value = false
   }
@@ -37,27 +38,46 @@ async function save(clearBalance = false) {
     busy.value = false
   }
 }
+
+const { ask } = useConfirm()
+async function clearBalance() {
+  const balance = props.settings?.balance
+  if (!balance) return
+  const ok = await ask({
+    title: '보유 메소 기준 지우기',
+    name: `${formatDay(balance.checkedAt)} 시작 ${formatKoreanNumber(balance.checked)}`,
+    detail: `지금 ${formatKoreanNumber(balance.current)}`,
+    note: '기준을 지우면 보유 메소와 잔액 그래프가 사라져요. 적어 둔 기록은 그대로 남아요.',
+    run: () => putBalance(null),
+  })
+  if (!ok) return
+  emit('saved')
+  open.value = false
+}
 </script>
 
 <template>
-  <AppModal v-model="open" title="보유 메소 맞추기">
-    <section class="block">
-      <p class="muted small">기준 날짜를 시작할 때 가지고 있던 메소를 적어 주세요. 그날부터 적은 사냥·보스·물욕·장비 기록을 더하고 빼서 지금 보유 메소를 보여줘요. 틀어지면 언제든 다시 맞추면 돼요.</p>
+  <AppModal v-model="open" title="보유 메소 맞추기" :width="480" fit>
+    <form class="block" novalidate @submit.prevent="save">
+      <p class="muted small">기준 날짜를 시작할 때 가지고 있던 메소를 적어 주세요. 그날부터 적은 사냥·보스·장비·직접 등록 기록을 더하고 빼서 지금 보유 메소를 보여 드려요. 틀어지면 언제든 다시 맞추면 돼요.</p>
       <div class="row">
         <MesoInput id="balance-amount" v-model="amount" label="그날 시작할 때 보유 메소" />
-        <label for="balance-date" class="field">
-          <span class="label">기준 날짜</span>
-          <input id="balance-date" v-model="date" type="date" class="field-input" :max="kstToday()">
-        </label>
+        <div class="field">
+          <label for="balance-date" class="label">기준 날짜</label>
+          <DatePicker id="balance-date" v-model="date" :max="kstToday()" field />
+        </div>
       </div>
-      <p v-if="settings?.balance" class="muted small">지금 기준: {{ formatMonthDay(settings.balance.checkedAt) }} 시작 {{ formatKoreanNumber(settings.balance.checked) }} → 지금 {{ formatKoreanNumber(settings.balance.current) }} <button type="button" class="text-btn" :disabled="busy" @click="save(true)">기준 지우기</button></p>
-    </section>
-
-    <p v-if="failure" class="form-error">{{ failure }}</p>
-    <div class="actions">
-      <button type="button" class="btn ghost" @click="open = false">취소</button>
-      <button type="button" class="btn" :disabled="busy" @click="save()">저장</button>
-    </div>
+      <p v-if="settings?.balance" class="current muted small">
+        <span class="nowrap">지금 기준: {{ formatDay(settings.balance.checkedAt) }} 시작 {{ formatKoreanNumber(settings.balance.checked) }}</span>
+        <span class="nowrap">→ 지금 {{ formatKoreanNumber(settings.balance.current) }}</span>
+        <button type="button" class="text-btn" :disabled="busy" @click="clearBalance">기준 지우기</button>
+      </p>
+      <p class="hint" :class="{ show: failure }" role="alert">{{ failure || ' ' }}</p>
+      <div class="actions">
+        <button type="button" class="btn ghost compact" @click="open = false">취소</button>
+        <button class="btn compact" :disabled="busy">저장</button>
+      </div>
+    </form>
   </AppModal>
 </template>
 
@@ -71,7 +91,7 @@ async function save(clearBalance = false) {
 }
 .row {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   align-items: start;
   gap: 10px;
 }
@@ -79,12 +99,23 @@ async function save(clearBalance = false) {
   display: grid;
   gap: 3px;
 }
+.row :deep(.field-input) {
+  min-height: 38px;
+}
 .label {
   color: var(--sub);
   font-size: 13px;
 }
+.current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.nowrap {
+  white-space: nowrap;
+}
 .text-btn {
-  margin-left: 6px;
   padding: 0;
   background: none;
   border: 0;
@@ -93,9 +124,29 @@ async function save(clearBalance = false) {
   text-decoration: underline;
   cursor: pointer;
 }
+.hint {
+  contain: inline-size;
+  height: 18px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--loss);
+  font-size: 12.5px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+}
+.hint.show {
+  opacity: 1;
+}
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+@media (max-width: 480px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

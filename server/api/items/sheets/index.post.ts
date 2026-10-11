@@ -10,7 +10,6 @@ export default defineEventHandler(async (event) => {
   const count = await itemSheets.countDocuments({ userId: user._id })
   if (count >= MAX_SHEETS) throw createError({ statusCode: 409, message: `시트는 ${MAX_SHEETS}개까지 만들 수 있어요.` })
 
-  // 캐릭터를 연결하면 그 캐릭터 이름으로 강화 기록을 찾고 현재 장비를 불러올 수 있다
   let character: { ocid: string, name: string } | null = null
   if (typeof body?.ocid === 'string' && body.ocid) {
     const { characters } = await fetchAccountCharacters(await getUserApiKey(user._id))

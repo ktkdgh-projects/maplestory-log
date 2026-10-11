@@ -1,9 +1,6 @@
 import type { BossDifficulty } from './bosses'
 
-// 보스 물욕템 드롭표 (2026-10-09 확인)
-// 출처: 넥슨 공식 가이드 「보스별 주요 보상」「보스 반지 상자」(peak 2688), 공식 패치노트 1.2.401·1.2.406·1.2.419,
-// 나무위키 칠흑·광휘·여명·보스 장신구 세트, 특수 스킬 반지, 각 보스 문서
-// 난이도를 비우면 그 보스의 모든 난이도에서 나온다. 교환 불가(장비 상자·단체 보상 재료)는 넣지 않았다
+// 출처(2026-10-09 확인): 넥슨 공식 가이드 「보스별 주요 보상」「보스 반지 상자」(peak 2688), 패치노트 1.2.401·1.2.406·1.2.419, 나무위키 각 세트·보스 문서
 export type DropSet = '광휘' | '칠흑' | '연마석' | '시드링' | '여명' | '보스 장신구' | '기타'
 
 export interface BossDrop {
@@ -18,6 +15,7 @@ export interface BossDrop {
 }
 
 type From = BossDrop['from']
+// 난이도를 비우면 그 보스의 모든 난이도에서 나온다
 const f = (bossId: string, ...difficulties: BossDifficulty[]): From[number] => (difficulties.length ? { bossId, difficulties } : { bossId })
 
 // 보스 반지 상자(녹옥·홍옥·흑옥·백옥·생명)가 나오는 보스. 상자에서 나오는 시드링 중 거래되는 리레·컨티만 물욕템으로 둔다
@@ -26,6 +24,7 @@ const RING_BOX_BOSSES: From = [
   f('kalos'), f('adversary'), f('kaling'), f('star'), f('bellona'), f('limbo'), f('baldrix'), f('jupiter'),
 ]
 
+// 교환 불가(장비 상자·단체 보상 재료)는 넣지 않았다
 const BOSS_DROPS: BossDrop[] = [
   { item: '오만의 원죄', part: '얼굴장식', set: '광휘', icon: 'original-sin', from: [f('jupiter', 'hard')] },
   { item: '죽음의 맹세', part: '펜던트', set: '광휘', icon: 'oath-of-death', from: [f('baldrix', 'hard')] },

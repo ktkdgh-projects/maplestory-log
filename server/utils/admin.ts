@@ -14,7 +14,6 @@ export function requireAdmin(event: H3Event): UserDoc {
   return user!
 }
 
-// 넥슨 점검 등으로 수집을 잠시 멈췄는지
 export async function isCollectionPaused(): Promise<boolean> {
   const { appSettings } = await useCollections()
   return (await appSettings.findOne({ _id: 'collection' }))?.paused ?? false

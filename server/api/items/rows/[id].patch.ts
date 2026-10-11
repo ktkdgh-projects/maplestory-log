@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
   if (update.potential && !(update.potentialDate ?? row.potentialDate)) update.potentialDate = today
   if (update.sell && !(update.sellDate ?? row.sellDate)) update.sellDate = today
 
-  await itemRows.updateOne({ _id: id }, { $set: update })
+  await itemRows.updateOne({ _id: id, userId: user._id }, { $set: update })
   if (update.sellFee !== undefined) await rememberFeeRate(user._id, update.sellFee)
   return { ok: true }
 })

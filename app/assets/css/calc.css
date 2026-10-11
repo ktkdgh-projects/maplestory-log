@@ -1,4 +1,4 @@
-/* 계산기 공통: 왼쪽 입력, 오른쪽 결과. 이름이 다른 화면 클래스와 겹치지 않게 calc- 를 붙인다 */
+/* 다른 화면 클래스와 겹치지 않게 calc- 를 붙인다 */
 .calc-layout {
   display: grid;
   flex: 1;
@@ -12,7 +12,6 @@
 .calc-layout > * {
   min-width: 0;
 }
-/* 입력은 주제별 구역(장비·목표·옵션…)으로 나누고, 구역마다 제목 한 줄 + 칸들 */
 .calc-inputs {
   display: grid;
   overflow: hidden;
@@ -70,9 +69,9 @@
   display: grid;
   gap: 6px;
 }
-.calc-load .field-input {
-  border-color: rgb(183 156 255 / 0.5);
-  background: rgb(183 156 255 / 0.07);
+.calc-load .app-select .trigger {
+  border-color: color-mix(in srgb, var(--calc) 50%, transparent);
+  background: color-mix(in srgb, var(--calc) 7%, transparent);
 }
 .calc-load-label {
   color: var(--calc);
@@ -83,24 +82,6 @@
   color: var(--sub);
   font-size: 11.5px;
   line-height: 1.5;
-}
-.calc-unit {
-  position: relative;
-}
-.calc-unit .field-input {
-  width: 100%;
-  padding-right: 34px;
-  text-align: right;
-}
-.calc-unit::after {
-  content: attr(data-unit);
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  color: var(--sub);
-  font-size: 12px;
-  translate: 0 -50%;
-  pointer-events: none;
 }
 .calc-seg {
   display: inline-flex;
@@ -135,7 +116,6 @@
   padding: 4px 10px;
   font-size: 12px;
 }
-/* 칸 너비를 다 쓰는 세그먼트: 버튼을 같은 너비로 나눈다 */
 .calc-seg.wide {
   display: flex;
   justify-self: stretch;
@@ -148,7 +128,7 @@
   flex-wrap: wrap;
   gap: 6px;
 }
-/* 칩을 같은 너비 격자로: 줄이 바뀌어도 하나만 덩그러니 남지 않게 --cols로 칸 수를 정한다 */
+/* 줄이 바뀌어도 칩 하나만 덩그러니 남지 않게 --cols로 칸 수를 정한다 */
 .calc-chips.grid {
   display: grid;
   grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
@@ -176,7 +156,7 @@
   color: var(--text);
 }
 .calc-chip[aria-pressed="true"] {
-  background: rgb(242 193 78 / 0.12);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
   border-color: var(--gold);
   color: var(--gold);
 }
@@ -184,7 +164,7 @@
   opacity: 0.3;
   cursor: default;
 }
-/* − 숫자 + . 칸 너비를 꽉 채워 두 개를 나란히 둘 때 크기가 같게 */
+/* 두 개를 나란히 둘 때 크기가 같게 칸 너비를 꽉 채운다 */
 .calc-stepper {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 36px;
@@ -253,7 +233,7 @@
   flex-direction: column;
   gap: 16px;
   padding: 20px;
-  background: linear-gradient(180deg, rgb(183 156 255 / 0.08), var(--panel) 40%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--calc) 8%, transparent), var(--panel) 40%);
   border: 1px solid var(--win-line);
   border-radius: 12px;
 }
@@ -349,7 +329,11 @@
   .calc-result {
     position: static;
     gap: 12px;
+    min-height: 0;
     padding: 16px 18px;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
   }
   .calc-num {
     padding: 8px 12px;
@@ -362,9 +346,40 @@
   .calc-layout {
     grid-template-columns: 1fr;
   }
-  /* 휴대폰에선 결과를 위로 올린다 */
+  /* 손가락으로 누르기 쉽게 칩·세그먼트 버튼을 키운다 */
+  .calc-chip {
+    height: 36px;
+  }
+  .calc-seg button {
+    min-height: 36px;
+  }
+  .calc-section {
+    padding: 12px 14px 14px;
+  }
+  .calc-say {
+    font-size: 19px;
+  }
+  .calc-say em {
+    font-size: 25px;
+  }
+  .calc-say .s2 {
+    font-size: 16px;
+  }
+  .calc-say .s2 em {
+    font-size: 19px;
+  }
+  .calc-nums {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
+  }
+  .calc-num b {
+    font-size: 19px;
+  }
   .calc-result {
     position: static;
+    gap: 12px;
+    padding: 14px;
+    /* 휴대폰에선 결과를 위로 올린다 */
     order: -1;
   }
 }

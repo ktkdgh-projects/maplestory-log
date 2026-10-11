@@ -9,13 +9,13 @@ const tab = ref<typeof TABS[number]>('헥사')
 
 <template>
   <GameWindow title="상세" accent="purple" fill>
-    <div class="tabs" role="group" aria-label="상세 탭">
-      <MenuButton v-for="name in TABS" :key="name" :active="tab === name" @click="tab = name">
+    <div class="tabs" role="tablist" aria-label="상세 탭">
+      <MenuButton v-for="name in TABS" :key="name" :active="tab === name" role="tab" :aria-selected="tab === name" :aria-pressed="null" @click="tab = name">
         {{ name }}
       </MenuButton>
     </div>
 
-    <div class="tab-body">
+    <div class="tab-body" role="tabpanel" :aria-label="tab">
       <Transition name="fade" mode="out-in">
         <CharacterHexaPanel v-if="tab === '헥사'" :cores="character.hexaCores" />
         <CharacterSymbolPanel v-else-if="tab === '심볼'" :symbols="character.symbols" />
@@ -26,7 +26,8 @@ const tab = ref<typeof TABS[number]>('헥사')
 
     <p class="foot">
       <SourceBadge type="api" />
-      <SourceBadge v-if="tab === '헥사' || tab === '심볼'" type="calc" />
+      <!-- 계산 배지가 없는 탭에서도 자리를 지켜 뒤 글자가 옮겨 다니지 않게 한다 -->
+      <SourceBadge type="calc" :style="{ visibility: tab === '헥사' || tab === '심볼' ? 'visible' : 'hidden' }" />
       <span>{{ formatDateTime(character.fetchedAt) }} 기준 · 1시간마다 새로 불러와요</span>
     </p>
   </GameWindow>

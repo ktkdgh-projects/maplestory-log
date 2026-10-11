@@ -1,8 +1,7 @@
 import type { ItemIcon } from '#shared/types'
 
 const SEARCH_LIMIT = 12
-// 넥슨 API가 아이콘을 주지 않거나 하나로 묶어 쓰는 아이템. 사용자 요청으로 넣은 그림(public/icons, maplestory.io KMS 389 아이콘)
-// 심볼은 장비 결산에서 종류·지역을 나눌 필요가 없어 선택 심볼 교환권 그림 하나로 쓴다
+// 넥슨 API에 아이콘이 없는 아이템(public/icons, maplestory.io KMS 389). 심볼은 종류를 나눌 필요가 없어 교환권 그림 하나로 쓴다
 const STATIC_ICONS: ItemIcon[] = [
   { name: '솔 에르다 조각', icon: '/icons/sol-erda-fragment.png', kind: 'etc', part: '기타' },
   { name: '심볼', icon: '/icons/symbol.png', kind: 'symbol', part: '기타' },
@@ -43,7 +42,7 @@ async function collectPetAndCashIcons(apiKey: string, ocid: string) {
   await rememberIcons(entries)
 }
 
-// 캐릭터를 불러올 때 본 장비·펫·캐시템 아이콘을 사전에 모은다. 사전은 덤이라 실패해도 원래 작업은 그대로 간다
+// 아이콘 사전은 덤이라 실패해도 원래 작업은 그대로 간다
 export async function collectCharacterIcons(apiKey: string, ocid: string, equipment: { name: string, icon: string, slot: string, level?: number }[]) {
   await Promise.all([
     rememberIcons(equipment.map(i => ({ name: i.name, icon: i.icon, kind: 'equipment', part: partName(i.slot), level: i.level }))),
@@ -51,11 +50,10 @@ export async function collectCharacterIcons(apiKey: string, ocid: string, equipm
   ]).catch(() => {})
 }
 
-// 아이콘·레벨을 모르는 안 낀 장비를 그 장비를 마지막으로 강화한 날(과 다음 날)의 장착 장비에서 찾는다.
-// 한 번 찾아봐도 없던 날은 하루 동안 다시 안 부른다(장착하지 않고 강화한 장비는 그날 장비 목록에도 없다)
+// 마지막 강화일과 다음 날의 장착 장비에서 찾는다. 장착하지 않고 강화했으면 없으니 못 찾은 날은 하루 동안 다시 안 부른다
 const HISTORY_CALLS_MAX = 6
 const HISTORY_MISS_MS = 24 * 60 * 60 * 1000
-export async function collectHistoryIcons(apiKey: string, ocid: string, wanted: { name: string, date: string }[]) {
+export async function collectHistoryIcons(apiKey: string, ocid: string, wanted: { name: string, date: string }[], deadline = Infinity) {
   const today = kstToday()
   const dates = [...new Set(wanted.flatMap(w => [addDays(w.date, 1), w.date]))]
     .filter(d => d < today)
@@ -64,7 +62,7 @@ export async function collectHistoryIcons(apiKey: string, ocid: string, wanted: 
   const { cache } = await useCollections()
   let calls = 0
   for (const date of dates) {
-    if (!left.size || calls >= HISTORY_CALLS_MAX) break
+    if (!left.size || calls >= HISTORY_CALLS_MAX || Date.now() >= deadline) break
     const key = `icon-history:${ocid}:${date}`
     if (await cache.findOne({ _id: key, expireAt: { $gt: new Date() } })) continue
     calls++
