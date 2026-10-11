@@ -25,9 +25,9 @@ export default defineEventHandler(async (event) => {
   const table = CSV_TABLES.includes(body?.table as CsvTable) ? body!.table as CsvTable : null
   if (format === 'csv' && !table) throw createError({ statusCode: 400, message: '내보낼 표를 골라 주세요.' })
 
-  const { hunts, dropSales, bossRosters, bossClears, itemSheets, itemRows, ledgerSettings, enhanceEvents, memos, mesoEntries } = await useCollections()
+  const { hunts, dropSales, bossRosters, bossClears, itemSheets, itemRows, ledgerSettings, guideSettings, enhanceEvents, memos, mesoEntries } = await useCollections()
   const userId = user._id
-  const [huntDocs, saleDocs, roster, clearDocs, sheetDocs, rowDocs, settings, enhanceDocs, memoDocs, entryDocs] = await Promise.all([
+  const [huntDocs, saleDocs, roster, clearDocs, sheetDocs, rowDocs, settings, enhanceDocs, memoDocs, entryDocs, guides] = await Promise.all([
     hunts.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
     dropSales.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
     bossRosters.findOne({ userId }),
@@ -38,6 +38,7 @@ export default defineEventHandler(async (event) => {
     enhanceEvents.find({ userId }).sort({ at: 1 }).toArray(),
     memos.find({ userId }).sort({ createdAt: 1 }).toArray(),
     mesoEntries.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
+    guideSettings.findOne({ _id: userId }),
   ])
   const sheetOf = new Map(sheetDocs.map(s => [s._id.toHexString(), s]))
   const references = await rowReferences(userId, sheetDocs, rowDocs, mvpTimeline(user))
@@ -62,6 +63,7 @@ export default defineEventHandler(async (event) => {
       items: sheetDocs.map(s => toItemSheet(s, rowDocs, references, new Map())),
       enhance: enhanceDocs.map(({ userId: _u, _id, ...e }) => e),
       memos: memoDocs.map(toMemo),
+      guides: { meister: guides?.meister ?? null, jobTraits: guides?.jobTraits ?? {} },
     }
   }
 

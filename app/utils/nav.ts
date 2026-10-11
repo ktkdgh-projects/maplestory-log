@@ -51,6 +51,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/calc/starforce', label: '스타포스', hint: '목표 ★까지 드는 메소 기대값' },
       { to: '/calc/potential', label: '잠재', hint: '목표 등급·옵션까지 기대값' },
       { to: '/calc/liberation', label: '해방', hint: '보스 세팅으로 해방 날짜' },
+      { to: '/calc/artifact', label: '아티팩트', hint: '다음 효과·배치 추천' },
+      { to: '/calc/meister', label: '명장', hint: '명장까지 순서·재료' },
     ],
   },
   // 매주 확인하러 오는 소식이라 묶음 없이 단독 메뉴로 둔다

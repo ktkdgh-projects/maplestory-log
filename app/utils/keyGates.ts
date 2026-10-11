@@ -84,4 +84,14 @@ export const KEY_GATES = {
       { title: '썬데이 결산', text: '썬데이 기간을 한 번에 결산', tone: 'gold' },
     ],
   },
+  artifact: {
+    title: '아티팩트',
+    accent: 'blue',
+    lead: '내 아티팩트와 스탯, 직업 특성으로 다음에 올릴 효과를 골라 드려요.',
+    points: [
+      { title: '효과 순위', text: '내 스탯으로 보스 데미지가 몇 % 오르는지', tone: 'gold' },
+      { title: '직업 특성', text: '크확 초과·재사용·벞지가 중요한 직업인지', tone: 'calc' },
+      { title: '다음 크리스탈', text: '새로 열릴 크리스탈에 넣을 효과 3개', tone: 'api' },
+    ],
+  },
 } satisfies Record<string, KeyGateInfo>

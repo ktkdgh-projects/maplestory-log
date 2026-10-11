@@ -120,7 +120,7 @@ const NOTES = [
               <span>{{ u.hint }}</span>
             </li>
           </ul>
-          <p class="muted small">캐릭터 검색, 계산기, 썬데이는 키 없이도 쓸 수 있어요.</p>
+          <p class="muted small">캐릭터 검색, 공략(아티팩트 제외), 썬데이는 키 없이도 쓸 수 있어요.</p>
         </GameWindow>
       </div>
     </div>

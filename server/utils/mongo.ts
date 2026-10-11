@@ -1,5 +1,7 @@
 import { MongoClient, type Db, type ObjectId } from 'mongodb'
 import type { BossLoot, BossRosterCharacter, DropSaleInput, MesoEntryInput, EnhanceKind, HuntInput, ItemIcon, ItemPurchase, KeyStatus } from '#shared/types'
+import type { MeisterProgress } from '#shared/calc/meister'
+import type { JobTraits } from '#shared/data/jobTraits'
 import { ENHANCE_HISTORY_DAYS } from '#shared/data/enhance'
 
 export interface UserDoc {
@@ -167,6 +169,15 @@ export interface AppSettingsDoc {
   _id: string
   paused: boolean
   pausedAt: Date | null
+  updatedAt: Date
+}
+
+// 공략 페이지에서 고친 값. 사용자마다 한 문서
+export interface GuideSettingsDoc {
+  _id: ObjectId
+  meister?: MeisterProgress
+  // 직업 이름 → 고친 특성
+  jobTraits?: Record<string, Partial<JobTraits>>
   updatedAt: Date
 }
 
@@ -402,6 +413,7 @@ export async function useCollections() {
     enhanceEvents: db.collection<EnhanceEventDoc>('enhanceEvents'),
     historySync: db.collection<HistorySyncDoc>('historySync'),
     ledgerSettings: db.collection<LedgerSettingsDoc>('ledgerSettings'),
+    guideSettings: db.collection<GuideSettingsDoc>('guideSettings'),
     appSettings: db.collection<AppSettingsDoc>('appSettings'),
     hunts: db.collection<HuntDoc>('hunts'),
     dropSales: db.collection<DropSaleDoc>('dropSales'),

@@ -93,11 +93,24 @@ function bundleOf(items: EquipmentItem[], abilityLines: string[], level: number)
   return bundle
 }
 
+// 지금 장비·어빌리티의 % 합. 고정 수치가 오르면 이만큼 곱해진다
+export function equippedPercents(character: CharacterDetail) {
+  const b = bundleOf(character.presets[character.presetNo - 1] ?? [], (character.abilityPresets[character.abilityPresetNo - 1] ?? []).map(line => line.value), character.level)
+  return { stat: b.percent, attack: b.attackPercent, magic: b.magicPercent }
+}
+
 interface PresetCombo {
   equipPreset: number
   abilityPreset: number
   value: number
   current: boolean
+}
+
+// 스탯 공격력에 들어가는 비율(주스탯 4, 부스탯 1). 주스탯은 가장 높은 스탯으로 본다
+export function statWeightsOf(job: string, stat: (name: string) => number): Partial<Record<Stat, number>> {
+  if (job === XENON) return { STR: 4, DEX: 4, LUK: 4 }
+  const main = STATS.reduce((best, s) => (stat(s) > stat(best) ? s : best), 'STR' as Stat)
+  return { [main]: 4, [SUB_STAT[main]]: 1 }
 }
 
 // 장비 프리셋 × 어빌리티 프리셋 조합 중 전투력이 가장 높게 나오는 것. 추정할 수 없는 직업이면 null
@@ -106,9 +119,7 @@ export function findBestPresetCombo(character: CharacterDetail): PresetCombo | n
   if (!current || UNSUPPORTED_JOBS.includes(character.job)) return null
 
   const stat = (name: string) => Number(character.stats.find(s => s.name === name)?.value ?? 0)
-  const finalStats = Object.fromEntries(STATS.map(s => [s, stat(s)])) as Record<Stat, number>
-  const main = STATS.reduce((best, s) => (finalStats[s] > finalStats[best] ? s : best), 'STR' as Stat)
-  const statWeights: Partial<Record<Stat, number>> = character.job === XENON ? { STR: 4, DEX: 4, LUK: 4 } : { [main]: 4, [SUB_STAT[main]]: 1 }
+  const statWeights = statWeightsOf(character.job, stat)
   const magician = stat('마력') > stat('공격력')
   const finalAttack = magician ? stat('마력') : stat('공격력')
   const finalDamage = stat('데미지') + stat('보스 몬스터 데미지')
@@ -127,8 +138,8 @@ export function findBestPresetCombo(character: CharacterDetail): PresetCombo | n
       let statNow = 0
       let statNew = 0
       for (const [s, weight] of Object.entries(statWeights) as [Stat, number][]) {
-        statNow += finalStats[s] * weight
-        statNew += scaled(finalStats[s], base.flat[s], base.percent[s], b.flat[s], b.percent[s]) * weight
+        statNow += stat(s) * weight
+        statNew += scaled(stat(s), base.flat[s], base.percent[s], b.flat[s], b.percent[s]) * weight
       }
       const attackNew = magician
         ? scaled(finalAttack, base.magic, base.magicPercent, b.magic, b.magicPercent)

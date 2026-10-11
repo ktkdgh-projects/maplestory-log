@@ -189,6 +189,15 @@ interface NexonAndroid {
 export interface NexonUnion {
   union_level: number | null
   union_grade: string | null
+  union_artifact_level?: number | null
+  union_artifact_exp?: number | null
+  union_artifact_point?: number | null
+}
+
+export interface NexonUnionArtifact {
+  union_artifact_effect: { name: string, level: number }[] | null
+  union_artifact_crystal: { name: string, validity_flag: string, date_expire: string | null, level: number, crystal_option_name_1: string, crystal_option_name_2: string, crystal_option_name_3: string }[] | null
+  union_artifact_remain_ap: number | null
 }
 
 export interface NexonUnionRaider {
@@ -265,6 +274,7 @@ export const nexon = {
   setEffect: (apiKey: string, ocid: string) => nexonGet<NexonSetEffect>('/character/set-effect', apiKey, { ocid }),
   union: (apiKey: string, ocid: string) => nexonGet<NexonUnion>('/user/union', apiKey, { ocid }),
   unionRaider: (apiKey: string, ocid: string) => nexonGet<NexonUnionRaider>('/user/union-raider', apiKey, { ocid }),
+  unionArtifact: (apiKey: string, ocid: string) => nexonGet<NexonUnionArtifact>('/user/union-artifact', apiKey, { ocid }),
   dojang: (apiKey: string, ocid: string) => nexonGet<NexonDojang>('/character/dojang', apiKey, { ocid }),
   petEquipment: (apiKey: string, ocid: string) => nexonGet<NexonPetEquipment>('/character/pet-equipment', apiKey, { ocid }),
   cashItemEquipment: (apiKey: string, ocid: string) => nexonGet<NexonCashItemEquipment>('/character/cashitem-equipment', apiKey, { ocid }),
