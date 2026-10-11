@@ -42,8 +42,15 @@ function outside(event: MouseEvent) {
   if (root.value?.contains(target) || target.closest('.modal, .backdrop, .who-main')) return
   emit('close')
 }
-onMounted(() => setTimeout(() => window.addEventListener('click', outside)))
-onBeforeUnmount(() => window.removeEventListener('click', outside))
+// 여는 클릭에 바로 닫히지 않게 한 박자 늦게 붙인다
+let arming: ReturnType<typeof setTimeout> | undefined
+onMounted(() => {
+  arming = setTimeout(() => window.addEventListener('click', outside))
+})
+onBeforeUnmount(() => {
+  clearTimeout(arming)
+  window.removeEventListener('click', outside)
+})
 
 const COLUMNS = 3
 const WEEKLY = BOSSES.filter(b => b.cycle === 'weekly')
@@ -82,11 +89,16 @@ function copyTo(ocid: string) {
 function closeCopy(event: MouseEvent) {
   if (!(event.target as HTMLElement).closest('.copy')) copyOpen.value = false
 }
+let armingCopy: ReturnType<typeof setTimeout> | undefined
 watch(copyOpen, (open) => {
-  if (open) setTimeout(() => window.addEventListener('click', closeCopy))
+  clearTimeout(armingCopy)
+  if (open) armingCopy = setTimeout(() => window.addEventListener('click', closeCopy))
   else window.removeEventListener('click', closeCopy)
 })
-onBeforeUnmount(() => window.removeEventListener('click', closeCopy))
+onBeforeUnmount(() => {
+  clearTimeout(armingCopy)
+  window.removeEventListener('click', closeCopy)
+})
 </script>
 
 <template>

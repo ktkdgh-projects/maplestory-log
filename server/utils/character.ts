@@ -40,10 +40,16 @@ async function checkRenames(list: CharacterBrief[]) {
   }))
 }
 
-export async function characterNames(character: Pick<CharacterBrief, 'ocid' | 'name'>): Promise<string[]> {
+
+export async function charactersNames<T extends Pick<CharacterBrief, 'ocid' | 'name'>>(list: T[]): Promise<{ character: T, names: string[] }[]> {
   const { characters } = await useCollections()
-  const doc = await characters.findOne({ ocid: character.ocid }, { projection: { pastNames: 1 } })
-  return [...new Set([character.name, ...(doc?.pastNames ?? [])])]
+  const docs = await characters.find({ ocid: { $in: list.map(c => c.ocid) } }, { projection: { ocid: 1, pastNames: 1 } }).toArray()
+  const past = new Map(docs.map(d => [d.ocid, d.pastNames ?? []]))
+  return list.map(character => ({ character, names: [...new Set([character.name, ...(past.get(character.ocid) ?? [])])] }))
+}
+
+export async function characterNames(character: Pick<CharacterBrief, 'ocid' | 'name'>): Promise<string[]> {
+  return (await charactersNames([character]))[0]!.names
 }
 
 export async function fetchAccountCharacters(apiKey: string): Promise<{ accountId: string | null, characters: CharacterBrief[] }> {
@@ -218,6 +224,22 @@ async function fetchDetail(apiKey: string, ocid: string): Promise<CharacterDetai
     hexaCores: (hexa.character_hexa_core_equipment ?? []).map(c => ({ name: c.hexa_core_name, type: c.hexa_core_type, level: c.hexa_core_level })),
     fetchedAt: new Date().toISOString(),
   }
+}
+
+// 낀 장비만 필요할 때 상세(넥슨 11번) 대신 장비 1번만 부른다. 상세 캐시가 있으면 그걸 쓴다
+export async function getEquippedItems(apiKey: () => Promise<string>, ocid: string): Promise<EquipmentItem[]> {
+  const { cache } = await useCollections()
+  const detail = await cache.findOne({ _id: `detail:${ocid}:v${DETAIL_CACHE_VERSION}`, expireAt: { $gt: new Date() } })
+  if (detail) {
+    const { presets, presetNo } = detail.data as CharacterDetail
+    return presets[presetNo - 1] ?? presets[0] ?? []
+  }
+  return withCache(`equipped:${ocid}:v${DETAIL_CACHE_VERSION}`, DETAIL_CACHE_MS, async () => {
+    const equipment = await nexon.itemEquipment(await apiKey(), ocid)
+    const presets = [equipment.item_equipment_preset_1, equipment.item_equipment_preset_2, equipment.item_equipment_preset_3]
+    const current = presets[(equipment.preset_no ?? 1) - 1]
+    return (current?.length ? current : equipment.item_equipment).map(toEquipmentItem)
+  })
 }
 
 export function getCharacterDetail(apiKey: string, ocid: string, fresh = false): Promise<CharacterDetail> {

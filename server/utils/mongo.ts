@@ -1,5 +1,6 @@
 import { MongoClient, type Db, type ObjectId } from 'mongodb'
 import type { BossLoot, BossRosterCharacter, DropSaleInput, MesoEntryInput, EnhanceKind, HuntInput, ItemIcon, ItemPurchase, KeyStatus } from '#shared/types'
+import { ENHANCE_HISTORY_DAYS } from '#shared/data/enhance'
 
 export interface UserDoc {
   _id: ObjectId
@@ -14,6 +15,8 @@ export interface UserDoc {
   mainOcid: string | null
   // 스타포스 MVP 할인율(0~0.1). 강화 기록 비용·계산기에 쓴다
   mvpDiscount?: number
+  // 등급을 바꾼 이력. 강화 비용은 기록 시각의 할인으로 센다
+  mvpHistory?: { from: Date, rate: number }[]
   consentAt: Date
   createdAt: Date
   lastSeenAt: Date
@@ -95,7 +98,7 @@ export interface ItemRowDoc {
   icon: string | null
   buy: number
   sell: number
-  // 경매장 수수료율. 내 정보 MVP가 실버 이상이면 읽을 때 3%로 본다
+  // 경매장 수수료율. 판매가를 처음 적을 때의 MVP로 정해 두고, 나중에 등급이 바뀌어도 그대로 쓴다
   sellFee?: number
   memo: string | null
   buyDate?: string | null
@@ -341,6 +344,8 @@ async function ensureIndexes(db: Db) {
       { key: { userId: 1, character: 1, at: -1 } },
       // 썬데이 결산: 기간에 강화한 캐릭터를 distinct로 찾는다
       { key: { userId: 1, at: -1 } },
+      // 모으는 기간이 지난 기록은 DB가 알아서 지운다
+      { key: { at: 1 }, expireAfterSeconds: ENHANCE_HISTORY_DAYS * 24 * 60 * 60 },
     ]),
     db.collection('memos').createIndexes([
       { key: { userId: 1, createdAt: -1 } },

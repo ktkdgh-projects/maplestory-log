@@ -2,7 +2,7 @@
 import type { CharacterBrief, ReviewResponse, SundayLineTotal } from '#shared/types'
 
 // 동시에 부르면 넥슨 호출 한도에 걸리므로 카드가 넘겨준 queue로 한 캐릭터씩 차례로 받는다
-const props = defineProps<{ character: CharacterBrief, from: string, to: string, mvp: number, queue: <T>(job: () => Promise<T>) => Promise<T> }>()
+const props = defineProps<{ character: CharacterBrief, from: string, to: string, queue: <T>(job: () => Promise<T>) => Promise<T> }>()
 const emit = defineEmits<{ total: [ocid: string, total: SundayLineTotal] }>()
 
 const data = shallowRef<ReviewResponse | null>(null)
@@ -15,8 +15,7 @@ async function load() {
   })
 }
 onMounted(load)
-const mvp = computed(() => props.mvp)
-const { starforceList, potentialList, ready, totals } = useReviewCompute(data, mvp, ref({}))
+const { starforceList, potentialList, ready, totals } = useReviewCompute(data, ref({}))
 const done = computed(() => !!data.value && ready.value)
 watch([done, totals, failed], () => {
   emit('total', props.character.ocid, { meso: totals.value.meso.gain, cube: totals.value.cube.used ? totals.value.cube.gain : 0, ready: done.value || failed.value, failed: failed.value })

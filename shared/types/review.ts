@@ -1,8 +1,12 @@
 import type { CharacterBrief } from './character'
 import type { PotentialTier, StarforceRestore } from './enhance'
 
+// 전체 캐릭터로 볼 때 같은 이름 장비를 가르는 주인
+export interface ReviewOwner { ocid: string, name: string }
+
 // 강화 결산: 고른 기간에 한 장비의 스타포스. 시작 ★은 첫 시도 전, 끝 ★은 마지막 시도 뒤
 export interface ReviewStarforce {
+  character: ReviewOwner
   item: string
   slot: string | null
   icon: string | null
@@ -19,6 +23,8 @@ export interface ReviewStarforce {
   protectStars: number[]
   discount: boolean
   sundayEffects: string[]
+  // 이 기록 때의 MVP 할인율. 기대값도 같은 할인으로 센다
+  mvp: number
   // 기간에 썬데이·할인 이벤트와 평소가 섞여 같은 장비를 조건별로 나눴으면 그 조건 이름(썬데이 10/5~ 등), 안 나눴으면 null
   condition?: string | null
   stages: { star: number, attempts: number, success: number, destroy: number }[]
@@ -32,6 +38,7 @@ export interface ReviewStarforce {
 
 // 강화 결산: 고른 기간에 한 장비의 윗잠 또는 에디 재설정
 export interface ReviewPotential {
+  character: ReviewOwner
   item: string
   slot: string | null
   icon: string | null
@@ -56,7 +63,8 @@ export interface ReviewPotential {
 }
 
 export interface ReviewResponse {
-  character: CharacterBrief
+  // 전체 캐릭터로 보면 null
+  character: CharacterBrief | null
   from: string
   to: string
   starforce: ReviewStarforce[]

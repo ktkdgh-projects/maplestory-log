@@ -41,7 +41,7 @@ export default defineEventHandler(async (event): Promise<EnhanceResponse> => {
   const summaries = await summariesByItem(user._id, names, [
     ...equipped.map(i => ({ name: i.name, level: i.requiredLevel || null })),
     ...unworn.map(u => ({ name: u.name, level: levelOf(u.name, u.level) })),
-  ], from, user.mvpDiscount ?? 0)
+  ], from, mvpTimeline(user))
 
   return {
     character: { ...character, imageUrl: detail.imageUrl },

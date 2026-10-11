@@ -9,8 +9,6 @@ export const ENHANCE_PERIODS = [
   { label: '1주', days: 7 },
   { label: '오늘', days: 1 },
 ] as const
-// 서버가 모으는 기간(HISTORY_BACKFILL_DAYS)과 같다
-export const ENHANCE_HISTORY_DAYS = 180
 
 const POLL_MS = 4000
 const TODAY_CHECK_MS = 60 * 1000
@@ -69,12 +67,17 @@ export function useEnhanceRecords(me: Readonly<Ref<MeResponse['user']>>, initial
 
   // 아직 모으는 중이면 응답이 올 때마다 몇 초 뒤 다시 부른다. 받는 중 실패하면 멈춘다
   let timer: ReturnType<typeof setTimeout> | undefined
+  // 페이지를 떠난 뒤 끝난 요청이 타이머를 다시 걸지 않게 한다
+  let stopped = false
   function poll() {
     clearTimeout(timer)
-    if (data.value?.syncing && !error.value) timer = setTimeout(() => refresh().finally(poll), POLL_MS)
+    if (!stopped && data.value?.syncing && !error.value) timer = setTimeout(() => refresh().finally(poll), POLL_MS)
   }
   watch(data, poll)
-  onBeforeUnmount(() => clearTimeout(timer))
+  onBeforeUnmount(() => {
+    stopped = true
+    clearTimeout(timer)
+  })
 
   return { characters, charactersLoaded, loadCharacters, ocid, days, pickedFrom, from, today, data, pending, error, failure, refresh }
 }

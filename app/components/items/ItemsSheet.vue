@@ -2,7 +2,7 @@
 import type { ItemIcon, ItemPurchase, ItemRow, ItemSheet, MeResponse } from '#shared/types'
 import { itemProfit, itemSellNet, itemTotals, rowInvest } from '#shared/calc/items'
 import { hasMvpFee } from '#shared/calc/meso'
-import { AUCTION_FEES, DEFAULT_AUCTION_FEE } from '#shared/data/auction'
+import { AUCTION_FEES, DEFAULT_AUCTION_FEE, MVP_FEE } from '#shared/data/auction'
 
 const props = defineProps<{ sheet: ItemSheet }>()
 const emit = defineEmits<{ changed: [], removed: [] }>()
@@ -13,7 +13,7 @@ const helpOpen = ref(false)
 const columnHelp = computed(() => [
   { name: '스타포스', text: '직접 적은 값이 가계부에 들어가요. 연결한 캐릭터의 강화 기록으로 센 값은 칸 아래에 참고로 보여 드려요.' },
   { name: '잠재', text: '메소 잠재 재설정 비용이에요. 강화 기록으로 센 값은 공식 비용표 기준이라 그대로 써도 돼요.' },
-  ...(mvpFee.value ? [] : [{ name: '수수료', text: '경매장 판매 수수료예요. 대금을 받을 때 MVP 실버 이상이거나 프리미엄 PC방이면 3%예요.' }]),
+  ...(feeColumn.value ? [{ name: '수수료', text: '경매장 판매 수수료예요. 대금을 받을 때 MVP 실버 이상이거나 프리미엄 PC방이면 3%예요.' }] : []),
   { name: '받은 메소', text: '판매가에서 수수료를 뺀 금액이에요.' },
   { name: '손익', text: '받은 메소에서 들인 메소를 뺀 값이에요. 판매가를 적은 장비만 계산해요.' },
   { name: '합계', text: '제외한 장비는 합계·손익과 가계부에서 빠져요.' },
@@ -133,9 +133,10 @@ const saveEntries = (row: ItemRow, kind: 'starforce' | 'potential', entries: Ite
   [`${kind}Date`]: entries.at(-1)?.date ?? null,
 })
 const saveDate = (row: ItemRow, field: MoneyField, date: string | null) => patchRow(row, { [`${field}Date`]: date })
-// 내 정보의 MVP가 실버 이상이면 수수료는 3%로 정해져 누를 수 없다
+// 내 정보의 MVP가 실버 이상이면 새로 파는 장비는 3%로 정해진다. 이미 판 장비는 그때 수수료를 그대로 보여 준다
 const { data: me } = useNuxtData<MeResponse>('me')
 const mvpFee = computed(() => hasMvpFee(me.value?.user?.mvpDiscount))
+const feeColumn = computed(() => !mvpFee.value || rows.value.some(r => r.sell && r.sellFee !== MVP_FEE))
 const toggleFee = (row: ItemRow) => patchRow(row, { sellFee: row.sellFee === DEFAULT_AUCTION_FEE ? AUCTION_FEES[1].rate : DEFAULT_AUCTION_FEE })
 const toggleExcluded = () => run(() => $fetch(`/api/items/sheets/${props.sheet.id}`, { method: 'PATCH', body: { excluded: !props.sheet.excluded } }))
 const { ask } = useConfirm()
@@ -227,7 +228,7 @@ async function removeSheet() {
     </AppModal>
 
     <div class="table-wrap">
-      <table :class="{ mvp: mvpFee }">
+      <table :class="{ mvp: !feeColumn }">
         <colgroup>
           <col class="c-handle">
           <col class="c-no">
@@ -237,7 +238,7 @@ async function removeSheet() {
           <col class="c-num">
           <col class="c-num">
           <col class="c-num">
-          <col v-if="!mvpFee" class="c-fee">
+          <col v-if="feeColumn" class="c-fee">
           <col class="c-num">
           <col class="c-num">
           <col class="c-num">
@@ -254,8 +255,8 @@ async function removeSheet() {
             <th class="num">스타포스</th>
             <th class="num">잠재</th>
             <th class="num">판매</th>
-            <th v-if="!mvpFee" class="center">수수료</th>
-            <th class="num">{{ mvpFee ? '받은 메소 · 3%' : '받은 메소' }}</th>
+            <th v-if="feeColumn" class="center">수수료</th>
+            <th class="num">{{ feeColumn ? '받은 메소' : '받은 메소 · 3%' }}</th>
             <th class="num">들인 메소</th>
             <th class="num">손익</th>
             <th class="center">합계</th>
@@ -286,8 +287,8 @@ async function removeSheet() {
             <td class="num cell"><ItemsEntriesCell label="스타포스" intro="강화한 날마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." :name="row.name" :entries="row.starforceEntries" :reference="row.reference.starforce" :reference-days="row.reference.starforceDays" :shared="row.reference.shared" :ocid="sheet.ocid" estimated @save="saveEntries(row, 'starforce', $event)" /></td>
             <td class="num cell"><ItemsEntriesCell label="잠재" intro="강화한 날마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." :name="row.name" :entries="row.potentialEntries" :reference="row.reference.potential" :reference-days="row.reference.potentialDays" :shared="row.reference.shared" :ocid="sheet.ocid" @save="saveEntries(row, 'potential', $event)" /></td>
             <td class="num cell"><ItemsMoneyCell :value="row.sell" :date="row.sellDate" label="판매" @save="saveField(row, 'sell', $event)" @date="saveDate(row, 'sell', $event)" /></td>
-            <td v-if="!mvpFee" class="center">
-              <button type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'PC방 3% → 누르면 5%' : '5% → PC방이면 눌러서 3%'" @click="toggleFee(row)">
+            <td v-if="feeColumn" class="center">
+              <button type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy || (mvpFee && !row.sell)" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'PC방 3% → 누르면 5%' : '5% → PC방이면 눌러서 3%'" @click="toggleFee(row)">
                 {{ Math.round(row.sellFee * 100) }}%
               </button>
             </td>
@@ -304,7 +305,7 @@ async function removeSheet() {
             <td class="center"><button type="button" class="icon-btn" :aria-label="`${row.name} 지우기`" :disabled="busy" @click="removeRow(row)">×</button></td>
           </tr>
           <tr v-if="!rows.length">
-            <td :colspan="mvpFee ? 13 : 14" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
+            <td :colspan="feeColumn ? 14 : 13" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
           </tr>
         </tbody>
         <tfoot>
@@ -314,7 +315,7 @@ async function removeSheet() {
             <td class="num">{{ formatEok(totals.starforce) }}</td>
             <td class="num">{{ formatEok(totals.potential) }}</td>
             <td class="num">{{ formatEok(totals.sellGross) }}</td>
-            <td v-if="!mvpFee" />
+            <td v-if="feeColumn" />
             <td class="num sell">{{ formatEok(totals.sell) }}</td>
             <td class="num invest">{{ formatEok(totals.invest) }}</td>
             <td class="num" :class="profitTone(totals.sold ? totals.net : null)" :title="`판매한 ${totals.sold}개 기준`">{{ totals.sold ? formatEok(totals.net) : '-' }}</td>
@@ -452,7 +453,7 @@ h3 {
 /* 칸 너비를 고정해야 머리글·값·합계가 같은 세로줄에 선다 */
 table {
   width: 100%;
-  min-width: 1220px;
+  min-width: 1080px;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 14px;
@@ -460,8 +461,10 @@ table {
 .c-handle { width: 28px; }
 .c-no { width: 44px; }
 .c-part { width: 92px; }
-.c-num { width: 104px; }
+.c-num { width: 92px; }
 .c-fee { width: 72px; }
+/* 수수료 칸이 없으면 그만큼 줄여 이름 칸 너비를 같게 둔다 */
+table.mvp { min-width: 1008px; }
 .c-include { width: 64px; }
 .c-remove { width: 40px; }
 th,

@@ -180,12 +180,17 @@ ul {
   font-family: var(--f-title);
   font-size: 13px;
 }
+/* 높이를 칸 수로 나누면 많을 땐 겹치고 적을 땐 늘어나 칸 높이를 고정한다 */
 .links,
 .sets {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
+  grid-auto-rows: 40px;
+  align-content: start;
   gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .item {
   display: flex;
@@ -194,7 +199,6 @@ ul {
   width: 100%;
   height: 100%;
   min-width: 0;
-  min-height: 36px;
   padding: 4px 10px;
   background: var(--panel);
   border: 1px solid var(--panel-line);
@@ -242,6 +246,10 @@ ul {
 .detail b {
   color: var(--api);
   font-size: 14px;
+}
+/* 넥슨 효과 문구는 줄바꿈으로 항목을 나눠 준다 */
+.detail span {
+  white-space: pre-line;
 }
 .line-text {
   min-width: 0;

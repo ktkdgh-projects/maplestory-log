@@ -4,7 +4,7 @@ import type { StarforcePlan } from '#shared/calc/starforce'
 import { SUNDAY_STARFORCE_EFFECTS } from '#shared/data/starforce'
 import { LEVELS_FOR_STARFORCE, starforceActual, starforceVerdict } from '#shared/calc/review'
 
-const props = defineProps<{ s: ReviewStarforce, plan: StarforcePlan | null, level: number | null, open: boolean, character: string, ocid: string, addDate: string | null }>()
+const props = defineProps<{ s: ReviewStarforce, plan: StarforcePlan | null, level: number | null, open: boolean, character: string, ocid: string, addDate: string | null, showOwner?: boolean }>()
 const emit = defineEmits<{ toggle: [], level: [level: number] }>()
 
 const verdict = computed(() => (props.plan ? starforceVerdict(props.s, props.plan) : null))
@@ -38,6 +38,7 @@ const reason = computed(() => {
 const conditions = computed(() => [
   props.level ? `Lv.${props.level}` : null,
   props.s.discount ? '이벤트 할인 받음' : null,
+  props.s.mvp ? `MVP ${Math.round(props.s.mvp * 100)}% 할인` : null,
   ...props.s.sundayEffects.filter(e => e !== 'discount').map(e => SUNDAY_STARFORCE_EFFECTS.find(x => x.key === e)?.label ?? e),
   props.s.protectStars.length ? `파괴방지 ★${props.s.protectStars.join('·')}` : '파괴방지 안 씀',
   props.s.manual !== null ? '쓴 메소는 장비 결산에 적은 값' : '노작값은 빠짐',
@@ -94,7 +95,7 @@ const rankText = (rank: number) => `상위 ${Math.max(1, Math.round(rank * 100))
       <span v-else class="icon" />
       <span class="nm">
         <b>{{ s.item }}<span v-if="s.condition" class="cond">{{ s.condition }}</span></b>
-        <small>{{ s.slot ?? '지금 안 낀 장비' }} · <span class="star">★</span>{{ s.from }} → <span class="star">★</span>{{ s.to }} · {{ s.attempts }}번<template v-if="s.destroys"> · <span class="loss">파괴 {{ s.destroys }}</span></template></small>
+        <small><span v-if="showOwner" class="owner">{{ character }}</span>{{ s.slot ?? '지금 안 낀 장비' }} · <span class="star">★</span>{{ s.from }} → <span class="star">★</span>{{ s.to }} · {{ s.attempts }}번<template v-if="s.destroys"> · <span class="loss">파괴 {{ s.destroys }}</span></template></small>
       </span>
       <span class="cell">쓴 메소<span v-if="s.manual !== null" class="src">수기</span><b>{{ formatShortNumber(starforceActual(s)) }}</b></span>
       <span class="cell avg">평균이면<b>{{ verdict ? formatShortNumber(verdict.expected) : reached && level ? '…' : '-' }}</b></span>
@@ -243,6 +244,13 @@ const rankText = (rank: number) => `상위 ${Math.max(1, Math.round(rank * 100))
 .nm small {
   color: var(--sub);
   font-size: 12px;
+}
+.owner {
+  margin-right: 6px;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  border-radius: 4px;
+  color: var(--gold);
 }
 .star {
   color: var(--gold);

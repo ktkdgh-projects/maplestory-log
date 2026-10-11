@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
     mesoEntries.find({ userId }).sort({ date: 1, createdAt: 1 }).toArray(),
   ])
   const sheetOf = new Map(sheetDocs.map(s => [s._id.toHexString(), s]))
-  const references = await rowReferences(userId, sheetDocs, rowDocs, user.mvpDiscount ?? 0)
+  const references = await rowReferences(userId, sheetDocs, rowDocs, mvpTimeline(user))
   const date = kstToday()
 
   if (format === 'json') {
@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
         clears: clearDocs.map(toBossClear),
         entries: entryDocs.map(toMesoEntry),
       },
-      items: sheetDocs.map(s => toItemSheet(s, rowDocs, references, new Map(), user.mvpDiscount ?? 0)),
+      items: sheetDocs.map(s => toItemSheet(s, rowDocs, references, new Map())),
       enhance: enhanceDocs.map(({ userId: _u, _id, ...e }) => e),
       memos: memoDocs.map(toMemo),
     }

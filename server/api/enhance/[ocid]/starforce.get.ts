@@ -9,5 +9,5 @@ export default defineEventHandler(async (event): Promise<StarforceDetail> => {
   const from = query.from ? parseDate(query.from) : null
 
   const character = await ownCharacter(user._id, getRouterParam(event, 'ocid'), () => getUserApiKey(user._id))
-  return starforceDetail(user._id, await characterNames(character), item, level, from, user.mvpDiscount ?? 0)
+  return starforceDetail(user._id, await characterNames(character), item, level, from, mvpTimeline(user))
 })

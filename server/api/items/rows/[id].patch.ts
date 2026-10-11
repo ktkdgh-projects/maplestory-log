@@ -1,4 +1,5 @@
 import type { ItemRowDoc } from '../../../utils/mongo'
+import { effectiveFee } from '#shared/calc/meso'
 
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
@@ -39,6 +40,8 @@ export default defineEventHandler(async (event) => {
     if (!isAuctionFee(body.sellFee)) throw createError({ statusCode: 400, message: '수수료를 골라 주세요.' })
     update.sellFee = body.sellFee
   }
+  // 판매가를 처음 적을 때 MVP 실버 이상이면 수수료를 3%로 정해 둔다. 나중에 등급이 바뀌어도 이 값은 그대로다
+  if (update.sell && !row.sell && update.sellFee === undefined) update.sellFee = effectiveFee(row.sellFee, user.mvpDiscount)
   // 날짜를 안 고르고 금액만 적으면 오늘 날짜로 가계부에 넣는다
   if (update.buy && !(update.buyDate ?? row.buyDate)) update.buyDate = today
   if (update.starforce && !(update.starforceDate ?? row.starforceDate)) update.starforceDate = today

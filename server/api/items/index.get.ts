@@ -8,8 +8,8 @@ export default defineEventHandler(async (event): Promise<ItemsResponse> => {
     itemRows.find({ userId: user._id }).sort({ order: 1 }).toArray(),
   ])
   const [references, icons] = await Promise.all([
-    rowReferences(user._id, sheets, rows, user.mvpDiscount ?? 0),
+    rowReferences(user._id, sheets, rows, mvpTimeline(user)),
     lookupItems(rows.filter(r => !r.icon).map(r => r.name)),
   ])
-  return { sheets: sheets.map(s => toItemSheet(s, rows, references, icons, user.mvpDiscount ?? 0)) }
+  return { sheets: sheets.map(s => toItemSheet(s, rows, references, icons)) }
 })
