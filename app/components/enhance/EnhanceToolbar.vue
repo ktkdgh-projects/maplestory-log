@@ -1,26 +1,27 @@
 <script setup lang="ts">
 import type { CharacterBrief } from '#shared/types'
+import { ENHANCE_HISTORY_DAYS, ENHANCE_PERIODS, useKstToday } from '~/composables/useEnhanceRecords'
 
 defineProps<{ characters: CharacterBrief[], syncing?: boolean, syncedFrom?: string | null }>()
 const ocid = defineModel<string | null>('ocid', { required: true })
 const days = defineModel<number | null>('days', { required: true })
 const pickedFrom = defineModel<string>('pickedFrom', { required: true })
+const today = useKstToday()
+// 서버가 모아 두는 기록보다 이전 날짜는 고를 수 없다
+const minDate = computed(() => addDays(today.value, -ENHANCE_HISTORY_DAYS))
 </script>
 
 <template>
   <div class="toolbar">
     <slot name="lead" />
-    <label class="pick">
-      <span class="sr-only">캐릭터</span>
-      <select v-model="ocid" class="field-input">
-        <option v-for="c in characters" :key="c.ocid" :value="c.ocid">{{ c.name }} · {{ c.job }} · LV.{{ c.level }}</option>
-      </select>
-    </label>
+    <div class="pick">
+      <AppSelect :model-value="ocid ?? ''" label="캐릭터" placeholder="캐릭터 고르기" @update:model-value="ocid = String($event)" :options="characters.map(c => ({ value: c.ocid, label: `${c.name} · ${c.job} · LV.${c.level}` }))" />
+    </div>
     <div class="seg" role="group" aria-label="기간">
       <button v-for="p in ENHANCE_PERIODS" :key="p.label" type="button" :aria-pressed="!pickedFrom && days === p.days" @click="days = p.days">{{ p.label }}</button>
     </div>
-    <!-- 기간 버튼 줄은 좁으면 옆으로 밀리게 잘라 두어서, 달력이 잘리지 않게 밖에 둔다 -->
-    <DatePicker v-model="pickedFrom" class="date" min="2023-12-21" :max="kstToday()" suffix="부터" />
+    <!-- 기간 버튼 줄은 좁으면 넘친 부분을 잘라 두므로 달력이 잘리지 않게 밖에 둔다 -->
+    <DatePicker v-model="pickedFrom" class="date" :min="minDate" :max="today" suffix="부터" />
     <HoverInfo title="기록 안내" align="left" below class="info">
       <span class="info-i" aria-label="기록 안내">i</span>
       <template #info>
@@ -29,7 +30,7 @@ const pickedFrom = defineModel<string>('pickedFrom', { required: true })
       </template>
     </HoverInfo>
     <span class="sync" :class="{ busy: syncing }">
-      <i aria-hidden="true" />{{ syncing ? `넥슨 기록 모으는 중${syncedFrom ? ` · ${formatMonthDay(syncedFrom)}까지` : ''}` : '최신 기록까지 모음' }}
+      <i aria-hidden="true" />{{ syncing ? `넥슨 기록 모으는 중${syncedFrom ? ` · ${formatDay(syncedFrom)}까지` : ''}` : '최신 기록까지 모음' }}
     </span>
   </div>
 </template>
@@ -50,6 +51,18 @@ const pickedFrom = defineModel<string>('pickedFrom', { required: true })
   .pick .field-input {
     width: 100%;
     min-width: 0;
+  }
+  .seg {
+    display: flex;
+    width: 100%;
+  }
+  .seg button {
+    flex: 1;
+    min-height: 38px;
+    padding: 6px 4px;
+  }
+  .sync {
+    font-size: 12px;
   }
 }
 .seg {

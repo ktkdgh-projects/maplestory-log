@@ -2,19 +2,19 @@
 import type { BossBoardResponse, CharacterDetail } from '#shared/types'
 import { DIFFICULTY_LABELS, MAX_PARTY, bossPeriod, findBoss, type BossDifficulty } from '#shared/data/bosses'
 import { DESTINY_SECOND_STEP, LIBERATIONS, isGenesisWeapon, traceOf, type LiberationKind } from '#shared/data/liberation'
-import type { TraceBoss } from '~/utils/liberationCalc'
+import { planLiberation, type TraceBoss } from '#shared/calc/liberation'
 
 useHead({ title: '해방 · 메이플스토리로그' })
 
 const { me } = await useMe()
 const today = kstToday()
 
-// 제네시스 해방과 데스티니 초월. 캐릭터를 고르면 해방 단계에 맞는 쪽으로 바꿔 준다
+// 캐릭터를 고르면 해방 단계에 맞는 종류로 바꿔 준다
 const kind = ref<LiberationKind>('genesis')
 const info = computed(() => LIBERATIONS[kind.value])
 const total = computed(() => info.value.steps.reduce((n, s) => n + s.need, 0))
 
-// 가계부 보스 세팅과 이번 주 잡은 기록. 로그인 안 했으면 직접 고른다
+// 로그인 안 했으면 보스 세팅 없이 직접 고른다
 const board = ref<BossBoardResponse | null>(null)
 const ocid = ref<string | null>(null)
 // 저장값·보스 세팅·해방 단계를 다 불러오기 전엔 스켈레톤으로 막아 값이 바뀌며 화면이 흔들리지 않게 한다
@@ -31,8 +31,7 @@ onMounted(async () => {
 })
 const character = computed(() => board.value?.roster.find(c => c.ocid === ocid.value) ?? null)
 
-// 넥슨 공식 해방 완료 단계(0 미완료, 1 제네시스, 2 데스티니 1차, 그 위는 2차로 본다). 캐릭터가 없거나 못 받으면 null
-// 이 값이 생기기 전에 저장해 둔 캐릭터 정보면 낀 무기 이름으로 판단한다
+// 넥슨 해방 완료 단계(0 미완료·1 제네시스·2 데스티니 1차·그 위 2차). 이 값이 없던 옛 캐릭터 정보는 무기 이름으로 판단한다
 const cleared = ref<number | null>(null)
 const checking = ref(false)
 watch(character, async (c) => {
@@ -52,7 +51,7 @@ watch(character, async (c) => {
 // 데스티니 1차를 마쳤으면 2차 첫 단계부터
 const minStep = computed(() => (kind.value === 'destiny' && (cleared.value ?? 0) >= 2 ? DESTINY_SECOND_STEP : 0))
 const finished = computed(() => cleared.value !== null && cleared.value >= info.value.doneAt)
-// 이 캐릭터가 이 계산을 할 수 없을 때의 안내. 입력을 잠그고 위에 띄운다
+// 이 캐릭터가 할 수 없는 계산이면 입력을 잠그고 띄울 안내
 const lock = computed(() => {
   if (finished.value) return { title: `${info.value.name}을 마친 캐릭터예요`, sub: kind.value === 'genesis' ? '데스티니 초월로 바꿔서 계산해 보세요' : '다른 캐릭터를 고르면 계산할 수 있어요' }
   if (kind.value === 'destiny' && cleared.value !== null && cleared.value < LIBERATIONS.genesis.doneAt) return { title: '제네시스 해방부터 마쳐야 해요', sub: '제네시스 해방으로 바꿔서 계산해 보세요' }
@@ -70,7 +69,7 @@ interface Saved { step: number, collected: number, bosses: Omit<TraceBoss, 'clea
 const step = ref(0)
 const collected = ref(0)
 const bosses = ref<Omit<TraceBoss, 'cleared'>[]>([])
-// 제네시스 패스와 효과가 끝나는 날(비우면 끝까지 적용)
+// passUntil을 비우면 끝까지 적용
 const pass = ref(false)
 const passUntil = ref('')
 // 제네시스는 예전 키를 그대로 써서 전에 적어 둔 값을 잃지 않는다
@@ -121,7 +120,6 @@ const passNow = computed(() => usePass.value && (!passUntil.value || passUntil.v
 
 const stepNeed = computed(() => info.value.steps[step.value]?.need ?? 0)
 const overallPercent = computed(() => (finished.value ? 100 : Math.round(((total.value - plan.value.left) / total.value) * 100)))
-// 지난 단계는 완료, 지금·다음 단계는 끝나는 주
 const timeline = computed(() => info.value.steps.map((s, i) => ({
   ...s,
   state: finished.value || i < step.value ? 'done' : i === step.value ? 'now' : 'next',
@@ -136,10 +134,14 @@ watch(adding, (id) => {
   adding.value = ''
 })
 const difficulties = (bossId: string) => Object.keys(info.value.traces[bossId] ?? {}) as BossDifficulty[]
+const difficultyOptions = (bossId: string) => difficulties(bossId).map(d => ({ value: d as string, label: DIFFICULTY_LABELS[d] }))
+const PARTY_OPTIONS = Array.from({ length: MAX_PARTY }, (_, i) => ({ value: i + 1, label: `${i + 1}인` }))
+const addOptions = computed(() => addable.value.map(id => ({ value: id, label: findBoss(id)?.name ?? id })))
+const rosterOptions = computed(() => (board.value?.roster ?? []).map(c => ({ value: c.ocid, label: c.name, sub: `${c.job} · LV.${c.level}` })))
+const anyCleared = computed(() => bosses.value.some(b => clearedNow(b.bossId)))
+const anyWiki = computed(() => bosses.value.some(b => info.value.wikiBosses?.includes(b.bossId)))
 const format = (n: number) => n.toLocaleString('ko-KR')
 
-// 올해가 아니면 연도를 붙여 "얼마 안 남았네"로 잘못 읽지 않게 한다
-const weekDate = (week: string) => (week.slice(0, 4) === today.slice(0, 4) ? formatMonthDay(week) : `${week.slice(0, 4)}년 ${formatMonthDay(week)}`)
 const weeksUntil = (week: string) => Math.round((Date.parse(week) - Date.parse(bossPeriod('weekly', today))) / (7 * 24 * 60 * 60 * 1000))
 const weekLabel = (week: string) => {
   const n = weeksUntil(week)
@@ -153,19 +155,17 @@ const weekLabel = (week: string) => {
       <form v-if="ready" ref="inputs" class="calc-inputs" @submit.prevent novalidate>
         <section class="calc-section">
           <h3 class="calc-section-title">캐릭터</h3>
-          <label v-if="board?.roster.length" class="calc-load">
-            <span class="calc-load-label">가계부 보스 세팅에서 불러오기</span>
-            <select v-model="ocid" class="field-input">
-              <option v-for="c in board.roster" :key="c.ocid" :value="c.ocid">{{ c.name }} · {{ c.job }} · LV.{{ c.level }}</option>
-            </select>
-          </label>
+          <div v-if="board?.roster.length" class="calc-load">
+            <label for="load-roster" class="calc-load-label">가계부 보스 세팅에서 불러오기</label>
+            <AppSelect id="load-roster" :model-value="ocid ?? ''" :options="rosterOptions" @update:model-value="v => (ocid = v)" />
+          </div>
           <p v-else class="calc-hint">{{ me ? '가계부에 보스 세팅을 해 두면 자동으로 채워져요. 아래에서 직접 골라도 돼요.' : '로그인하면 가계부 보스 세팅으로 자동으로 채워져요.' }}</p>
           <div class="calc-seg wide" role="group" aria-label="해방 종류">
             <button v-for="(l, k) in LIBERATIONS" :key="k" type="button" :aria-pressed="kind === k" @click="kind = k">{{ l.name }}</button>
           </div>
         </section>
 
-        <!-- 이 캐릭터가 할 수 없는 계산이면 캐릭터 고르기만 두고 나머지 입력을 통째로 잠근다. 안내는 위에 겹쳐 띄워 자리가 바뀌지 않게 한다 -->
+        <!-- 할 수 없는 계산이면 캐릭터 고르기만 두고 잠근다. 안내는 겹쳐 띄워 자리가 바뀌지 않게 한다 -->
         <div class="lockable" :class="{ locked: lock }">
           <div class="lock-body" :inert="!!lock">
             <section class="calc-section">
@@ -193,14 +193,15 @@ const weekLabel = (week: string) => {
               </div>
             </section>
 
-            <section v-if="kind === 'genesis'" class="calc-section">
-              <h3 class="calc-section-title">제네시스 패스<small>흔적 3배</small></h3>
+            <!-- 데스티니 초월엔 패스가 없지만 구역은 남겨 둬서 종류를 바꿔도 아래가 들썩이지 않게 한다 -->
+            <section class="calc-section pass-section" :class="{ off: kind !== 'genesis' }" :inert="kind !== 'genesis'">
+              <h3 class="calc-section-title">제네시스 패스<small>{{ kind === 'genesis' ? '흔적 3배' : '제네시스 해방에만 있어요' }}</small></h3>
               <div class="calc-seg wide" role="group" aria-label="제네시스 패스">
-                <button type="button" :aria-pressed="!pass" @click="pass = false">없음</button>
-                <button type="button" :aria-pressed="pass" @click="pass = true">있음</button>
+                <button type="button" :aria-pressed="!usePass" @click="pass = false">없음</button>
+                <button type="button" :aria-pressed="usePass" @click="pass = true">있음</button>
               </div>
               <!-- 패스가 없어도 자리를 잡아 둬서 눌러도 아래 칸이 밀리지 않게 한다 -->
-              <div class="calc-field pass-until" :class="{ off: !pass }" :inert="!pass">
+              <div class="calc-field pass-until" :class="{ off: !usePass }" :inert="!usePass">
                 <span class="calc-label">효과 끝나는 날 · 비워 두면 끝까지 3배</span>
                 <div class="date-box">
                   <DatePicker v-model="passUntil" :min="today" placeholder="끝까지 적용" />
@@ -215,23 +216,20 @@ const weekLabel = (week: string) => {
               </h3>
               <ul class="bosses">
                 <li v-for="(b, i) in bosses" :key="b.bossId" :class="{ cleared: clearedNow(b.bossId) }">
-                  <span class="tick" :title="clearedNow(b.bossId) ? `가계부에 이번 주기에 잡았다고 체크한 보스예요. 이번 주기 ${info.currency}은 모은 양에 들어 있다고 봐요` : undefined">✓</span>
-                  <span class="boss-name" :title="info.wikiBosses?.includes(b.bossId) ? '공식 공지에 획득량이 없어 위키 기준이에요' : undefined">{{ findBoss(b.bossId)?.name }}<small v-if="findBoss(b.bossId)?.cycle === 'monthly'">월간</small><small v-if="info.wikiBosses?.includes(b.bossId)" class="wiki">위키</small></span>
-                  <select v-model="b.difficulty" class="mini" :aria-label="`${findBoss(b.bossId)?.name} 난이도`">
-                    <option v-for="d in difficulties(b.bossId)" :key="d" :value="d">{{ DIFFICULTY_LABELS[d] }}</option>
-                  </select>
-                  <select v-model.number="b.party" class="mini" :aria-label="`${findBoss(b.bossId)?.name} 파티 인원`">
-                    <option v-for="n in MAX_PARTY" :key="n" :value="n">{{ n }}인</option>
-                  </select>
+                  <span class="tick" aria-hidden="true">✓</span>
+                  <span class="boss-name">{{ findBoss(b.bossId)?.name }}<small v-if="findBoss(b.bossId)?.cycle === 'monthly'">월간</small><small v-if="info.wikiBosses?.includes(b.bossId)" class="wiki">위키</small><span v-if="clearedNow(b.bossId)" class="sr-only"> · 이번 주기에 잡음</span></span>
+                  <AppSelect v-model="b.difficulty" class="mini" :options="difficultyOptions(b.bossId)" :label="`${findBoss(b.bossId)?.name} 난이도`" />
+                  <AppSelect v-model="b.party" class="mini" :options="PARTY_OPTIONS" :label="`${findBoss(b.bossId)?.name} 파티 인원`" />
                   <b class="trace" :class="{ boosted: passNow }">{{ format(traceOf(kind, b.bossId, b.difficulty, b.party, passNow)) }}</b>
                   <button type="button" class="remove" :aria-label="`${findBoss(b.bossId)?.name} 빼기`" @click="bosses.splice(i, 1)">×</button>
                 </li>
                 <li v-if="!bosses.length" class="none">아래에서 {{ info.currency }}을 주는 보스를 더해 주세요.</li>
               </ul>
-              <select v-if="addable.length" v-model="adding" class="field-input add" aria-label="보스 더하기">
-                <option value="">+ 보스 더하기</option>
-                <option v-for="id in addable" :key="id" :value="id">{{ findBoss(id)?.name }}</option>
-              </select>
+              <p v-if="anyCleared || anyWiki" class="calc-hint">
+                <template v-if="anyCleared"><b class="tick-note">✓</b> 가계부에 이번 주기에 잡았다고 체크한 보스예요. 그 {{ info.currency }}은 모은 양에 들어 있다고 봐요.</template>
+                <template v-if="anyWiki"> '위키'는 공식 공지에 획득량이 없어 위키 기준인 보스예요.</template>
+              </p>
+              <AppSelect v-if="addable.length" v-model="adding" :options="addOptions" placeholder="+ 보스 더하기" label="보스 더하기" />
             </section>
           </div>
           <p v-if="lock" class="lock-note"><b>{{ lock.title }}</b><span>{{ lock.sub }}</span></p>
@@ -252,7 +250,7 @@ const weekLabel = (week: string) => {
             <span class="s2">{{ lock.title }}.</span>
           </p>
           <p v-else-if="plan.finish" class="calc-say">
-            <em>{{ weekDate(plan.finish) }}</em> 주에 {{ kind === 'genesis' ? '해방해요' : '초월해요' }}.<br>
+            <em>{{ formatDay(plan.finish) }}</em> 주에 {{ kind === 'genesis' ? '해방해요' : '초월해요' }}.<br>
             <span class="s2">지금 세팅대로면 <em>{{ weekLabel(plan.finish) }}</em> {{ kind === 'genesis' ? '해방' : '초월' }}이에요{{ passNow ? ' · 패스 3배 적용' : '' }}.</span>
           </p>
           <p v-else class="calc-say">
@@ -275,7 +273,7 @@ const weekLabel = (week: string) => {
             <li v-for="s in timeline" :key="s.boss" :class="s.state">
               <span class="node" aria-hidden="true" />
               <span class="what"><b>{{ s.boss }}</b><small>{{ s.tier ? `${s.tier} · ` : '' }}{{ format(s.need) }}</small></span>
-              <span class="when">{{ s.state === 'done' ? '완료' : lock ? '-' : s.week ? `${weekDate(s.week)} 주 · ${weekLabel(s.week)}` : '-' }}</span>
+              <span class="when">{{ s.state === 'done' ? '완료' : lock ? '-' : s.week ? `${formatDay(s.week)} 주 · ${weekLabel(s.week)}` : '-' }}</span>
             </li>
           </ol>
         </template>
@@ -309,12 +307,11 @@ const weekLabel = (week: string) => {
 }
 .steps .calc-chip.past {
   color: var(--gain);
-  border-color: rgb(127 217 154 / 0.3);
+  border-color: color-mix(in srgb, var(--gain) 30%, transparent);
 }
 .steps .calc-chip[aria-pressed="true"] small {
   color: inherit;
 }
-/* 지금 단계 흔적 막대. 넘친 흔적은 다음 단계로 가므로 100%에서 멈춘다 */
 .meter {
   height: 6px;
   overflow: hidden;
@@ -345,11 +342,19 @@ const weekLabel = (week: string) => {
 .meter-text span {
   margin-left: auto;
 }
-.pass-until {
+.pass-until,
+.pass-section {
   transition: opacity var(--fast) ease;
 }
-.pass-until.off {
+.pass-until.off,
+.pass-section.off {
   opacity: 0.35;
+}
+.pass-section.off .pass-until.off {
+  opacity: 1;
+}
+.tick-note {
+  color: var(--gain);
 }
 .lockable {
   position: relative;
@@ -377,7 +382,7 @@ const weekLabel = (week: string) => {
   padding: 14px 20px;
   translate: -50% 0;
   background: rgb(10 12 22 / 0.92);
-  border: 1px solid rgb(127 217 154 / 0.45);
+  border: 1px solid color-mix(in srgb, var(--gain) 45%, transparent);
   border-radius: 12px;
   box-shadow: 0 10px 24px rgb(0 0 0 / 0.45);
   text-align: center;
@@ -424,7 +429,7 @@ const weekLabel = (week: string) => {
 /* 모든 줄이 같은 칸 너비를 써서 숫자·버튼이 세로로 줄 맞춰 선다 */
 .bosses li {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) 78px 50px 42px 16px;
+  grid-template-columns: 14px minmax(0, 1fr) 78px 54px 42px 24px;
   align-items: center;
   gap: 6px;
   min-height: 38px;
@@ -435,8 +440,8 @@ const weekLabel = (week: string) => {
   font-size: 13px;
 }
 .bosses li.cleared {
-  background: rgb(127 217 154 / 0.05);
-  border-color: rgb(127 217 154 / 0.4);
+  background: color-mix(in srgb, var(--gain) 5%, transparent);
+  border-color: color-mix(in srgb, var(--gain) 40%, transparent);
 }
 .tick {
   visibility: hidden;
@@ -460,19 +465,15 @@ const weekLabel = (week: string) => {
   color: var(--calc);
   font-size: 11px;
 }
-.mini {
-  width: 100%;
-  height: 26px;
-  padding: 0 4px;
-  background: #141a30;
-  border: 1px solid var(--panel-line);
-  border-radius: 6px;
-  color: var(--text);
-  font: inherit;
+.mini :deep(.trigger) {
+  min-height: 30px;
+  padding: 0 6px;
   font-size: 12px;
 }
-.mini:hover {
-  border-color: var(--tip-line);
+.mini :deep(.list li) {
+  min-height: 32px;
+  padding: 2px 6px;
+  font-size: 12.5px;
 }
 .trace {
   color: var(--text);
@@ -486,6 +487,7 @@ const weekLabel = (week: string) => {
   color: var(--gold);
 }
 .remove {
+  height: 30px;
   padding: 0;
   background: none;
   border: 0;
@@ -504,9 +506,6 @@ const weekLabel = (week: string) => {
   font-size: 12.5px;
   text-align: center;
 }
-.add {
-  color: var(--sub);
-}
 .overall {
   display: grid;
   gap: 6px;
@@ -514,7 +513,6 @@ const weekLabel = (week: string) => {
 .overall b {
   color: var(--gold);
 }
-/* 단계별로 끝나는 주를 세로 선으로 잇는다 */
 .timeline {
   display: grid;
   margin: 0;
@@ -539,7 +537,7 @@ const weekLabel = (week: string) => {
   background: var(--panel-line);
 }
 .timeline li.done::before {
-  background: rgb(127 217 154 / 0.4);
+  background: color-mix(in srgb, var(--gain) 40%, transparent);
 }
 .timeline li:first-child::before {
   top: 50%;
@@ -589,5 +587,25 @@ const weekLabel = (week: string) => {
 .timeline li.now:last-child .when {
   color: var(--gold);
   font-weight: 700;
+}
+/* 휴대폰: 보스 이름이 잘리지 않게 이름 줄과 난이도·인원 줄로 나누고, 단계 칩은 두 칸씩 */
+@media (max-width: 480px) {
+  .calc-chips.grid.steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bosses li {
+    grid-template-columns: 14px minmax(0, 1fr) minmax(0, 1fr) 42px 30px;
+    grid-template-areas:
+      'tick name name trace remove'
+      '. diff party . .';
+    row-gap: 4px;
+    padding: 6px 8px;
+  }
+  .bosses .tick { grid-area: tick; }
+  .bosses .boss-name { grid-area: name; }
+  .bosses .mini:nth-of-type(1) { grid-area: diff; }
+  .bosses .mini:nth-of-type(2) { grid-area: party; }
+  .bosses .trace { grid-area: trace; }
+  .bosses .remove { grid-area: remove; }
 }
 </style>

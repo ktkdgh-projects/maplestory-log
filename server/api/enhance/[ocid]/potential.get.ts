@@ -1,6 +1,5 @@
 import type { PotentialDetail } from '#shared/types'
 
-// 장비 하나의 윗잠(side=top) 또는 에디(side=additional) 기록을 등급 단계별·날짜별로 묶어 돌려준다
 export default defineEventHandler(async (event): Promise<PotentialDetail> => {
   const user = requireUser(event)
   const query = getQuery(event)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SnapshotsResponse, TrackedCharacter } from '#shared/types'
+import { summarizeGrowth, toGrowthDays } from '#shared/calc/growth'
 
 const RANGES = [7, 14, 30]
 const VIEWS = [{ key: 'field', label: '필드' }, { key: 'table', label: '날짜별 표' }] as const
@@ -17,7 +18,7 @@ const own = computed(() => !searchName.value && !!me.value?.main)
 
 // 기록 요청을 먼저 보내 두고 캐릭터 목록을 기다려야 둘이 차례로 쌓이지 않는다
 const { getCachedData, revalidate } = useRevisitCache()
-const { data, error, refresh } = useFetch<SnapshotsResponse>(() => (searchName.value ? '/api/growth/search' : '/api/snapshots'), {
+const { data, error, status, refresh } = useFetch<SnapshotsResponse>(() => (searchName.value ? '/api/growth/search' : '/api/snapshots'), {
   query: computed(() => (searchName.value ? { name: searchName.value, days: range.value } : { days: range.value, ocid: ocid.value })),
   immediate: !!searchName.value || own.value,
   getCachedData,
@@ -32,7 +33,7 @@ revalidate(refresh, refreshTracked)
 const nameInput = ref('')
 const searchHint = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
-// 최근에 찾아본 캐릭터는 이 브라우저에만 남겨 다시 누르기 쉽게 한다
+// 최근 검색은 이 브라우저에만 남긴다
 const RECENT_KEY = 'growth-recent'
 const RECENT_MAX = 6
 const recent = ref<string[]>([])
@@ -90,10 +91,7 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
   <GameWindow v-if="!searchName && !me?.main" title="성장 기록" sub="캐릭터 이름만 있으면 로그인 없이 볼 수 있어요" accent="green">
     <div class="gate">
       <section class="about">
-        <div class="npc">
-          <img src="/favicon.svg" alt="" class="face">
-          <p class="say">누구 기록이 궁금하세요? 이름을 알려 주시면 <b>경험치·전투력 변화</b>를 보여 드릴게요.</p>
-        </div>
+        <NpcSay tone="var(--gain)">누구 기록이 궁금하세요? 이름을 알려 주시면 <b>경험치·전투력 변화</b>를 보여 드릴게요.</NpcSay>
         <ul class="previews stagger">
           <li style="--tone: var(--exp)"><b>경험치</b><span>날마다 얻은 경험치와 레벨업한 날</span></li>
           <li style="--tone: var(--api)"><b>레벨업 예상</b><span>최근 7일 사냥량 기준 다음 레벨 날짜</span></li>
@@ -142,7 +140,6 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
           </div>
         </div>
 
-        <!-- 장식: 오르는 경험치 그래프 -->
         <svg class="deco" viewBox="0 0 300 60" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <linearGradient id="growth-deco" x1="0" x2="0" y1="0" y2="1">
@@ -176,7 +173,16 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
       </div>
     </div>
 
-    <p v-if="error" class="form-error">{{ errorMessage(error) }}</p>
+    <div v-if="error" class="form-error retry">
+      <span>{{ errorMessage(error) }}</span>
+      <button type="button" class="btn ghost compact" @click="refresh()">다시 불러오기</button>
+    </div>
+    <!-- 처음 받는 동안은 빈 기록 안내 대신 자리만 잡아 둔다 -->
+    <div v-else-if="!data && status !== 'success'" class="stage" aria-busy="true" aria-label="불러오는 중">
+      <div class="skeleton" style="height: 190px" />
+      <div class="skeleton" style="height: 64px" />
+      <div class="skeleton" style="height: 118px" />
+    </div>
     <p v-else-if="!days.length" class="muted">
       {{ data?.pending ? '넥슨에서 지난 기록을 불러오고 있어요. 잠시만 기다려 주세요.' : '아직 쌓인 기록이 없어요. 매일 새벽 4시에 전날 기록이 저장돼요.' }}
     </p>
@@ -192,7 +198,7 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
       </Transition>
 
       <div v-if="summary" class="summary stagger">
-        <HoverInfo title="기간 경험치" align="left">
+        <HoverInfo title="하루 평균과 레벨업" align="left">
           <div class="tile" style="--tone: var(--exp)">
             <span class="tile-label">기간 경험치</span>
             <span class="tile-value">{{ formatSignedPercent(summary.totalPercent) }}</span>
@@ -204,10 +210,10 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
             <span v-for="d in summary.levelUpDays" :key="d.date" class="gain">{{ dayLabel(d) }} LV.{{ d.level }} 달성</span>
           </template>
         </HoverInfo>
-        <HoverInfo title="다음 레벨업 예상">
+        <HoverInfo title="남은 경험치">
           <div class="tile" style="--tone: var(--api)">
             <span class="tile-label">다음 레벨업 예상</span>
-            <span class="tile-value">{{ summary.levelUpDate ? formatMonthDay(summary.levelUpDate) : '-' }}</span>
+            <span class="tile-value">{{ summary.levelUpDate ? formatDay(summary.levelUpDate) : '-' }}</span>
             <span class="tile-label">최근 7일 평균 기준</span>
           </div>
           <template #info>
@@ -216,18 +222,18 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
             <span class="muted">사냥량이 그대로라고 가정한 날짜예요</span>
           </template>
         </HoverInfo>
-        <HoverInfo title="경험치 많이 얻은 날">
+        <HoverInfo title="경험치 많이 얻은 날 순위">
           <div class="tile" style="--tone: var(--calc)">
             <span class="tile-label">최고의 날</span>
-            <span class="tile-value">{{ summary.bestDay ? formatMonthDay(summary.bestDay.date) : '-' }}</span>
+            <span class="tile-value">{{ summary.bestDay ? formatDay(summary.bestDay.date) : '-' }}</span>
             <span v-if="summary.bestDay?.gainExp" class="tile-label">{{ formatSigned(summary.bestDay.gainExp) }}</span>
           </div>
           <template #info>
-            <span v-for="(d, rank) in summary.topDays" :key="d.date">{{ rank + 1 }}위 {{ formatMonthDay(d.date) }} · {{ formatSigned(d.gainExp!) }} ({{ formatSignedPercent(d.gainPercent ?? 0) }})</span>
+            <span v-for="(d, rank) in summary.topDays" :key="d.date">{{ rank + 1 }}위 {{ formatDay(d.date) }} · {{ formatSigned(d.gainExp!) }} ({{ formatSignedPercent(d.gainPercent ?? 0) }})</span>
             <span v-if="!summary.topDays.length" class="muted">아직 경험치를 얻은 날이 없어요</span>
           </template>
         </HoverInfo>
-        <HoverInfo title="전투력 변화" align="right">
+        <HoverInfo title="처음과 끝 · 최고와 최저" align="right">
           <div class="tile" style="--tone: var(--gain)">
             <span class="tile-label">전투력 변화</span>
             <span class="tile-value" :class="{ gain: (summary.combatPowerChange ?? 0) > 0, loss: (summary.combatPowerChange ?? 0) < 0 }">
@@ -261,49 +267,6 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
   display: grid;
   gap: 14px;
 }
-.npc {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.face {
-  flex: none;
-  width: 56px;
-  height: 56px;
-  padding: 6px;
-  background: var(--bar);
-  border: 2px solid var(--tip-line);
-  border-radius: 10px;
-  animation: bob 2.4s ease-in-out infinite;
-}
-.say {
-  position: relative;
-  margin: 0;
-  padding: 10px 14px;
-  background: var(--bar);
-  border: 2px solid var(--tip-line);
-  border-radius: 10px;
-  font-size: 14.5px;
-  line-height: 1.6;
-  text-wrap: balance;
-  animation: rise-in 0.5s var(--ease-out) 0.15s backwards;
-}
-/* 말풍선 꼬리 */
-.say::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: -9px;
-  width: 14px;
-  height: 14px;
-  background: var(--bar);
-  border-bottom: 2px solid var(--tip-line);
-  border-left: 2px solid var(--tip-line);
-  transform: translateY(-50%) rotate(45deg);
-}
-.say b {
-  color: var(--gain);
-}
 .small a {
   color: var(--api);
 }
@@ -315,7 +278,7 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
   overflow: hidden;
   padding: 16px 16px 0;
   background:
-    radial-gradient(420px 160px at 100% 0, rgb(127 217 154 / 0.1), transparent 70%),
+    radial-gradient(420px 160px at 100% 0, color-mix(in srgb, var(--gain) 10%, transparent), transparent 70%),
     var(--panel);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
@@ -347,7 +310,7 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
 }
 .search-box:focus-within {
   border-color: var(--gain);
-  box-shadow: 0 0 0 1px var(--gain), 0 0 18px rgb(127 217 154 / 0.25);
+  box-shadow: 0 0 0 1px var(--gain), 0 0 18px color-mix(in srgb, var(--gain) 25%, transparent);
 }
 .search-box.invalid {
   border-color: var(--loss);
@@ -388,7 +351,6 @@ kbd {
   font-family: inherit;
   font-size: 11.5px;
 }
-/* 돋보기 반대쪽 끝의 화살표 버튼. Enter와 같은 일을 한다 */
 .go {
   display: grid;
   flex: none;
@@ -398,7 +360,7 @@ kbd {
   background: var(--gain);
   border: 0;
   border-radius: 9px;
-  color: #10261a;
+  color: var(--on-gain);
   cursor: pointer;
   transition: transform var(--fast) var(--ease-out), filter var(--fast) ease;
 }
@@ -511,10 +473,6 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
-.small {
-  margin: 0;
-  font-size: 13px;
-}
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -552,6 +510,13 @@ kbd {
 }
 .sources :deep(.badge.calc) {
   margin-left: 4px;
+}
+.retry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .tile-value.gain {
   color: var(--gain);

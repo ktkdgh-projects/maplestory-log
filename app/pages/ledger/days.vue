@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import type { LedgerResponse, LedgerSettings } from '#shared/types'
+import { dayNet, mesoPerHour, summarizeLedger } from '#shared/calc/ledger'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 
 const { me } = await useMe()
 const route = useRoute()
 const today = kstToday()
 // 메소 내역에서 날짜를 눌러 오면 그달·그날을 연다
-const queryDate = typeof route.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(route.query.date) && route.query.date <= today ? route.query.date : null
-const month = ref((queryDate ?? today).slice(0, 7))
-const selectedDate = ref(queryDate ?? today)
+const startDate = queryDate(route.query, today) ?? today
+const month = ref(startDate.slice(0, 7))
+const selectedDate = ref(startDate)
 
 const { getCachedData, revalidate } = useRevisitCache()
-const [{ data, error, refresh }, { data: settings, refresh: refreshSettings }] = await Promise.all([
+const [{ data, error, refresh, status }, { data: settings, refresh: refreshSettings }] = await Promise.all([
   useFetch<LedgerResponse>('/api/ledger', { query: { month }, immediate: !!me.value, getCachedData }),
   useFetch<LedgerSettings>('/api/ledger/settings', { key: 'ledger-settings', immediate: !!me.value, getCachedData }),
 ])
@@ -20,9 +22,16 @@ const summary = computed(() => summarizeLedger(data.value?.hunts ?? [], data.val
 const perHour = computed(() => mesoPerHour(summary.value.total.huntMeso, summary.value.total.minutes))
 const onDate = <T extends { date: string }>(list: T[] | undefined) => (list ?? []).filter(x => x.date === selectedDate.value)
 
+// 다른 달을 받는 동안만 흐리게 한다(다시 들어와 새로 받을 때는 그대로)
+const switching = ref(false)
 watch(month, (m) => {
+  switching.value = true
   if (selectedDate.value.slice(0, 7) !== m) selectedDate.value = m === today.slice(0, 7) ? today : `${m}-01`
 })
+watch(status, (value) => {
+  if (value !== 'pending') switching.value = false
+})
+const loading = computed(() => switching.value && status.value === 'pending')
 
 async function refreshAll() {
   await Promise.all([refresh(), refreshSettings()])
@@ -36,23 +45,22 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
 
   <GameWindow v-else class="fit" title="일별 기록" fill>
     <template #sub>
-      <span class="pager">
-        <button type="button" aria-label="지난달" @click="month = shiftMonth(month, -1)">‹</button>
-        <span>{{ formatMonth(month) }}</span>
-        <button type="button" aria-label="다음달" :disabled="month >= today.slice(0, 7)" @click="month = shiftMonth(month, 1)">›</button>
-      </span>
+      <LedgerPager prev-label="지난달" next-label="다음달" :next-disabled="month >= today.slice(0, 7)" @prev="month = shiftMonth(month, -1)" @next="month = shiftMonth(month, 1)">{{ formatMonth(month) }}</LedgerPager>
     </template>
 
     <LedgerWallet :settings="settings ?? null" :add-button="false" @changed="refreshAll">
-      <span class="sources"><SourceBadge type="input" /> 직접 기록</span>
+      <SourceBadge type="input" /> 직접 기록
     </LedgerWallet>
-    <p v-if="error" class="form-error">{{ errorMessage(error) }}</p>
+    <p class="load-error" :class="{ show: error }" role="alert">{{ error ? errorMessage(error) : ' ' }}</p>
 
-    <div class="summary stagger">
+    <div class="summary stagger" :class="{ loading }">
       <div class="tile" style="--tone: var(--gold)">
         <span class="tile-label">{{ formatMonth(month) }} 순수익</span>
         <span class="tile-value" :class="{ loss: dayNet(summary.total) < 0 }">{{ formatSigned(dayNet(summary.total)) }}</span>
-        <span v-if="summary.total.entryIn || summary.total.entryOut" class="tile-label">직접 등록 <template v-if="summary.total.entryIn">+{{ formatShortNumber(summary.total.entryIn) }}</template> <template v-if="summary.total.entryOut">-{{ formatShortNumber(summary.total.entryOut) }}</template></span>
+        <span class="tile-label">
+          <template v-if="summary.total.entryIn || summary.total.entryOut">직접 등록 <template v-if="summary.total.entryIn">+{{ formatShortNumber(summary.total.entryIn) }}</template> <template v-if="summary.total.entryOut">-{{ formatShortNumber(summary.total.entryOut) }}</template></template>
+          <template v-else>직접 등록 없음</template>
+        </span>
       </div>
       <div class="tile" style="--tone: var(--api)">
         <span class="tile-label">사냥 메소<template v-if="perHour"> · 시간당 {{ formatShortNumber(perHour) }}</template></span>
@@ -76,7 +84,7 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
         <span class="tile-label">구매 {{ formatShortNumber(summary.total.itemBought) }} · 강화 {{ formatShortNumber(summary.total.itemEnhanced) }} · 장비 결산 →</span>
       </NuxtLink>
     </div>
-    <div class="split">
+    <div class="split" :class="{ loading }">
       <LedgerCalendar v-model="selectedDate" :month="month" :days="summary.days" />
       <div class="day-panel">
         <LedgerDayPanel
@@ -97,41 +105,27 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
 </template>
 
 <style scoped>
-.pager {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text);
-}
-.pager button {
-  width: 30px;
-  height: 30px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: border-color var(--fast) ease;
-}
-.pager button:hover:not(:disabled) {
-  border-color: var(--gold);
-}
-.pager button:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-.sources {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--sub);
+.load-error {
+  height: 18px;
+  margin: -8px 0 -10px;
+  overflow: hidden;
+  color: var(--loss);
   font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
 }
-.sources :deep(.badge) {
-  padding: 2px 6px;
-  font-size: 11px;
+.load-error.show {
+  opacity: 1;
+}
+.loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.summary,
+.split {
+  transition: opacity var(--fast) ease;
 }
 .summary {
   display: grid;
@@ -188,6 +182,38 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
   }
   .split {
     grid-template-columns: 1fr;
+  }
+}
+/* 좁은 화면은 칸마다 이름과 금액을 한 줄에 두어 금액이 꺾이지 않게 한다 */
+@media (max-width: 520px) {
+  .summary {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .summary .tile {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    column-gap: 10px;
+    padding: 8px 12px;
+  }
+  .summary .tile > * {
+    grid-column: 1 / -1;
+  }
+  .summary .tile > :first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .summary .tile > .tile-value {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 19px;
+    white-space: nowrap;
+  }
+  .drop-list {
+    font-size: 12px;
+  }
+  .day-panel {
+    padding: 10px;
   }
 }
 </style>

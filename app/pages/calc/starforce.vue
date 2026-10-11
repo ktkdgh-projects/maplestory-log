@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CharacterDetail, EquipmentItem, SundayNotice, SundayResponse } from '#shared/types'
-import type { RestoreOption, StageInfo, StarforceOptions, StarforcePlan } from '~/utils/starforceCalc'
+import type { RestoreOption, StageInfo, StarforceOptions, StarforcePlan } from '#shared/calc/starforce'
 import { MVP_DISCOUNTS, OFFICIAL_RATE_FROM, PROTECT_STARS, SUNDAY_STARFORCE_EFFECTS, maxStars, restoreCopies } from '#shared/data/starforce'
 
 useHead({ title: '스타포스 기대값 · 메이플스토리로그' })
@@ -13,18 +13,19 @@ const TARGETS = [17, 18, 21, 22, 23, 25]
 const queryNumber = (key: string) => (route.query[key] !== undefined && Number(route.query[key]) >= 0 ? Number(route.query[key]) : null)
 
 const level = ref(queryNumber('level') || 200)
+// 주소나 내 장비에서 온 레벨이 칩에 없으면 그 레벨 칩을 하나 더 둔다
+const levelChips = computed(() => (LEVELS.includes(level.value) ? LEVELS : [...LEVELS, level.value].sort((a, b) => a - b)))
 const max = computed(() => maxStars(level.value))
 const from = ref(queryNumber('from') ?? 17)
 const to = ref(queryNumber('to') ?? 22)
-// 파괴방지를 걸 성급(15·16·17성 중 고른 것)
 const protect = ref<number[]>([])
 const discount = ref(false)
 const sure = ref(false)
 const lessDestroy = ref(false)
-// 내 정보에서 고른 MVP 할인으로 시작한다
 const mvp = ref(me.value?.mvpDiscount ?? 0)
 const pc = ref(false)
-const copyPriceEok = ref(0)
+// 노작: 흔적 복구에 쓰는 같은 장비 1개
+const copyPrice = ref<number | null>(null)
 const restoreDiscount = ref(false)
 const showMore = ref(false)
 
@@ -45,7 +46,7 @@ function setSundayEffects(on: boolean) {
 }
 const sundayApplied = computed(() => !!sunday.value && (discount.value || sure.value || lessDestroy.value || restoreDiscount.value))
 const sundayEffects = computed(() => SUNDAY_STARFORCE_EFFECTS.filter(e => sunday.value?.effects?.includes(e.key)).map(e => e.label))
-const sundayDay = computed(() => (sunday.value ? formatMonthDay(kstDateOf(sunday.value.start)) : ''))
+const sundayDay = computed(() => (sunday.value ? formatDay(kstDateOf(sunday.value.start)) : ''))
 
 // 성급은 늘 0 ≤ 지금 < 목표 ≤ 최대로 맞춘다. 지금을 목표 이상으로 올리면 목표도 따라 올라간다
 function setFrom(value: number) {
@@ -55,9 +56,8 @@ function setFrom(value: number) {
 function setTo(value: number) {
   to.value = Math.min(Math.max(from.value + 1, Math.round(value) || 0), max.value)
 }
-// 숫자 칸은 다 쓰고 나서(엔터·포커스 아웃) 반영해야 '2'를 치는 순간 18로 바뀌는 일이 없다
 const canProtect = (star: number) => star >= from.value && star < to.value
-// 값이 그대로면 칸이 다시 그려지지 않아서, 범위 밖으로 친 글자는 직접 되돌린다
+// change(엔터·포커스 아웃)에만 반영해 '2'를 치는 순간 18로 바뀌지 않게 하고, 값이 그대로면 다시 안 그려지니 칸 글자는 직접 되돌린다
 function commitFrom(event: Event) {
   const input = event.target as HTMLInputElement
   setFrom(Number(input.value))
@@ -68,7 +68,6 @@ function commitTo(event: Event) {
   setTo(Number(input.value))
   input.value = String(to.value)
 }
-// 레벨이 바뀌면 최대 성급이 달라져 범위를 다시 맞춘다
 watch(max, () => {
   setFrom(from.value)
   setTo(to.value)
@@ -77,15 +76,22 @@ watch(max, () => {
 setFrom(from.value)
 setTo(to.value)
 
-// 내 장비에서 불러오기: 대표 캐릭터가 지금 낀 장비의 레벨·성급을 채운다
+// 대표 캐릭터가 지금 낀 장비로 채운다. 받는 동안에도 칸 자리는 잡아 둔다
 const equipped = ref<EquipmentItem[]>([])
+const equipState = ref<'loading' | 'done' | 'failed'>('loading')
 const pickedSlot = ref('')
 onMounted(async () => {
   const name = me.value?.main?.name
   if (!name) return
   const detail = await $fetch<CharacterDetail>(`/api/character/${encodeURIComponent(name)}`).catch(() => null)
   equipped.value = (detail?.presets[detail.presetNo - 1] ?? []).filter(i => i.requiredLevel && maxStars(i.requiredLevel) > 0 && i.scrollUpgradeable + i.scrollUpgrade > 0)
+  equipState.value = detail ? 'done' : 'failed'
 })
+const equipOptions = computed(() => [
+  { value: '', label: '직접 고르기' },
+  ...equipped.value.map(i => ({ value: i.slot, label: `${i.slot} · ${i.name}`, sub: `★${i.starforce}` })),
+])
+const equipPlaceholder = computed(() => (equipState.value === 'loading' ? '장비 불러오는 중…' : equipState.value === 'failed' ? '장비를 불러오지 못했어요' : '강화할 장비가 없어요'))
 watch(pickedSlot, (slot) => {
   const item = equipped.value.find(i => i.slot === slot)
   if (!item) return
@@ -104,20 +110,33 @@ const options = computed<StarforceOptions>(() => ({
   lessDestroy: lessDestroy.value,
   mvp: mvp.value,
   pc: pc.value,
-  copyPrice: Math.max(0, copyPriceEok.value || 0) * EOK,
+  copyPrice: copyPrice.value ?? 0,
   restoreDiscount: restoreDiscount.value,
 }))
-// 계산은 브라우저의 Worker에서 돌린다. 입력이 잠깐 멈추면 마지막 값만 계산하고, 그동안은 이전 결과를 흐리게 보여준다
+// Worker에서 계산하고, 입력이 잠깐 멈췄을 때 마지막 값만 계산한다
 const plan = shallowRef<StarforcePlan | null>(null)
 const calculating = ref(false)
+const calcError = ref('')
 const worker = useStarforceWorker()
 let timer: ReturnType<typeof setTimeout> | undefined
+let calcSeq = 0
 async function calculate() {
   // 아직 이전 계산 중이면 기다리지 않고 버리고 새로 시작한다
   if (worker.busy()) worker.cancel()
+  const seq = ++calcSeq
   calculating.value = true
-  plan.value = await worker.plan(options.value)
-  calculating.value = false
+  try {
+    const result = await worker.plan(options.value)
+    if (seq !== calcSeq) return
+    plan.value = result
+    calcError.value = ''
+  }
+  catch (error) {
+    if (seq === calcSeq) calcError.value = errorMessage(error)
+  }
+  finally {
+    if (seq === calcSeq) calculating.value = false
+  }
 }
 onMounted(calculate)
 onBeforeUnmount(() => clearTimeout(timer))
@@ -136,6 +155,10 @@ function toggleProtect(star: number) {
 }
 const usesWiki = computed(() => from.value < OFFICIAL_RATE_FROM)
 const showStages = ref(false)
+// 넓은 화면은 결과 칸 아래가 비어서 ★별 표를 펼쳐 둔다
+onMounted(() => {
+  if (window.matchMedia('(min-width: 1100px) and (min-height: 700px)').matches) showStages.value = true
+})
 
 // 이어지는 성급에서 고를 길이 같으면 한 칩으로 묶는다 (★23~29 → ★22 흔적 복구)
 const restoreGroups = computed(() => {
@@ -157,13 +180,13 @@ const groupLabel = (g: typeof restoreGroups.value[number]) => {
   const action = g.choice === 'twelve' ? '12성 복구' : g.trace ? `★${g.trace} 흔적 복구` : g.from === g.to ? `★${g.from} 흔적 복구` : '그 성급으로 흔적 복구'
   return { range, action }
 }
-// 추천 칩에 마우스를 올리면 보이는 비용 설명
+const restorePicked = ref(0)
+watch(restoreGroups, () => (restorePicked.value = 0))
 function restoreDetail(r: RestoreOption) {
   const cost = r.choice === 'restore' ? `노작 ${restoreCopies(r.trace)}개 + 복구 메소 ${formatShortNumber(r.restoreCost - restoreCopies(r.trace) * options.value.copyPrice)}` : '노작 1개'
   return `${cost}${r.saving >= 1e6 ? ` · 다른 길보다 ${formatShortNumber(r.saving)} 이득` : ''}`
 }
 const srcNote = computed(() => `공식 발표가 없어 위키 기준: ${usesWiki.value ? '0~14성 확률, ' : ''}스타캐치 보너스(×1.05), 1번 비용 공식, 흔적 복구 메소. 평균은 식으로, 절반·10%는 모의 실험으로 계산해요.`)
-// 평균 횟수: 작으면 소수 한 자리, 크면 쉼표만
 const countText = (n: number) => (n < 100 ? n.toFixed(1) : Math.round(n).toLocaleString('ko-KR'))
 const percent = (p: number) => `${(p * 100).toFixed(p < 0.1 && p > 0 ? 2 : 1)}%`
 const markerRatio = (meso: number) => Math.min(1, meso / (plan.value?.histogram.max || 1))
@@ -178,27 +201,21 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
       <form class="calc-inputs" @submit.prevent novalidate>
         <section class="calc-section">
           <h3 class="calc-section-title">장비<small>최대 ★{{ max }}</small></h3>
-          <label v-if="equipped.length" class="calc-load">
-            <span class="calc-load-label">내 장비에서 불러오기</span>
-            <select v-model="pickedSlot" class="field-input">
-              <option value="">직접 고르기</option>
-              <option v-for="i in equipped" :key="i.slot" :value="i.slot">{{ i.slot }} · {{ i.name }} ★{{ i.starforce }}</option>
-            </select>
-          </label>
+          <div v-if="me?.main" class="calc-load">
+            <label for="load-equip" class="calc-load-label">내 장비에서 불러오기</label>
+            <AppSelect id="load-equip" v-model="pickedSlot" :options="equipped.length ? equipOptions : []" :placeholder="equipPlaceholder" :disabled="!equipped.length" />
+          </div>
           <div class="calc-field">
             <span class="calc-label">착용 레벨</span>
-            <div class="calc-chips grid" style="--cols: 6">
-              <button v-for="l in LEVELS" :key="l" type="button" class="calc-chip" :aria-pressed="level === l" @click="level = l">{{ l }}</button>
+            <div class="calc-chips grid" :style="{ '--cols': levelChips.length }">
+              <button v-for="l in levelChips" :key="l" type="button" class="calc-chip" :aria-pressed="level === l" @click="level = l">{{ l }}</button>
             </div>
           </div>
         </section>
 
-        <!-- 파괴되면 흔적 복구(노작 n개 + 복구 메소)와 12성 복구(노작 1개) 중 싼 쪽을 고른다. 복구 메소는 레벨·성급으로 계산한다 -->
+        <!-- 노작값은 파괴 때 흔적 복구(노작 n개 + 메소)와 12성 복구(노작 1개) 중 싼 쪽을 고르는 데 쓴다 -->
         <section class="calc-section restore">
-          <label class="copy-row">
-            <span class="calc-section-title">노작값</span>
-            <span class="calc-unit" data-unit="억"><input id="copy-price" v-model.number="copyPriceEok" class="field-input" type="number" min="0" step="0.1" placeholder="0" aria-label="노작값, 같은 장비 1개"></span>
-          </label>
+          <MesoInput id="copy-price" v-model="copyPrice" label="노작값 · 같은 장비 1개" class="copy-input" />
         </section>
 
         <section class="calc-section">
@@ -269,14 +286,15 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
       <section class="calc-result" :class="{ calculating }" aria-live="polite">
         <p class="calc-goal">Lv.{{ level }} 장비 · <span><span class="star">★</span>{{ from }} → <span class="star">★</span>{{ to }}</span></p>
 
-        <template v-if="plan">
+        <div v-if="calcError && !calculating" class="form-error">{{ calcError }}</div>
+        <template v-else-if="plan">
           <p class="calc-say">
             보통 <em>{{ formatShortNumber(plan.mean.meso) }}</em> 들어요.<br>
             <span class="s2">절반은 <em>{{ formatShortNumber(plan.p50) }}</em> 안에 끝나고, 운이 나쁘면(10%) <em class="bad">{{ formatShortNumber(plan.p90) }}</em>까지 들어요. 파괴는 평균 <em>{{ countText(plan.mean.destroys) }}번</em>.</span>
           </p>
 
           <div class="hist-wrap">
-            <span class="calc-caption" :title="plan.runs < 1000 ? '한 번에 수십만 번을 눌러야 하는 구간이라 몇 번만 해 봐서 절반·10%는 대략이에요' : undefined">{{ plan.runs.toLocaleString('ko-KR') }}번 해 보면 드는 메소<template v-if="plan.runs < 1000"> · 절반·10%는 대략</template></span>
+            <span class="calc-caption">{{ plan.runs.toLocaleString('ko-KR') }}번 해 보면 드는 메소<template v-if="plan.runs < 1000"> · 오래 걸리는 구간이라 절반·10%는 대략</template></span>
             <div class="hist">
               <i v-for="(b, i) in plan.histogram.bins" :key="i" :class="{ over: (i + 0.5) / plan.histogram.bins.length * plan.histogram.max > plan.p90 }" :style="{ height: `${(b / Math.max(...plan.histogram.bins)) * 100}%` }" />
               <span class="marker" :class="{ flip: markerFlips(plan.p50) }" :style="{ left: markerAt(plan.p50) }"><span>절반 {{ formatShortNumber(plan.p50) }}</span></span>
@@ -288,16 +306,23 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
           <div class="calc-nums">
             <div class="calc-num"><small>평균 누르는 횟수</small><b>{{ Math.round(plan.mean.tries).toLocaleString('ko-KR') }}번</b></div>
             <div class="calc-num"><small>한 번도 안 터질 확률</small><b>{{ percent(plan.noDestroy) }}</b></div>
-            <div class="calc-num"><small>복구에 드는 노작</small><b>평균 {{ countText(plan.mean.copies) }}개</b><small>{{ copyPriceEok ? '노작값·복구 메소 포함' : '복구 메소만 포함 · 노작값을 넣어 주세요' }}</small></div>
+            <div class="calc-num"><small>복구에 드는 노작</small><b>평균 {{ countText(plan.mean.copies) }}개</b><small>{{ copyPrice ? '노작값 포함' : '노작값 빼고 계산' }}</small></div>
           </div>
 
-          <div v-if="plan.restores.length" class="restore-plan">
-            <span class="calc-caption">터지면 이렇게 하는 게 이득이에요 · 마우스를 올리면 비용</span>
-            <ul>
-              <li v-for="g in restoreGroups" :key="g.from" :class="g.choice" :title="g.items.map(r => `★${r.star}: ${restoreDetail(r)}`).join('\n')">
-                {{ groupLabel(g).range }} 파괴 → <b>{{ groupLabel(g).action }}</b>
-              </li>
-            </ul>
+          <div class="restore-plan">
+            <span class="calc-caption">{{ plan.restores.length ? '터지면 이렇게 하는 게 이득이에요 · 누르면 비용' : '이 구간은 파괴되지 않아요' }}</span>
+            <template v-if="plan.restores.length">
+              <ul>
+                <li v-for="(g, gi) in restoreGroups" :key="g.from">
+                  <button type="button" :class="g.choice" :aria-pressed="restorePicked === gi" @click="restorePicked = gi">
+                    {{ groupLabel(g).range }} 파괴 → <b>{{ groupLabel(g).action }}</b>
+                  </button>
+                </li>
+              </ul>
+              <p class="restore-detail" aria-live="polite">
+                <span v-for="r in restoreGroups[restorePicked]?.items" :key="r.star">★{{ r.star }} · {{ restoreDetail(r) }}</span>
+              </p>
+            </template>
           </div>
 
           <button type="button" class="fold" :aria-expanded="showStages" @click="showStages = !showStages">{{ showStages ? '▾' : '▸' }} ★별 표 · 성공·파괴 확률, 1번 비용</button>
@@ -320,7 +345,11 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
 
         <div class="calc-src">
           <SourceBadge type="api" /><span>15~29성 확률·파괴방지 비용</span>
-          <SourceBadge type="calc" /><span :title="srcNote">{{ usesWiki ? '0~14성 확률·' : '' }}스타캐치 보너스·비용식·복구 메소는 위키 기준</span>
+          <SourceBadge type="calc" />
+          <HoverInfo title="위키 기준인 값" align="left" class="src-info">
+            <span class="src-more">{{ usesWiki ? '0~14성 확률·' : '' }}스타캐치 보너스·비용식·복구 메소는 위키 기준 ⓘ</span>
+            <template #info><span>{{ srcNote }}</span></template>
+          </HoverInfo>
         </div>
       </section>
     </div>
@@ -339,16 +368,14 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
 /* 파괴 복구는 돈이 크게 갈리는 칸이라 붉은 기운으로 눈에 띄게 */
 .restore {
   gap: 8px;
-  background: linear-gradient(180deg, rgb(255 138 122 / 0.07), transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--loss) 7%, transparent), transparent);
   padding-block: 12px;
 }
-.copy-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px;
-  align-items: center;
-  gap: 10px;
+.copy-input :deep(.label) {
+  color: var(--text);
+  font-family: var(--f-title);
+  font-size: 15px;
 }
-/* 지금 ★ → 목표 ★ 를 한 줄에 */
 .star-range {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -358,11 +385,6 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
 .star-range .arrow {
   color: var(--sub);
 }
-.restore .calc-section-title::before {
-  background: var(--loss);
-  box-shadow: 0 0 6px var(--loss);
-}
-/* 강화 조건 제목 줄 오른쪽의 썬데이 스위치. 켜지면 초록 불 */
 .sunday-hover {
   margin-left: auto;
 }
@@ -386,8 +408,8 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
   color: var(--text);
 }
 .sunday-toggle.on {
-  background: rgb(127 217 154 / 0.1);
-  border-color: rgb(127 217 154 / 0.5);
+  background: color-mix(in srgb, var(--gain) 10%, transparent);
+  border-color: color-mix(in srgb, var(--gain) 50%, transparent);
   color: var(--gain);
 }
 .sunday-toggle .lamp {
@@ -412,7 +434,6 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
   font-family: var(--f-body);
   font-size: 12px;
 }
-/* 성급별로 터졌을 때 고를 길. 흔적 복구는 금색, 12성 복구는 파랑 칩 */
 .restore-plan {
   display: grid;
   gap: 6px;
@@ -425,26 +446,54 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
   padding: 0;
   list-style: none;
 }
-.restore-plan li {
+.restore-plan button {
+  min-height: 32px;
   padding: 3px 10px;
-  background: rgb(242 193 78 / 0.08);
-  border: 1px solid rgb(242 193 78 / 0.45);
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent);
   border-radius: 999px;
   color: var(--sub);
+  font: inherit;
   font-size: 12.5px;
   white-space: nowrap;
-  cursor: help;
+  cursor: pointer;
 }
-.restore-plan li.twelve {
-  background: rgb(127 178 255 / 0.08);
-  border-color: rgb(127 178 255 / 0.45);
+.restore-plan button.twelve {
+  background: color-mix(in srgb, var(--api) 8%, transparent);
+  border-color: color-mix(in srgb, var(--api) 45%, transparent);
+}
+.restore-plan button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--gold);
+  color: var(--text);
+}
+.restore-plan button.twelve[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--api);
 }
 .restore-plan b {
   color: var(--gold);
   font-weight: 700;
 }
-.restore-plan li.twelve b {
+.restore-plan .twelve b {
   color: var(--api);
+}
+/* 고른 칩의 성급별 비용. 높이를 잡아 둬서 다른 칩을 눌러도 아래가 들썩이지 않는다 */
+.restore-detail {
+  display: grid;
+  align-content: start;
+  height: 74px;
+  margin: 0;
+  padding: 6px 10px;
+  overflow-y: auto;
+  background: var(--bar);
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+  color: var(--sub);
+  font-size: 12.5px;
+  line-height: 1.6;
+  scrollbar-width: thin;
+}
+.src-more {
+  cursor: help;
 }
 .fold-section {
   gap: 0;
@@ -468,7 +517,6 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
   text-align: left;
   cursor: pointer;
 }
-/* 메소 분포 막대. 문장의 절반·10% 숫자를 같은 자리에 선으로 긋는다 */
 .hist-wrap {
   display: grid;
   gap: 6px;
@@ -485,11 +533,11 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
 }
 .hist i {
   flex: 1;
-  background: rgb(183 156 255 / 0.55);
+  background: color-mix(in srgb, var(--calc) 55%, transparent);
   border-radius: 3px 3px 0 0;
 }
 .hist i.over {
-  background: rgb(255 138 122 / 0.45);
+  background: color-mix(in srgb, var(--loss) 45%, transparent);
 }
 .marker {
   position: absolute;
@@ -549,7 +597,7 @@ const markerFlips = (meso: number) => markerRatio(meso) > 0.7
   text-align: left;
 }
 .stages tr.hot td {
-  background: rgb(242 193 78 / 0.09);
+  background: color-mix(in srgb, var(--gold) 9%, transparent);
 }
 .stages tr.hot td:first-child {
   box-shadow: inset 3px 0 0 var(--gold);

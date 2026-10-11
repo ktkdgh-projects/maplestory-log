@@ -1,6 +1,6 @@
 import { bossPeriod } from '#shared/data/bosses'
 
-// 한 캐릭터의 그 주 주간 보스 체크를 한 번에 푼다. 월간 보스는 기간이 달라 그대로 남는다
+// 월간 보스는 period가 달라 그대로 남는다
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const body = await readBody<{ ocid?: unknown, week?: unknown }>(event)

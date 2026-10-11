@@ -1,4 +1,3 @@
-// 강화 결산에서 그날 쓴 메소를 장비 결산 그 장비 줄에 한 건으로 넣는다. 같은 날 적은 건이 있으면 바꾼다
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const body = await readBody<Record<string, unknown>>(event)
@@ -8,6 +7,7 @@ export default defineEventHandler(async (event) => {
   const kind = body.kind
   const date = parseDate(body?.date)
   const amount = parseMeso(body?.amount, '금액')
+  if (!amount) throw createError({ statusCode: 400, message: '넣을 금액이 없어요.' })
 
   const { itemSheets, itemRows } = await useCollections()
   const sheets = await itemSheets.find({ userId: user._id, characterName: character }, { projection: { _id: 1 } }).toArray()

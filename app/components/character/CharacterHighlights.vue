@@ -7,11 +7,11 @@ const HIGHLIGHTS = [
   { name: '보스 몬스터 데미지', label: '보공', unit: '%', color: 'var(--loss)' },
   { name: '방어율 무시', label: '방무', unit: '%', color: 'var(--calc)' },
   { name: '최종 데미지', label: '최종뎀', unit: '%', color: 'var(--gold)' },
-  { name: '크리티컬 데미지', label: '크뎀', unit: '%', color: '#ff9f5a' },
+  { name: '크리티컬 데미지', label: '크뎀', unit: '%', color: 'var(--orange)' },
   { name: '스타포스', label: '스타포스', unit: '', color: 'var(--exp)' },
   { name: '아케인포스', label: '아케인', unit: '', color: 'var(--api)' },
-  { name: '어센틱포스', label: '어센틱', unit: '', color: '#c48bff' },
-  { name: '추가 경험치 획득', label: '추가 경험치', unit: '%', color: 'var(--gain)' },
+  { name: '어센틱포스', label: '어센틱', unit: '', color: 'var(--purple)' },
+  { name: '추가 경험치 획득', label: '추경', unit: '%', color: 'var(--gain)' },
 ]
 
 const tiles = computed(() => HIGHLIGHTS.flatMap(({ name, label, unit, color }) => {
@@ -23,7 +23,7 @@ const tiles = computed(() => HIGHLIGHTS.flatMap(({ name, label, unit, color }) =
 <template>
   <GameWindow title="주요 능력치" accent="green" fill>
     <ul class="tiles stagger">
-      <li v-for="tile in tiles" :key="tile.name" class="tile" :style="{ '--tone': tile.color }" :title="tile.name">
+      <li v-for="tile in tiles" :key="tile.name" class="tile" :style="{ '--tone': tile.color }">
         <span class="tile-label ellipsis">{{ tile.label }}</span>
         <span class="tile-value">{{ tile.value }}</span>
       </li>
@@ -36,18 +36,26 @@ const tiles = computed(() => HIGHLIGHTS.flatMap(({ name, label, unit, color }) =
   display: grid;
   flex: 1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
+  grid-auto-rows: minmax(36px, 1fr);
   gap: 6px;
   min-height: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
+/* 이름과 값을 한 줄에 둬서 칸이 낮아져도 이름이 잘리지 않고, 높아져도 휑하지 않다 */
 .tile {
-  align-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   padding: 4px 10px;
 }
+.tile-label {
+  min-width: 0;
+}
 .tile-value {
+  flex: none;
   font-size: 18px;
 }
 </style>

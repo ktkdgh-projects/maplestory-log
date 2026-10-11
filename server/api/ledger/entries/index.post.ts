@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   const input = parseMesoEntry(await readBody(event), feeRate)
 
   const { mesoEntries } = await useCollections()
+  await assertLedgerRoom(mesoEntries, user._id)
   const _id = new ObjectId()
   await mesoEntries.insertOne({ ...input, _id, userId: user._id, createdAt: new Date() })
   return { id: _id.toHexString() }

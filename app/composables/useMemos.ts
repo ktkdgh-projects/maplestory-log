@@ -1,6 +1,6 @@
 import type { Memo, MemosResponse } from '#shared/types'
 
-// 고칠 때마다 브라우저에 바로 남기고, 손을 뗀 뒤·창을 닫을 때·페이지를 나갈 때 바뀐 메모를 한 번에 DB로 보낸다
+// 고침은 브라우저에 바로 남기고 DB엔 손을 뗀 뒤·창을 닫을 때·페이지를 나갈 때 모아 보낸다
 const IDLE_SAVE_MS = 3000
 
 interface Draft {
@@ -84,6 +84,8 @@ export function useMemos() {
     const body = JSON.stringify({ memos: sent.map(([id, d]) => ({ id, title: d.title, body: d.body })) })
     if (keepalive) {
       fetch('/api/memos', { method: 'PUT', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {})
+      // 탭만 가렸다 돌아온 거면 결과를 모르니 평소 저장으로 한 번 더 보내 상태를 맞춘다
+      schedule()
       return
     }
     state.value = 'saving'
@@ -135,6 +137,7 @@ export function useMemos() {
     }
   }
 
+  // 실패하면 그대로 던져서 확인 모달이 오류를 보여 주게 한다
   async function remove(memo: Memo) {
     busy.value = true
     try {
@@ -142,17 +145,25 @@ export function useMemos() {
       delete drafts[memo.id]
       if (owner.value) writeDrafts(owner.value)
       memos.value = (memos.value ?? []).filter(m => m.id !== memo.id)
-      failure.value = ''
-      return true
-    }
-    catch (e) {
-      failure.value = errorMessage(e)
-      return false
     }
     finally {
       busy.value = false
     }
   }
 
-  return { memos, state, failure, busy, load, edit, flush, create, remove }
+  // 로그아웃 뒤 부른다. 같은 브라우저를 쓰는 다음 사람에게 남지 않게 임시본을 모두 지운다
+  function forget() {
+    drafts = {}
+    if (timer) clearTimeout(timer)
+    timer = null
+    try {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('memo-drafts:')) localStorage.removeItem(key)
+    }
+    catch {}
+    memos.value = null
+    owner.value = null
+    state.value = 'idle'
+  }
+
+  return { memos, state, failure, busy, load, edit, flush, create, remove, forget }
 }

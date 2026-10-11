@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { GrowthDay } from '~/utils/growth'
+import type { GrowthDay } from '#shared/calc/growth'
 
 const props = defineProps<{ days: GrowthDay[] }>()
 const selected = defineModel<number>({ required: true })

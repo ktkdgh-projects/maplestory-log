@@ -12,19 +12,20 @@ const { me } = await useMe()
 
 const name = computed(() => (typeof route.query.name === 'string' ? route.query.name.trim() : '') || me.value?.main?.name || '')
 
-// 서버가 1시간 캐시하므로 다시 들어오면 받아 둔 값을 그대로 쓴다. 새로 받으려면 최신화 버튼
+// 서버가 1시간 캐시하므로 다시 들어오면 받아 둔 값을 그대로 쓴다
 const { getCachedData } = useRevisitCache()
 const { data: character, error, status, execute } = useFetch<CharacterDetail>(
   () => `/api/character/${encodeURIComponent(name.value)}`,
   { immediate: !!name.value, watch: false, getCachedData },
 )
+const refreshing = ref(false)
+const refreshError = ref('')
 watch(name, (value) => {
+  refreshError.value = ''
   if (value) execute()
 })
 
-// 최신화: 서버 캐시(1시간)를 건너뛰고 넥슨에서 바로 다시 받는다
-const refreshing = ref(false)
-const refreshError = ref('')
+// 최신화는 서버 캐시를 건너뛰고 넥슨에서 바로 다시 받는다
 async function refreshCharacter() {
   refreshing.value = true
   refreshError.value = ''
@@ -81,6 +82,7 @@ useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그`
 
     <GameWindow v-else-if="error" key="error" title="알림" accent="red">
       <p class="muted">{{ errorMessage(error) }}</p>
+      <button type="button" class="btn ghost compact retry" @click="execute()">다시 불러오기</button>
     </GameWindow>
 
     <div v-else-if="character" :key="character.ocid" class="board fit">
@@ -134,7 +136,7 @@ useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그`
   text-shadow: 0 3px 0 rgb(14 17 28 / 0.45), 0 8px 24px rgb(14 17 28 / 0.35);
 }
 .hero em {
-  background: linear-gradient(90deg, #ffe08a, #ffb347);
+  background: linear-gradient(90deg, var(--gold-light), var(--gold-warm));
   background-clip: text;
   color: transparent;
   font-style: normal;
@@ -159,9 +161,12 @@ useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그`
 }
 .board {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
   align-items: start;
+}
+.retry {
+  justify-self: start;
 }
 .grow {
   flex: 1;

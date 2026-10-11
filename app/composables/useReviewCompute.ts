@@ -1,16 +1,16 @@
 import type { Ref } from 'vue'
 import type { PotentialOptionTable, ReviewPotential, ReviewResponse, ReviewStarforce } from '#shared/types'
-import type { StarforcePlan } from '~/utils/starforceCalc'
-import type { PotentialReview } from '~/utils/reviewCalc'
+import type { StarforcePlan } from '#shared/calc/starforce'
+import { mainTool, methodOfTool, optionTableQuery, reviewPotentialCalc, starforceActual, starforceOptions, type PotentialReview } from '#shared/calc/review'
 
 export const reviewStarforceKey = (s: ReviewStarforce) => `sf|${s.item}`
 export const reviewPotentialKey = (p: ReviewPotential) => `pot|${p.item}|${p.additional}`
 
-// 강화 결산 계산: 스타포스는 장비마다 계산기 Worker로 기대값을, 잠재는 공식 확률표로 평균 횟수를 내고 기간 합을 만든다.
 // 결산 페이지와 썬데이 페이지 결산 카드가 같이 쓴다
 export function useReviewCompute(data: Readonly<Ref<ReviewResponse | null>>, mvp: Readonly<Ref<number>>, levelPick: Readonly<Ref<Record<string, number>>>) {
   const starforceList = computed(() => [...(data.value?.starforce ?? [])].sort((a, b) => starforceActual(b) - starforceActual(a)))
-  const potentialList = computed(() => [...(data.value?.potential ?? [])].sort((a, b) => b.meso - a.meso || b.tools.reduce((n, t) => n + t.count, 0) - a.tools.reduce((n, t) => n + t.count, 0)))
+  const toolCount = (p: ReviewPotential) => p.tools.reduce((n, t) => n + t.count, 0)
+  const potentialList = computed(() => [...(data.value?.potential ?? [])].sort((a, b) => b.meso - a.meso || toolCount(b) - toolCount(a)))
   // 지금 안 낀 장비는 사용자가 레벨을 고르면 계산한다
   const levelOf = (s: ReviewStarforce) => s.level ?? levelPick.value[s.item] ?? null
 

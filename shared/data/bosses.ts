@@ -1,8 +1,6 @@
 import { addDays } from '../utils/kst'
 
-// 강렬한 힘의 결정 판매가 (메소, 1인 기준). 2026-09-17 패치 + 검은 마법사는 2026-10-01 적용분
-// 출처: 나무위키 「강렬한 힘의 결정」, 메덕후 결정석 가격표, maple.ai.kr 9/17 조정 정리 (2026-10-09 확인, 서로 다른 값은 두 곳 이상 일치하는 값을 씀)
-// 시그너스·하드 힐라·카오스 핑크빈은 9/17부터 일간 보스라 뺐다
+// 결정 판매가(1인 기준)는 9/17 패치, 검은 마법사는 10/01 적용분. 출처: 나무위키 「강렬한 힘의 결정」·메덕후·maple.ai.kr (2026-10-09 확인, 두 곳 이상 일치 값)
 export const BOSS_PRICE_DATE = '2026-10-01'
 
 // 9/17 패치로 주간 결정 판매 개수 제한은 사라졌고 캐릭터당 주간 보스 처치만 12회로 남았다
@@ -27,7 +25,7 @@ export interface BossInfo {
   prices: Partial<Record<BossDifficulty, number>>
 }
 
-// 센 보스부터: 넥슨 2026 소울웨폰 개편 안내의 단계(유피테르 4 > 발드릭스·림보 3 > 벨로나·흉성 2), 그 아래는 나온 순서의 역순
+// 센 보스부터(넥슨 2026 소울웨폰 개편 단계, 그 아래는 나온 순서의 역순). 시그너스·하드 힐라·카오스 핑크빈은 9/17부터 일간 보스라 뺐다
 export const BOSSES: BossInfo[] = [
   { id: 'jupiter', name: '유피테르', cycle: 'weekly', prices: { normal: 1_560_000_000, hard: 4_845_000_000 } },
   { id: 'baldrix', name: '발드릭스', cycle: 'weekly', prices: { normal: 1_320_000_000, hard: 3_078_000_000 } },
@@ -66,7 +64,8 @@ export function bossOrder(id: string): number {
 
 // 파티원 수로 1/n 나누고 소수점은 버린다
 export function crystalPrice(bossId: string, difficulty: string, party: number): number | null {
-  const price = findBoss(bossId)?.prices[difficulty as BossDifficulty]
+  const prices = findBoss(bossId)?.prices
+  const price = prices && Object.hasOwn(prices, difficulty) ? prices[difficulty as BossDifficulty] : undefined
   return price === undefined ? null : Math.floor(price / Math.max(1, party))
 }
 

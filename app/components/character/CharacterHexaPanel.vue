@@ -14,15 +14,18 @@ function costKind(core: HexaCore, index: number, cores: HexaCore[]): HexaCostKin
 
 const initialRanges = () => props.cores.map(core => ({ from: core.level, to: HEXA_MAX_LEVEL }))
 const ranges = ref(initialRanges())
+// 최신화로 코어가 늘거나 레벨이 바뀌면 구간을 다시 잡는다
+watch(() => props.cores, () => (ranges.value = initialRanges()))
+// 구간을 건드리지 않았으면 '선택한 구간'이 곧 만렙까지라 같은 숫자를 두 번 보여 주지 않는다
+const untouched = computed(() => ranges.value.every((r, i) => r.from === props.cores[i]?.level && r.to === HEXA_MAX_LEVEL))
 
 const rows = computed(() => props.cores
   .map((core, i, all) => {
-    const range = ranges.value[i]!
+    const range = ranges.value[i] ?? { from: core.level, to: HEXA_MAX_LEVEL }
     return { core, range, cost: hexaCost(costKind(core, i, all), range.from, range.to) }
   })
   .sort((a, b) => b.core.level - a.core.level))
 
-// 지금 레벨까지 이미 쓴 솔 에르다·조각
 const spent = computed(() => {
   const used = { erda: 0, fragment: 0 }
   const all = { erda: 0, fragment: 0 }
@@ -41,7 +44,7 @@ const spent = computed(() => {
     value: used[key].toLocaleString('ko-KR'),
     unit: '개',
     progress: all[key] ? used[key] / all[key] : 1,
-    sub: all[key] > used[key] ? `만렙까지 ${(all[key] - used[key]).toLocaleString('ko-KR')}개 남음` : '모든 코어 만렙',
+    sub: all[key] > used[key] ? '' : '모든 코어 만렙',
   })
   return [item('솔 에르다', 'var(--calc)', 'erda'), item('솔 에르다 조각', 'var(--api)', 'fragment')]
 })
@@ -50,8 +53,8 @@ const totals = computed(() => {
   const erda = rows.value.reduce((sum, row) => sum + row.cost.erda, 0)
   const fragment = rows.value.reduce((sum, row) => sum + row.cost.fragment, 0)
   return [
-    { label: '선택한 구간 솔 에르다', value: `${erda.toLocaleString('ko-KR')}개`, tone: 'var(--calc)' },
-    { label: '선택한 구간 조각', value: `${fragment.toLocaleString('ko-KR')}개`, tone: 'var(--api)' },
+    { label: `${untouched.value ? '만렙까지' : '고른 구간'} 솔 에르다`, value: `${erda.toLocaleString('ko-KR')}개`, tone: 'var(--calc)' },
+    { label: `${untouched.value ? '만렙까지' : '고른 구간'} 조각`, value: `${fragment.toLocaleString('ko-KR')}개`, tone: 'var(--api)' },
   ]
 })
 </script>
@@ -64,7 +67,7 @@ const totals = computed(() => {
       <ul class="cores stagger">
         <li v-for="{ core, range, cost } in rows" :key="core.name" class="core">
           <div class="core-head">
-            <span class="ellipsis" :title="core.name">{{ core.name }}</span>
+            <span class="core-name">{{ core.name }}</span>
             <small>{{ core.type }} · 현재 Lv.{{ core.level }}</small>
           </div>
           <RangeSlider

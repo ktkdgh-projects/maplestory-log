@@ -146,11 +146,11 @@ onBeforeUnmount(() => {
   grid-row: 1 / 5;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 58%, rgb(127 178 255 / 0.4), transparent 60%),
+    radial-gradient(circle at 50% 58%, color-mix(in srgb, var(--api) 40%, transparent), transparent 60%),
     linear-gradient(180deg, #1b2a52, #101a36);
   border: 2px solid #3b5aa0;
   border-radius: 8px;
-  box-shadow: inset 0 0 24px rgb(127 178 255 / 0.25);
+  box-shadow: inset 0 0 24px color-mix(in srgb, var(--api) 25%, transparent);
 }
 .magic {
   position: absolute;
@@ -161,9 +161,9 @@ onBeforeUnmount(() => {
   translate: -50% -45%;
   border-radius: 50%;
   background:
-    radial-gradient(circle, transparent 38%, rgb(127 178 255 / 0.35) 39%, transparent 41%),
-    radial-gradient(circle, transparent 52%, rgb(183 156 255 / 0.3) 53%, transparent 55%),
-    repeating-conic-gradient(rgb(127 178 255 / 0.18) 0 4deg, transparent 4deg 22.5deg);
+    radial-gradient(circle, transparent 38%, color-mix(in srgb, var(--api) 35%, transparent) 39%, transparent 41%),
+    radial-gradient(circle, transparent 52%, color-mix(in srgb, var(--calc) 30%, transparent) 53%, transparent 55%),
+    repeating-conic-gradient(color-mix(in srgb, var(--api) 18%, transparent) 0 4deg, transparent 4deg 22.5deg);
   mask: radial-gradient(circle, #000 30%, transparent 70%);
   animation: spin 40s linear infinite;
 }

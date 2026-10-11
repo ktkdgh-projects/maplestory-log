@@ -1,9 +1,17 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
+
 const ACTIVE_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
 const CRON_BUDGET_MS = 40_000
 
+// 앞부분이 얼마나 맞는지가 응답 시간으로 새지 않게 같은 길이의 해시로 바꿔 비교한다
+function sameSecret(given: string, expected: string): boolean {
+  const digest = (value: string) => createHash('sha256').update(value).digest()
+  return timingSafeEqual(digest(given), digest(expected))
+}
+
 export default defineEventHandler(async (event) => {
   const { cronSecret } = useRuntimeConfig()
-  if (!cronSecret || getHeader(event, 'authorization') !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !sameSecret(getHeader(event, 'authorization') ?? '', `Bearer ${cronSecret}`)) {
     throw createError({ statusCode: 401, message: 'Unauthorized' })
   }
   if (await isCollectionPaused()) return { paused: true }

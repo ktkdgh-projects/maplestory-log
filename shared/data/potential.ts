@@ -1,15 +1,11 @@
-// 잠재능력 재설정 비용·등급 상승 확률·천장 (2026-10-10 확인)
-// 메소 재설정 비용: 넥슨 공식 1.2.387(2024-01-25, News/Update/737) 윗잠, 2024-06-20(News/Update/746) 에디셔널
-// 확률·천장: 공식 확률 페이지 Guide/OtherProbability/cube/{black|red|addi}, 에디셔널 메소 재설정은 Update/746
-// 큐브는 2024-01-25부터 메소로 살 수 없어서 메소가 드는 재설정은 메소 재설정 두 가지뿐이다
+// 출처(2026-10-10 확인): 비용은 공식 Update/737(윗잠)·746(에디), 확률·천장은 Guide/OtherProbability/cube/{black|red|addi}·Update/746
 export const POTENTIAL_GRADES = ['레어', '에픽', '유니크', '레전드리'] as const
 export type PotentialGrade = typeof POTENTIAL_GRADES[number]
 
-// 착용 레벨 구간: 1~159 / 160~199 / 200~249 / 250~
 const LEVEL_BANDS = [160, 200, 250]
 const levelBand = (level: number) => LEVEL_BANDS.filter(min => level >= min).length
 
-// [레벨 구간][재설정 전 등급] 1회 비용(메소)
+// [레벨 구간][재설정 전 등급] 1회 비용. 큐브는 2024-01-25부터 메소로 못 사서 메소가 드는 건 메소 재설정뿐이다
 const RESET_COST = {
   potential: [
     [4_000_000, 16_000_000, 34_000_000, 40_000_000],
@@ -35,7 +31,6 @@ export interface ResetMethod {
   // 공식 옵션 확률표를 찾을 때 쓰는 큐브 아이템 id. 메소 재설정은 같은 표를 쓰는 큐브 id
   cubeItemId: number
   additional: boolean
-  // 메소로 하는 재설정이면 true (비용은 resetCost)
   meso: boolean
   // 레어→에픽, 에픽→유니크, 유니크→레전드리 (%)
   tierUp: number[]
@@ -50,12 +45,6 @@ export const RESET_METHODS: ResetMethod[] = [
   { id: 'meso-addi', label: '메소 재설정', cubeItemId: 5062500, additional: true, meso: true, tierUp: [2.381, 0.9804, 0.7], ceiling: [62, 152, 214] },
   { id: 'addi', label: '에디셔널 · 화이트 에디셔널 큐브', cubeItemId: 5062500, additional: true, meso: false, tierUp: [4.7619, 1.9608, 0.7], ceiling: [31, 76, 214] },
 ]
-
-// 기록 페이지에서 쓰는 메소 재설정 천장. 등급 이름으로 찾는다
-export function mesoCeiling(additional: boolean, grade: PotentialGrade): number | null {
-  const method = RESET_METHODS.find(m => m.meso && m.additional === additional)!
-  return method.ceiling[POTENTIAL_GRADES.indexOf(grade)] ?? null
-}
 
 // 공식 확률표의 장비 분류 코드 = 순서 + 1
 export const POTENTIAL_PARTS = [

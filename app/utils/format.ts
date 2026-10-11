@@ -1,4 +1,4 @@
-export const EOK = 1e8
+const EOK = 1e8
 
 // 엑셀에서 쓰던 방식 그대로 억 단위 소수 둘째 자리까지: 15103000000 → "151.03"
 export function formatEok(meso: number): string {
@@ -23,10 +23,12 @@ export function formatDay(date: string): string {
   return date.slice(0, 4) === kstToday().slice(0, 4) ? formatMonthDay(date) : `${date.slice(0, 4)}년 ${formatMonthDay(date)}`
 }
 
-// 몇 해 전 날짜도 구분되게 연도까지 짧게: 2026-06-19 → 26/6/19
-export function formatShortDate(date: string): string {
-  const [y, m, d] = date.split('-')
-  return `${y!.slice(2)}/${Number(m)}/${Number(d)}`
+export function formatDayWeek(date: string): string {
+  return `${formatDay(date)} (${WEEKDAYS[kstWeekday(date)]})`
+}
+
+export function dayLabel(day: { date: string, isToday: boolean }): string {
+  return day.isToday ? '오늘' : formatDay(day.date)
 }
 
 export function formatDateTime(iso: string): string {

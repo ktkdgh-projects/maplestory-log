@@ -4,7 +4,7 @@ import type { UnionResponse } from '#shared/types'
 const props = defineProps<{ ocid: string, world: string, unionLevel: number | null, unionGrade: string | null }>()
 
 const POLL_MS = 2500
-const TIERS: [string, string][] = [['슈프림', '#ff6b6b'], ['그랜드 마스터', '#ffcc33'], ['마스터', '#b46cff'], ['베테랑', '#5cb8ff'], ['노비스', '#9aa5c4']]
+const TIERS: [string, string][] = [['슈프림', 'var(--loss)'], ['그랜드 마스터', 'var(--gold)'], ['마스터', 'var(--purple)'], ['베테랑', 'var(--api)'], ['노비스', 'var(--tip-line)']]
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V']
 
 const world = ref(props.world)
@@ -18,7 +18,7 @@ const unionLevel = computed(() => data.value?.unionLevel ?? (world.value === pro
 // 유니온 등급 그림은 API로 오지 않아서 등급 이름으로 직접 그린 엠블럼을 쓴다
 const grade = computed(() => {
   const name = unionGrade.value ?? ''
-  const [tier, color] = TIERS.find(([t]) => name.startsWith(t)) ?? ['유니온', '#9aa5c4']
+  const [tier, color] = TIERS.find(([t]) => name.startsWith(t)) ?? ['유니온', 'var(--tip-line)']
   const step = Number(name.match(/(\d+)$/)?.[1] ?? 0)
   return { tier, color, roman: ROMAN[step] ?? String(step) }
 })
@@ -30,20 +30,25 @@ watch(() => data.value?.pending, (pending) => {
 })
 onBeforeUnmount(() => clearTimeout(timer))
 
-const visibleWorlds = computed(() => data.value?.worlds.filter(w => w.active || showHidden.value || w.name === world.value) ?? [])
-const hiddenCount = computed(() => data.value?.worlds.filter(w => !w.active).length ?? 0)
+// 월드를 바꾸는 동안 data가 비어도 월드 줄은 그대로 둔다
+const worlds = ref<UnionResponse['worlds']>([])
+watch(data, (value) => {
+  if (value?.worlds.length) worlds.value = value.worlds
+})
+const visibleWorlds = computed(() => worlds.value.filter(w => w.active || showHidden.value || w.name === world.value))
+const hiddenCount = computed(() => worlds.value.filter(w => !w.active).length)
 
 const raider = computed(() => data.value?.mode === 'raider')
-const totalLevel = computed(() => (raider.value ? data.value!.raiders : data.value?.members ?? []).reduce((sum, m) => sum + m.level, 0))
-const count = computed(() => (raider.value ? data.value!.raiders.length : data.value?.members.length ?? 0))
-// 공격대 칸 색: 직업 계열
-const TYPE_COLORS: Record<string, string> = { 전사: '#ff8a7a', 마법사: '#7fb2ff', 궁수: '#7fd99a', 도적: '#b79cff', 해적: '#ffc06b' }
-const typeColor = (type: string) => TYPE_COLORS[type] ?? '#a5aecb'
+const roster = computed<{ level: number }[]>(() => (raider.value ? data.value!.raiders : data.value?.members ?? []))
+const totalLevel = computed(() => roster.value.reduce((sum, m) => sum + m.level, 0))
+const count = computed(() => roster.value.length)
+const TYPE_COLORS: Record<string, string> = { 전사: 'var(--loss)', 마법사: 'var(--api)', 궁수: 'var(--gain)', 도적: 'var(--calc)', 해적: 'var(--gold-warm)' }
+const typeColor = (type: string) => TYPE_COLORS[type] ?? 'var(--sub)'
 </script>
 
 <template>
   <div class="union">
-    <div v-if="data && (visibleWorlds.length > 1 || hiddenCount)" class="worlds" role="group" aria-label="월드">
+    <div v-if="visibleWorlds.length > 1 || hiddenCount" class="worlds" role="group" aria-label="월드">
       <MenuButton v-for="w in visibleWorlds" :key="w.name" :active="world === w.name" :class="{ closed: !w.active }" @click="world = w.name">{{ w.name }} <small>{{ w.active ? w.count : '종료' }}</small></MenuButton>
       <button v-if="hiddenCount" type="button" class="toggle" @click="showHidden = !showHidden">{{ showHidden ? '종료된 월드 숨기기' : `종료된 월드 ${hiddenCount}개 보기` }}</button>
     </div>
@@ -54,13 +59,25 @@ const typeColor = (type: string) => TYPE_COLORS[type] ?? '#a5aecb'
       <div class="head-info">
         <span class="grade">{{ unionGrade ?? '유니온 정보 없음' }}</span>
         <span class="level">Lv.{{ unionLevel?.toLocaleString('ko-KR') ?? '-' }}</span>
-        <span v-if="data && count" class="muted small">{{ raider ? `공격대원 ${count}명` : `${data.world} · 캐릭터 ${count}명` }} · 레벨 합 {{ totalLevel.toLocaleString('ko-KR') }}</span>
+        <!-- 이미지를 받는 동안 남은 수도 같은 줄에 붙여 줄이 생겼다 사라지지 않게 한다 -->
+        <span class="muted small ellipsis">
+          <template v-if="data && count">{{ raider ? `공격대원 ${count}명` : `${data.world} · 캐릭터 ${count}명` }} · 레벨 합 {{ totalLevel.toLocaleString('ko-KR') }}<template v-if="!raider && data.pending"> · 이미지 {{ data.pending }}명 남음</template></template>
+          <template v-else>&nbsp;</template>
+        </span>
       </div>
     </div>
 
-    <p v-if="error" class="muted small">{{ errorMessage(error, '유니온 정보를 불러오지 못했어요.') }}</p>
-    <p v-else-if="!data" class="muted small">캐릭터 목록을 불러오는 중이에요…</p>
-    <!-- 남의 캐릭터: 공격대에 배치된 캐릭터의 직업·레벨(넥슨 API가 이름·이미지는 주지 않는다) -->
+    <div v-if="error" class="retry">
+      <p class="muted small">{{ errorMessage(error, '유니온 정보를 불러오지 못했어요.') }}</p>
+      <button type="button" class="btn ghost compact" @click="refresh()">다시 불러오기</button>
+    </div>
+    <ul v-else-if="!data" class="members" aria-busy="true" aria-label="캐릭터 목록 불러오는 중">
+      <li v-for="i in 12" :key="i" class="ghost">
+        <div class="face"><span class="skeleton" /></div>
+        <span class="skeleton" style="width: 70%; height: 14px" />
+        <span class="skeleton" style="width: 85%; height: 12px" />
+      </li>
+    </ul>
     <template v-else-if="raider">
       <p class="muted small">{{ data.raiders.length ? '공격대에 배치된 캐릭터예요. 다른 계정은 넥슨 API가 이름·이미지를 주지 않아 직업과 레벨만 보여요.' : '다른 계정의 캐릭터 목록은 넥슨 API로 받을 수 없어 유니온 등급과 레벨만 보여요.' }}</p>
       <ul v-if="data.raiders.length" class="raiders stagger">
@@ -72,7 +89,6 @@ const typeColor = (type: string) => TYPE_COLORS[type] ?? '#a5aecb'
       </ul>
     </template>
     <template v-else>
-      <p v-if="data.pending" class="muted small">캐릭터 이미지를 불러오는 중 · {{ data.pending }}명 남음</p>
       <ul class="members stagger">
         <li v-for="m in data.members" :key="m.ocid" :class="{ me: m.ocid === ocid }">
           <div class="face">
@@ -98,7 +114,7 @@ const typeColor = (type: string) => TYPE_COLORS[type] ?? '#a5aecb'
   gap: 6px;
 }
 .worlds .menu-btn {
-  min-height: 32px;
+  min-height: 36px;
   padding: 0 10px;
   font-size: 14px;
 }
@@ -110,6 +126,7 @@ const typeColor = (type: string) => TYPE_COLORS[type] ?? '#a5aecb'
   opacity: 0.6;
 }
 .toggle {
+  min-height: 36px;
   padding: 0 10px;
   background: none;
   border: 1px dashed var(--panel-line);
@@ -160,8 +177,13 @@ const typeColor = (type: string) => TYPE_COLORS[type] ?? '#a5aecb'
   font-family: var(--f-title);
   font-size: 24px;
 }
-.small {
-  font-size: 13px;
+.retry {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+.members li.ghost {
+  gap: 6px;
 }
 .members {
   display: grid;

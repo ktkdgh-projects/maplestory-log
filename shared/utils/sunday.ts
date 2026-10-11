@@ -1,5 +1,4 @@
-// 썬데이 메이플 표시 단계. 페이지와 헤더 등이 같은 기준을 쓰도록 시각을 받아 판단한다
-// waiting: 발표 전(보통 금 10시 전), late: 발표 예상 시각이 지났는데 아직 없음, announced: 발표됨·일요일 전, today: 일요일 당일
+// waiting: 발표 전(보통 금 10시 전), late: 발표 예상 시각이 지났는데 아직 없음, announced: 발표 뒤 일요일 전, today: 일요일 당일
 export type SundayPhase = 'waiting' | 'late' | 'announced' | 'today'
 
 const HOUR = 60 * 60 * 1000

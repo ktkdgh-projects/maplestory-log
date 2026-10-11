@@ -13,7 +13,6 @@ export interface KeyGateInfo {
   points: KeyGatePoint[]
 }
 
-// 키가 필요한 페이지에 로그아웃 상태로 왔을 때 보여 줄 페이지 소개
 export const KEY_GATES = {
   history: {
     title: '메소 내역',

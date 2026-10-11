@@ -3,12 +3,12 @@ import { findDrop } from '#shared/data/bossDrops'
 
 const props = withDefaults(defineProps<{ item: string, size?: number }>(), { size: 24 })
 
-// 물욕템 아이콘(넥슨 저작물, 투명 여백을 잘라 둠). 아이콘이 없는 템은 색 상자로 그린다
+// 아이콘은 넥슨 저작물에서 투명 여백을 잘라 둔 것. 아이콘이 없는 템은 색 상자로 그린다
 const ICONS = assetsByName(import.meta.glob<string>('~/assets/loot/*.png', { eager: true, import: 'default' }))
 
 const drop = computed(() => findDrop(props.item))
 const icon = computed(() => (drop.value?.icon ? ICONS[drop.value.icon] : undefined))
-const tone = computed(() => drop.value?.tone ?? (drop.value ? DROP_SET_TONES[drop.value.set] : '#f2c14e'))
+const tone = computed(() => drop.value?.tone ?? (drop.value ? DROP_SET_TONES[drop.value.set] : 'var(--gold)'))
 </script>
 
 <template>
@@ -29,7 +29,7 @@ const tone = computed(() => drop.value?.tone ?? (drop.value ? DROP_SET_TONES[dro
   display: inline-block;
   flex: none;
 }
-/* 테두리 없이 아이템만: 칸에 고정해 세로로 긴 아이콘도 넘치지 않게 맞추고, 얇은 그림자와 세트색 빛만 두른다 */
+/* 칸에 고정해 세로로 긴 아이콘도 넘치지 않게 맞춘다 */
 img,
 svg {
   position: absolute;

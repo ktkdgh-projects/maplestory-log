@@ -1,9 +1,6 @@
 import type { BossDifficulty } from './bosses'
 
-// 해방 계산기 데이터 (2026-10-10 확인). 보스 처치 재화는 입장 인원 수로 나눠 주고(소수점 버림), 남는 양은 다음 단계로 넘어간다
-// 제네시스 해방(어둠의 흔적): 넥슨 공식 업데이트 1.2.398(2024-12-19, News/Update/762)
-// 데스티니 초월(대적자의 결의): 1차는 공식 1.2.401(2025-03-20, News/Update/767), 2차·최대 누적·획득량 표는 공식 1.2.412(2026-02-12, News/Update/797)
-// 벨로나는 공식 공지(1.2.418)에 결의 획득량이 없어 나무위키 「데스티니 무기」·메이플로드 계산기 값(두 곳 일치)을 쓴다
+// 출처(2026-10-10 확인): 제네시스 공식 1.2.398(Update/762), 데스티니 1차 1.2.401(Update/767)·2차·최대 누적·획득량 1.2.412(Update/797)
 
 export type LiberationKind = 'genesis' | 'destiny'
 
@@ -16,7 +13,7 @@ export interface LiberationInfo {
   traces: Record<string, Partial<Record<BossDifficulty, number>>>
   // 넥슨 공식 해방 완료 단계(character/basic.liberation_quest_clear)가 이 값 이상이면 다 끝난 것
   doneAt: number
-  // 공식 공지에 없어 위키 값을 쓰는 보스
+  // 공식 공지에 없어 위키 값을 쓰는 보스(벨로나: 나무위키 「데스티니 무기」·메이플로드 계산기 일치)
   wikiBosses?: string[]
 }
 
@@ -79,9 +76,8 @@ export const LIBERATIONS: Record<LiberationKind, LiberationInfo> = {
 // 데스티니 1차를 마친 캐릭터(완료 단계 2)는 2차 첫 단계부터 한다
 export const DESTINY_SECOND_STEP = 3
 
-// 제네시스 패스: 기간 한정 판매 상품. 흔적을 3배로 한 뒤 파티 인원으로 나누고 소수점은 버린다
-// (공식 공지에서 배수를 찾지 못해 나무위키 「제네시스 무기」·devcomma 해방 계산기 기준, 두 곳 일치)
-export const GENESIS_PASS_MULTIPLIER = 3
+// 제네시스 패스는 흔적 3배 뒤 인원으로 나눈다. 공식 배수가 없어 나무위키 「제네시스 무기」·devcomma 계산기 기준(두 곳 일치)
+const GENESIS_PASS_MULTIPLIER = 3
 
 export function traceOf(kind: LiberationKind, bossId: string, difficulty: string, party: number, pass = false): number {
   const base = LIBERATIONS[kind].traces[bossId]?.[difficulty as BossDifficulty] ?? 0

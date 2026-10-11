@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BossClear, BossPick, BossRosterCharacter, CharacterBrief } from '#shared/types'
 import { MAX_BOSS_CHARACTERS, WEEKLY_BOSS_LIMIT, bossOrder, bossPeriod, crystalPrice, findBoss, type BossDifficulty } from '#shared/data/bosses'
+import { clearMeso } from '#shared/calc/boss'
 
 const props = defineProps<{ week: string, roster: BossRosterCharacter[], clears: BossClear[], feeRate: number }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -11,13 +12,32 @@ const clearDate = computed(() => {
   const end = addDays(props.week, 6)
   return end < today ? end : today
 })
-const busy = ref<string | null>(null)
 const failure = ref('')
 
-// 누르자마자 화면에 반영하고 서버 응답은 뒤에서 맞춘다. 응답을 기다리면 숫자와 칸이 한 박자 늦게 출렁인다
+// 화면에 먼저 반영하고 저장은 차례로 보낸다. 다 끝난 뒤 한 번만 새로 받아 숫자가 중간에 출렁이지 않게 한다
 const clears = ref<BossClear[]>([...props.clears])
+const roster = ref<BossRosterCharacter[]>([...props.roster])
+let pendingOps = 0
+let chain: Promise<unknown> = Promise.resolve()
+// 저장 중인 칸(캐릭터:보스)을 또 누르면 무시한다
+const inflight = ref(new Set<string>())
+function enqueue(keys: string[], op: () => Promise<unknown>) {
+  pendingOps++
+  inflight.value = new Set([...inflight.value, ...keys])
+  chain = chain.then(op).catch((error) => {
+    failure.value = errorMessage(error)
+  }).finally(() => {
+    const next = new Set(inflight.value)
+    keys.forEach(k => next.delete(k))
+    inflight.value = next
+    if (--pendingOps === 0) emit('changed')
+  })
+}
 watch(() => props.clears, (value) => {
-  clears.value = [...value]
+  if (!pendingOps) clears.value = [...value]
+})
+watch(() => props.roster, (value) => {
+  if (!pendingOps) roster.value = [...value]
 })
 
 function periodOf(bossId: string) {
@@ -27,13 +47,15 @@ function clearOf(ocid: string, bossId: string) {
   const period = periodOf(bossId)
   return clears.value.find(c => c.ocid === ocid && c.bossId === bossId && c.period === period)
 }
+const keyOf = (ocid: string, bossId: string) => `${ocid}:${bossId}`
+const pendingClear = (c: BossRosterCharacter, pick: BossPick): BossClear => ({ bossId: pick.bossId, difficulty: pick.difficulty, party: pick.party, id: `pending-${keyOf(c.ocid, pick.bossId)}`, ocid: c.ocid, name: c.name, period: periodOf(pick.bossId), date: clearDate.value, meso: crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0, loot: [] })
 
-// 캐릭터 줄을 손잡이로 끌어서 순서를 바꾼다. 끄는 동안은 화면에서만 옮기고 놓을 때 저장한다
-const order = ref(props.roster.map(c => c.ocid))
-watch(() => props.roster, (value) => {
+// 끄는 동안은 화면에서만 옮기고 놓을 때 저장한다
+const order = ref(roster.value.map(c => c.ocid))
+watch(roster, (value) => {
   order.value = value.map(c => c.ocid)
 })
-const ordered = computed(() => [...props.roster].sort((a, b) => order.value.indexOf(a.ocid) - order.value.indexOf(b.ocid)))
+const ordered = computed(() => [...roster.value].sort((a, b) => order.value.indexOf(a.ocid) - order.value.indexOf(b.ocid)))
 const dragOcid = ref<string | null>(null)
 function startDrag(event: DragEvent, ocid: string) {
   dragOcid.value = ocid
@@ -51,7 +73,20 @@ function dragOver(ocid: string) {
 function endDrag() {
   if (!dragOcid.value) return
   dragOcid.value = null
-  if (order.value.join() !== props.roster.map(c => c.ocid).join()) saveRoster(ordered.value)
+  if (order.value.join() !== roster.value.map(c => c.ocid).join()) saveRoster(ordered.value)
+}
+function moveBy(ocid: string, delta: number, event: Event) {
+  const i = order.value.indexOf(ocid)
+  const j = i + delta
+  if (j < 0 || j >= order.value.length) return
+  const list = [...order.value]
+  list.splice(i, 1)
+  list.splice(j, 0, ocid)
+  order.value = list
+  saveRoster(ordered.value)
+  // 옮긴 줄의 버튼에 포커스를 남겨 이어서 옮길 수 있게 한다
+  const button = event.currentTarget as HTMLElement
+  nextTick(() => button.focus())
 }
 
 type Cycle = 'weekly' | 'monthly'
@@ -89,59 +124,33 @@ const totals = computed(() => ({
   complete: rows.value.length > 0 && rows.value.every(r => r.complete),
   completeCount: rows.value.filter(r => r.complete).length,
 }))
+// 물욕템을 판 금액이 더해지면 예상보다 많이 벌 수 있어 막대는 끝에서 멈춘다
+const progress = computed(() => (totals.value.weeklyExpected ? Math.min(100, (totals.value.weeklyEarned / totals.value.weeklyExpected) * 100) : 0))
 
-// 세팅한 주간 보스 중 아직 안 잡은 것을 한 번에 체크한다. 화면에 먼저 반영하고 서버에 한 번만 보낸다
-async function clearAll(characters: BossRosterCharacter[]) {
-  const key = characters.length === 1 ? `all:${characters[0]!.ocid}` : 'all'
-  if (busy.value) return
-  busy.value = key
+// 남은 주간 보스를 화면에 먼저 체크하고 서버에는 한 번에 보낸다
+function clearAll(characters: BossRosterCharacter[]) {
   failure.value = ''
-  const before = clears.value
   const pending = characters.flatMap(c => c.bosses
     .filter(pick => findBoss(pick.bossId)?.cycle === 'weekly' && !clearOf(c.ocid, pick.bossId))
-    .map(pick => ({ ...pick, id: `pending-${c.ocid}:${pick.bossId}`, ocid: c.ocid, name: c.name, period: props.week, date: clearDate.value, meso: crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0, loot: [] })))
-  if (!pending.length) {
-    busy.value = null
-    return
-  }
-  clears.value = [...before, ...pending]
-  try {
-    await $fetch('/api/ledger/clears/bulk', { method: 'POST', body: { date: clearDate.value, ...(characters.length === 1 && { ocid: characters[0]!.ocid }) } })
-    emit('changed')
-  }
-  catch (error) {
-    clears.value = before
-    failure.value = errorMessage(error)
-  }
-  finally {
-    busy.value = null
-  }
+    .map(pick => pendingClear(c, pick)))
+  if (!pending.length) return
+  clears.value = [...clears.value, ...pending]
+  const date = clearDate.value
+  const ocid = characters.length === 1 ? characters[0]!.ocid : undefined
+  enqueue(pending.map(p => keyOf(p.ocid, p.bossId)), () => $fetch('/api/ledger/clears/bulk', { method: 'POST', body: { date, ...(ocid && { ocid }) } }))
 }
 
-// 그 주 주간 보스 체크를 한 번에 푼다. 적어 둔 물욕템 기록도 같이 지워지므로 늘 한 번 묻는다
+// 적어 둔 물욕템 기록도 같이 지워지므로 늘 한 번 묻는다
 const { ask } = useConfirm()
 async function unclearAll(character: BossRosterCharacter) {
-  const key = `none:${character.ocid}`
-  if (busy.value) return
   const weekly = clears.value.filter(c => c.ocid === character.ocid && c.period === props.week)
   if (!weekly.length) return
   const loot = weekly.some(c => c.loot.length)
   if (!await ask({ title: '이번 주 체크 모두 풀기', name: `${character.name} · 주간 보스 ${weekly.length}개`, amount: weekly.reduce((n, c) => n + clearMeso(c), 0), note: loot ? '적어 둔 물욕템 기록도 같이 지워지고 되돌릴 수 없어요.' : '보유 메소와 메소 내역에서도 빠져요.', action: '모두 풀기' })) return
-  busy.value = key
   failure.value = ''
-  const before = clears.value
-  clears.value = before.filter(c => !weekly.includes(c))
-  try {
-    await $fetch('/api/ledger/weekly-clears', { method: 'DELETE', body: { ocid: character.ocid, week: props.week } })
-    emit('changed')
-  }
-  catch (error) {
-    clears.value = before
-    failure.value = errorMessage(error)
-  }
-  finally {
-    busy.value = null
-  }
+  clears.value = clears.value.filter(c => !weekly.includes(c))
+  const week = props.week
+  enqueue(weekly.map(c => keyOf(c.ocid, c.bossId)), () => $fetch('/api/ledger/weekly-clears', { method: 'DELETE', body: { ocid: character.ocid, week } }))
 }
 
 const lootOpen = ref(false)
@@ -151,68 +160,47 @@ function openLoot(clear: BossClear) {
   lootOpen.value = true
 }
 
-async function toggle(character: BossRosterCharacter, pick: { bossId: string, difficulty: string, party: number }) {
-  const key = `${character.ocid}:${pick.bossId}`
-  if (busy.value === key) return
-  busy.value = key
+async function toggle(character: BossRosterCharacter, pick: BossPick) {
+  const key = keyOf(character.ocid, pick.bossId)
+  if (inflight.value.has(key)) return
   failure.value = ''
-  const before = clears.value
   const clear = clearOf(character.ocid, pick.bossId)
-  try {
-    if (clear) {
-      clears.value = before.filter(c => c.id !== clear.id)
-      await $fetch(`/api/ledger/clears/${clear.id}`, { method: 'DELETE' })
-    }
-    else {
-      const meso = crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0
-      clears.value = [...before, { ...pick, id: `pending-${key}`, ocid: character.ocid, name: character.name, period: periodOf(pick.bossId), date: clearDate.value, meso, loot: [] }]
-      await $fetch('/api/ledger/clears', { method: 'POST', body: { ocid: character.ocid, bossId: pick.bossId, date: clearDate.value } })
-    }
-    emit('changed')
+  if (clear) {
+    // 적어 둔 물욕템이 있으면 같이 지워지므로 한 번 묻는다
+    if (clear.loot.length && !await ask({ title: '보스 체크 풀기', name: `${character.name} · ${bossLabel(pick.bossId, pick.difficulty)}`, detail: `물욕템 ${clear.loot.map(l => l.item).join(', ')}`, amount: clearMeso(clear), note: '적어 둔 물욕템 기록도 같이 지워지고 되돌릴 수 없어요.', action: '체크 풀기' })) return
+    if (inflight.value.has(key) || !clears.value.includes(clear)) return
+    clears.value = clears.value.filter(c => c.id !== clear.id)
+    enqueue([key], () => $fetch(`/api/ledger/clears/${clear.id}`, { method: 'DELETE' }))
   }
-  catch (error) {
-    clears.value = before
-    failure.value = errorMessage(error)
-  }
-  finally {
-    busy.value = null
+  else {
+    const date = clearDate.value
+    clears.value = [...clears.value, pendingClear(character, pick)]
+    enqueue([key], () => $fetch('/api/ledger/clears', { method: 'POST', body: { ocid: character.ocid, bossId: pick.bossId, date } }))
   }
 }
 
-// 캐릭터를 누르면 그 줄 아래로 보스 세팅이 펼쳐진다. 고친 목록은 통째로 저장한다
 const openOcid = ref<string | null>(null)
 const toggleSetup = (ocid: string) => {
   openOcid.value = openOcid.value === ocid ? null : ocid
 }
-async function saveRoster(characters: BossRosterCharacter[]) {
-  busy.value = 'roster'
+// 그때의 명단을 떠서 차례로 보내므로 저장이 겹쳐도 마지막에 고친 명단이 남는다
+function saveRoster(characters: BossRosterCharacter[]) {
   failure.value = ''
-  try {
-    await $fetch('/api/ledger/roster', { method: 'PUT', body: { characters } })
-    emit('changed')
-  }
-  catch (error) {
-    failure.value = errorMessage(error)
-  }
-  finally {
-    busy.value = null
-  }
+  roster.value = characters
+  const snapshot = JSON.parse(JSON.stringify(characters)) as BossRosterCharacter[]
+  enqueue(['roster'], () => $fetch('/api/ledger/roster', { method: 'PUT', body: { characters: snapshot } }))
 }
-const setBosses = (ocid: string, bosses: BossPick[]) => saveRoster(props.roster.map(c => (c.ocid === ocid ? { ...c, bosses } : c)))
+const setBosses = (ocid: string, bosses: BossPick[]) => saveRoster(roster.value.map(c => (c.ocid === ocid ? { ...c, bosses } : c)))
 // 복사할 땐 보고 있던 캐릭터의 고친 세팅도 같이 저장해야 다시 불러올 때 사라지지 않는다
-const copyBosses = (from: string, to: string, bosses: BossPick[]) => saveRoster(props.roster.map(c => (c.ocid === from || c.ocid === to ? { ...c, bosses: JSON.parse(JSON.stringify(bosses)) } : c)))
-// 빼기 전에 모달로 한 번 더 묻는다
-const removing = ref<BossRosterCharacter | null>(null)
-const removeOpen = computed({
-  get: () => !!removing.value,
-  set: (value) => {
-    if (!value) removing.value = null
-  },
-})
-async function removeCharacter(ocid: string) {
-  removing.value = null
-  if (openOcid.value === ocid) openOcid.value = null
-  await saveRoster(props.roster.filter(c => c.ocid !== ocid))
+const copyBosses = (from: string, to: string, bosses: BossPick[]) => saveRoster(roster.value.map(c => (c.ocid === from || c.ocid === to ? { ...c, bosses: JSON.parse(JSON.stringify(bosses)) } : c)))
+async function removeCharacter(character: BossRosterCharacter) {
+  if (!await ask({ title: '캐릭터 빼기', name: character.name, detail: `${character.job} · LV.${character.level} · 보스 ${character.bosses.length}개`, note: '보스 표에서 빼요. 이미 체크한 기록은 가계부에 그대로 남아요.', action: '빼기' })) return
+  // 세팅을 열어 두었으면 먼저 닫아 아직 안 보낸 고침을 내보낸 뒤 뺀다
+  if (openOcid.value === character.ocid) {
+    openOcid.value = null
+    await nextTick()
+  }
+  saveRoster(roster.value.filter(c => c.ocid !== character.ocid))
 }
 
 const pickerOpen = ref(false)
@@ -226,12 +214,11 @@ async function openPicker() {
     return null
   })
 }
-async function addCharacter(ocid: string) {
+function addCharacter(ocid: string) {
   const c = candidates.value?.find(x => x.ocid === ocid)
-  if (!c || props.roster.some(r => r.ocid === ocid)) return
+  if (!c || roster.value.some(r => r.ocid === ocid)) return
   pickerOpen.value = false
-  await saveRoster([...props.roster, { ...c, imageUrl: null, bosses: [] }])
-  // 막 추가한 캐릭터는 바로 보스를 고르게 펼쳐 둔다
+  saveRoster([...roster.value, { ...c, imageUrl: null, bosses: [] }])
   openOcid.value = ocid
 }
 </script>
@@ -241,26 +228,27 @@ async function addCharacter(ocid: string) {
     <div class="totals">
       <span>이번 주 주간 보스 <b class="earned">{{ formatKoreanNumber(totals.weeklyEarned) }}</b></span>
       <span class="muted">/ 다 잡으면 {{ formatKoreanNumber(totals.weeklyExpected) }}</span>
-      <span v-if="totals.monthlyExpected" class="monthly-tag" title="월간 보스는 한 달에 한 번이라 주간과 따로 세요">
+      <span class="monthly-tag" :class="{ off: !totals.monthlyExpected }" title="월간 보스는 한 달에 한 번이라 주간과 따로 세요">
         {{ Number(clearDate.slice(5, 7)) }}월 월간 <b>{{ formatKoreanNumber(totals.monthlyEarned) }}</b> / {{ formatKoreanNumber(totals.monthlyExpected) }}
       </span>
       <span v-if="roster.length" class="progress-tag" :class="{ all: totals.complete }">
         {{ totals.complete ? '이번 주 전부 잡았어요 ✓' : `다 잡은 캐릭터 ${totals.completeCount}/${roster.length}` }}
       </span>
-      <button v-if="roster.length > 1 && !totals.complete" type="button" class="btn compact" :disabled="!!busy" @click="clearAll(roster)">모든 캐릭터 전부 잡음</button>
-      <div class="bar"><span :style="{ width: `${totals.weeklyExpected ? (totals.weeklyEarned / totals.weeklyExpected) * 100 : 0}%` }" /></div>
+      <!-- 다 잡아도 자리는 남겨 옆 글자가 밀리지 않게 한다 -->
+      <button v-if="roster.length > 1" type="button" class="btn compact all-all" :class="{ off: totals.complete }" :tabindex="totals.complete ? -1 : 0" @click="clearAll(roster)">모든 캐릭터 전부 잡음</button>
+      <div class="bar"><span :style="{ width: `${progress}%` }" /></div>
     </div>
-    <p v-if="failure" class="form-error">{{ failure }}</p>
+    <p class="hint-line" :class="{ show: failure }" role="alert">{{ failure || ' ' }}</p>
 
     <div v-if="!roster.length" class="empty">
       <img src="/favicon.svg" alt="" width="44" height="44">
       <p class="muted">주간 보스를 도는 캐릭터를 추가하고, 캐릭터를 눌러 보스를 골라 주세요.</p>
-      <button type="button" class="btn" :disabled="!!busy" @click="openPicker">+ 캐릭터 추가</button>
+      <button type="button" class="btn" @click="openPicker">+ 캐릭터 추가</button>
     </div>
 
     <ul v-else class="rows stagger">
       <li v-if="roster.length < MAX_BOSS_CHARACTERS" class="add-row">
-        <button type="button" class="add" :disabled="!!busy" @click="openPicker">+ 캐릭터 추가 ({{ roster.length }}/{{ MAX_BOSS_CHARACTERS }})</button>
+        <button type="button" class="add" @click="openPicker">+ 캐릭터 추가 ({{ roster.length }}/{{ MAX_BOSS_CHARACTERS }})</button>
       </li>
       <li
         v-for="r in rows"
@@ -271,15 +259,23 @@ async function addCharacter(ocid: string) {
         @drop.prevent="endDrag"
       >
         <div class="who">
-          <span
+          <button
             v-if="roster.length > 1"
+            type="button"
             class="grip"
             draggable="true"
-            title="끌어서 순서 바꾸기"
-            aria-hidden="true"
+            title="끌어서 순서 바꾸기 · 위아래 화살표로도 옮겨요"
+            :aria-label="`${r.character.name} 순서 바꾸기 (위아래 화살표)`"
             @dragstart="startDrag($event, r.character.ocid)"
             @dragend="endDrag"
-          >⠿</span>
+            @keydown.up.prevent="moveBy(r.character.ocid, -1, $event)"
+            @keydown.down.prevent="moveBy(r.character.ocid, 1, $event)"
+          >⠿</button>
+          <!-- 터치 화면은 끌기가 안 되므로 위아래 버튼으로 옮긴다 -->
+          <span v-if="roster.length > 1" class="nudge">
+            <button type="button" :aria-label="`${r.character.name} 위로`" :disabled="order.indexOf(r.character.ocid) === 0" @click="moveBy(r.character.ocid, -1, $event)">▲</button>
+            <button type="button" :aria-label="`${r.character.name} 아래로`" :disabled="order.indexOf(r.character.ocid) === order.length - 1" @click="moveBy(r.character.ocid, 1, $event)">▼</button>
+          </span>
           <button
             type="button"
             class="who-main"
@@ -291,21 +287,22 @@ async function addCharacter(ocid: string) {
             <span class="who-text">
               <b class="ellipsis">{{ r.character.name }} <span class="caret" aria-hidden="true">▾</span></b>
               <small class="ellipsis">{{ r.character.job }} · LV.{{ r.character.level }}</small>
-              <small><span :class="{ full: r.weeklyDone >= WEEKLY_BOSS_LIMIT }">{{ r.weeklyDone }}/{{ r.weeklyTotal }}</span> · <span class="gold">{{ formatShortNumber(r.earned) }}</span></small>
+              <small><span :class="{ full: r.weeklyDone >= WEEKLY_BOSS_LIMIT }">{{ r.weeklyDone }}/{{ r.weeklyTotal }}</span> · <span class="gold">{{ formatKoreanNumber(r.earned) }}</span></small>
             </span>
           </button>
           <!-- 잡음·취소를 캐릭터 칸에 세로로 쌓아 보스 칸 너비를 줄이지 않는다 -->
           <div class="acts">
-            <button type="button" class="out-btn" :disabled="!!busy" :title="`${r.character.name}을(를) 보스 표에서 빼기`" @click="removing = r.character">빼기</button>
+            <button type="button" class="out-btn" :title="`${r.character.name}을(를) 보스 표에서 빼기`" @click="removeCharacter(r.character)">빼기</button>
+            <!-- 세 칸 모두 늘 자리를 잡아 두고, 쓸 수 없을 땐 숨기기만 한다 -->
             <span v-if="r.weeklyTotal && r.complete" class="done-stamp">다 잡음</span>
-            <button v-else-if="r.weeklyTotal" type="button" class="all-btn" :disabled="!!busy" :title="`${r.character.name}의 남은 주간 보스 ${r.weeklyTotal - r.weeklyDone}개를 한 번에 체크`" @click="clearAll([r.character])">
+            <button v-else type="button" class="all-btn" :class="{ off: !r.weeklyTotal }" :tabindex="r.weeklyTotal ? 0 : -1" :title="`${r.character.name}의 남은 주간 보스 ${r.weeklyTotal - r.weeklyDone}개를 한 번에 체크`" @click="clearAll([r.character])">
               전부 잡음
             </button>
             <button
-              v-if="r.weeklyDone"
               type="button"
               class="none-btn"
-              :disabled="!!busy"
+              :class="{ off: !r.weeklyDone }"
+              :tabindex="r.weeklyDone ? 0 : -1"
               :title="`${r.character.name}의 이번 주 주간 보스 체크 ${r.weeklyDone}개를 한 번에 풀기`"
               @click="unclearAll(r.character)"
             >
@@ -318,13 +315,14 @@ async function addCharacter(ocid: string) {
             v-for="b in r.bosses"
             :key="b.bossId"
             class="chip"
-            :class="{ done: b.clear, monthly: b.boss.cycle === 'monthly' }"
+            :class="{ done: b.clear }"
             :style="{ '--diff': DIFFICULTY_COLORS[b.difficulty as BossDifficulty] }"
           >
             <button
               type="button"
               class="toggle"
               :aria-pressed="!!b.clear"
+              :aria-busy="inflight.has(keyOf(r.character.ocid, b.bossId))"
               :title="`${bossLabel(b.bossId, b.difficulty)} · ${b.party}인 · ${formatKoreanNumber(crystalPrice(b.bossId, b.difficulty, b.party) ?? 0)}`"
               @click="toggle(r.character, b)"
             >
@@ -349,7 +347,7 @@ async function addCharacter(ocid: string) {
                 <LedgerLootIcon :item="b.clear.loot[0]!.item" :size="20" />
                 <template v-if="b.clear.loot.length > 1">+{{ b.clear.loot.length - 1 }}</template>
               </template>
-              <template v-else>+물욕</template>
+              <template v-else>+<span class="loot-word">물욕</span></template>
             </button>
           </div>
           <button v-if="!r.bosses.length && openOcid !== r.character.ocid" type="button" class="hint" @click="toggleSetup(r.character.ocid)">보스를 아직 안 골랐어요 · 눌러서 고르기</button>
@@ -359,7 +357,6 @@ async function addCharacter(ocid: string) {
           class="setup"
           :character="r.character"
           :others="roster.filter(c => c.ocid !== r.character.ocid)"
-          :busy="!!busy"
           @save="setBosses(r.character.ocid, $event)"
           @copy="(to, bosses) => copyBosses(r.character.ocid, to, bosses)"
           @close="openOcid = null"
@@ -369,25 +366,9 @@ async function addCharacter(ocid: string) {
     <LedgerLootModal v-model="lootOpen" :clear="lootClear" :fee-rate="feeRate" @saved="emit('changed')" />
     <AppModal v-model="pickerOpen" title="보스 도는 캐릭터 추가">
       <p v-if="!candidates" class="muted">캐릭터 목록을 불러오는 중이에요…</p>
-      <CharacterPicker v-else :characters="candidates.filter(c => !roster.some(r => r.ocid === c.ocid))" :busy="!!busy" @pick="addCharacter" />
+      <CharacterPicker v-else :characters="candidates.filter(c => !roster.some(r => r.ocid === c.ocid))" :busy="false" @pick="addCharacter" />
     </AppModal>
 
-    <AppModal v-model="removeOpen" title="캐릭터 빼기" :width="376">
-      <div v-if="removing" class="confirm">
-        <div class="confirm-who">
-          <CharacterThumb v-if="removing.imageUrl" :src="removing.imageUrl" :height="48" crop="head" class="face" />
-          <span>
-            <b>{{ removing.name }}</b>
-            <small class="muted">{{ removing.job }} · LV.{{ removing.level }} · 보스 {{ removing.bosses.length }}개</small>
-          </span>
-        </div>
-        <p class="muted small">보스 표에서 빼요. 이미 체크한 기록은 가계부에 그대로 남아요.</p>
-        <div class="confirm-actions">
-          <button type="button" class="btn ghost compact" @click="removing = null">취소</button>
-          <button type="button" class="btn compact remove-btn" :disabled="!!busy" @click="removeCharacter(removing.ocid)">빼기</button>
-        </div>
-      </div>
-    </AppModal>
   </div>
 </template>
 
@@ -413,8 +394,8 @@ async function addCharacter(ocid: string) {
 }
 .monthly-tag {
   padding: 2px 10px;
-  background: rgb(183 156 255 / 0.08);
-  border: 1px solid rgb(183 156 255 / 0.4);
+  background: color-mix(in srgb, var(--calc) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--calc) 40%, transparent);
   border-radius: 999px;
   color: var(--sub);
   font-size: 13px;
@@ -434,7 +415,7 @@ async function addCharacter(ocid: string) {
 .bar span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, #ffb347, var(--gold));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 70%, var(--loss)), var(--gold));
   transition: width var(--normal) var(--ease-out);
 }
 .rows {
@@ -470,6 +451,10 @@ async function addCharacter(ocid: string) {
   flex: none;
   margin: 0 -2px 0 -4px;
   padding: 6px 2px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  font-family: inherit;
   color: var(--sub);
   font-size: 16px;
   line-height: 1;
@@ -477,7 +462,8 @@ async function addCharacter(ocid: string) {
   opacity: 0.5;
   transition: opacity var(--fast) ease;
 }
-.row:hover .grip {
+.row:hover .grip,
+.grip:focus-visible {
   opacity: 1;
 }
 .row.dragging {
@@ -501,7 +487,7 @@ async function addCharacter(ocid: string) {
 }
 .who-main:hover,
 .row.open .who-main {
-  background: rgb(242 193 78 / 0.08);
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
 }
 .caret {
   display: inline-block;
@@ -622,9 +608,8 @@ async function addCharacter(ocid: string) {
   text-align: left;
   cursor: pointer;
 }
-.toggle:disabled {
-  cursor: wait;
-  opacity: 0.6;
+.toggle[aria-busy="true"] {
+  cursor: progress;
 }
 .loot {
   padding: 0 8px;
@@ -646,14 +631,14 @@ async function addCharacter(ocid: string) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  color: #ffd36b;
+  color: var(--gold);
 }
 .loot.hidden {
   visibility: hidden;
 }
 .row.complete {
   border-color: var(--gain);
-  box-shadow: inset 4px 0 0 var(--gain), 0 0 14px rgb(127 217 154 / 0.15);
+  box-shadow: inset 4px 0 0 var(--gain), 0 0 14px color-mix(in srgb, var(--gain) 15%, transparent);
 }
 .done-stamp {
   white-space: nowrap;
@@ -671,7 +656,7 @@ async function addCharacter(ocid: string) {
 }
 .all-btn {
   padding: 4px 10px;
-  background: rgb(127 217 154 / 0.12);
+  background: color-mix(in srgb, var(--gain) 12%, transparent);
   border: 1px solid var(--gain);
   border-radius: 6px;
   color: var(--gain);
@@ -707,46 +692,9 @@ async function addCharacter(ocid: string) {
   border-color: var(--loss);
   color: var(--loss);
 }
-.confirm {
-  display: grid;
-  gap: 12px;
-}
-.confirm-who {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-left: 3px solid var(--loss);
-  border-radius: 8px;
-}
-.confirm-who > span {
-  display: grid;
-  gap: 2px;
-}
-.confirm-who .face {
-  width: 48px;
-}
-.confirm-who small {
-  font-size: 12.5px;
-}
-.small {
-  font-size: 13px;
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.remove-btn {
-  background: var(--loss);
-  border-color: var(--loss);
-  color: #2a1210;
-}
 .none-btn {
   padding: 3px 10px;
-  background: rgb(255 138 122 / 0.08);
+  background: color-mix(in srgb, var(--loss) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--loss) 60%, transparent);
   border-radius: 6px;
   color: var(--loss);
@@ -757,20 +705,12 @@ async function addCharacter(ocid: string) {
   transition: background var(--fast) ease, transform var(--fast) var(--ease-out);
 }
 .none-btn:hover:not(:disabled) {
-  background: rgb(255 138 122 / 0.2);
+  background: color-mix(in srgb, var(--loss) 20%, transparent);
   transform: translateY(-1px);
-}
-.none-btn:disabled {
-  cursor: wait;
-  opacity: 0.5;
 }
 .all-btn:hover:not(:disabled) {
-  background: rgb(127 217 154 / 0.25);
+  background: color-mix(in srgb, var(--gain) 25%, transparent);
   transform: translateY(-1px);
-}
-.all-btn:disabled {
-  cursor: wait;
-  opacity: 0.5;
 }
 .progress-tag {
   margin-left: auto;
@@ -839,9 +779,115 @@ async function addCharacter(ocid: string) {
 .empty img {
   animation: bob 2.4s ease-in-out infinite;
 }
+/* 쓸 수 없는 버튼·표시도 자리는 남긴다 */
+.off {
+  visibility: hidden;
+}
+.hint-line {
+  height: 18px;
+  margin: -4px 0 -4px;
+  overflow: hidden;
+  color: var(--loss);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+}
+.hint-line.show {
+  opacity: 1;
+}
 @media (max-width: 700px) {
   .row {
     grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .setup {
+    margin: 2px -10px -8px;
+  }
+  .face {
+    width: 44px;
+  }
+  .who-text b {
+    font-size: 16px;
+  }
+  .chips {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .chip {
+    min-width: 0;
+  }
+  .chip:hover {
+    transform: none;
+  }
+  .toggle {
+    min-width: 0;
+    padding: 4px 6px 4px 5px;
+    column-gap: 5px;
+  }
+  .name,
+  .price {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .name {
+    font-size: 13px;
+  }
+  /* 물욕 칸은 + 만 남겨 보스 이름 자리를 넓힌다 */
+  .loot {
+    min-width: 26px;
+    padding: 0 4px;
+    font-size: 13px;
+  }
+  .loot-word {
+    display: none;
+  }
+  .hint {
+    grid-column: 1 / -1;
+  }
+  .totals {
+    font-size: 14px;
+  }
+  .earned {
+    font-size: 21px;
+  }
+  .progress-tag {
+    margin-left: 0;
+  }
+  .all-all {
+    width: 100%;
+  }
+}
+.nudge {
+  display: none;
+}
+@media (pointer: coarse) {
+  .grip {
+    display: none;
+  }
+  .nudge {
+    display: grid;
+    flex: none;
+    gap: 4px;
+  }
+  .nudge button {
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    background: var(--bar);
+    border: 1px solid var(--panel-line);
+    border-radius: 6px;
+    color: var(--sub);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .nudge button:disabled {
+    opacity: 0.3;
+    cursor: default;
   }
 }
 </style>

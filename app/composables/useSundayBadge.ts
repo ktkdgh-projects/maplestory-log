@@ -6,9 +6,11 @@ const SEEN_KEY = 'sunday-seen'
 export type SundayBadge = { kind: 'waiting' } | { kind: 'new' } | { kind: 'upcoming', days: number } | { kind: 'today' }
 
 const badgeState = () => useState<SundayBadge>('sunday-badge', () => ({ kind: 'waiting' }))
-const currentState = () => useState<{ id: number, start: string, end: string } | null>('sunday-current', () => null)
+type SundayCurrent = { id: number, start: string, end: string } | null
 
-export function badgeOf(current: { id: number, start: string, end: string } | null, seen: string | null, now = Date.now()): SundayBadge {
+const currentState = () => useState<SundayCurrent>('sunday-current', () => null)
+
+function badgeOf(current: SundayCurrent, seen: string | null, now = Date.now()): SundayBadge {
   const phase = sundayPhase(now, current)
   if (!current || phase === 'waiting' || phase === 'late') return { kind: 'waiting' }
   if (phase === 'today') return { kind: 'today' }

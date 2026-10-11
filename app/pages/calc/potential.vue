@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CharacterDetail, EquipmentItem, PotentialOptionTable } from '#shared/types'
 import { POTENTIAL_GRADES, POTENTIAL_PARTS, RESET_METHODS, type PotentialGrade } from '#shared/data/potential'
+import { comboChance, comboOptions, goalPresets, optionChance, partOfSlot, planPotential } from '#shared/calc/potential'
 
 useHead({ title: '잠재 기대값 · 메이플스토리로그' })
 
@@ -25,6 +26,8 @@ const method = computed(() => methods.value.find(m => m.id === methodId.value) ?
 
 const part = ref<string>(partOfSlot(String(route.query.slot ?? '')) ?? '모자')
 const level = ref(queryNumber('level') ?? 200)
+// 주소나 내 장비에서 온 레벨이 칩에 없으면 그 레벨 칩을 하나 더 둔다
+const levelChips = computed(() => (LEVELS.includes(level.value) ? LEVELS : [...LEVELS, level.value].sort((a, b) => a - b)))
 const from = ref(gradeIndex(route.query.grade) >= 0 ? gradeIndex(route.query.grade) : 2)
 const to = ref(3)
 watch(from, (value) => {
@@ -33,15 +36,20 @@ watch(from, (value) => {
 const stat = ref('STR')
 const stack = ref(0)
 
-// 내 장비에서 불러오기: 대표 캐릭터가 지금 낀 장비로 부위·레벨·등급을 채운다
+// 대표 캐릭터가 지금 낀 장비로 채운다. 받는 동안에도 칸 자리는 잡아 둔다
 const equipped = ref<EquipmentItem[]>([])
+const equipState = ref<'loading' | 'done' | 'failed'>('loading')
 const pickedSlot = ref(String(route.query.slot ?? ''))
 onMounted(async () => {
   const name = me.value?.main?.name
   if (!name) return
   const detail = await $fetch<CharacterDetail>(`/api/character/${encodeURIComponent(name)}`).catch(() => null)
   equipped.value = (detail?.presets[detail.presetNo - 1] ?? []).filter(i => partOfSlot(i.slot))
+  equipState.value = detail ? 'done' : 'failed'
 })
+const equipOptions = computed(() => [{ value: '', label: '직접 고르기' }, ...equipped.value.map(i => ({ value: i.slot, label: `${i.slot} · ${i.name}` }))])
+const equipPlaceholder = computed(() => (equipState.value === 'loading' ? '장비 불러오는 중…' : equipState.value === 'failed' ? '장비를 불러오지 못했어요' : '불러올 장비가 없어요'))
+const partOptions = POTENTIAL_PARTS.map(p => ({ value: p as string, label: p }))
 function loadItem(slot: string) {
   const item = equipped.value.find(i => i.slot === slot)
   if (!item) return
@@ -56,20 +64,11 @@ watch(equipped, () => {
   if (pickedSlot.value) loadItem(pickedSlot.value)
 })
 
-// 목표 등급의 공식 옵션 확률표
-const table = ref<PotentialOptionTable | null>(null)
-const tableError = ref('')
+// 조건이 바뀌면 useFetch가 앞 요청을 버려 늦게 온 옛 표가 덮어쓰지 않는다
 const tableQuery = computed(() => ({ cube: method.value.cubeItemId, grade: to.value + 1, part: POTENTIAL_PARTS.indexOf(part.value as typeof POTENTIAL_PARTS[number]) + 1, level: level.value }))
-watch(tableQuery, async (query) => {
-  tableError.value = ''
-  try {
-    table.value = await $fetch<PotentialOptionTable>('/api/calc/potential-options', { query })
-  }
-  catch (e) {
-    table.value = null
-    tableError.value = errorMessage(e)
-  }
-}, { immediate: true })
+const { data: tableData, error: tableFetchError, refresh: refreshTable } = useFetch<PotentialOptionTable>('/api/calc/potential-options', { query: tableQuery })
+const table = computed(() => (tableFetchError.value ? null : tableData.value ?? null))
+const tableError = computed(() => (tableFetchError.value ? errorMessage(tableFetchError.value) : ''))
 
 const presets = computed(() => (table.value ? goalPresets(table.value, stat.value) : []))
 const goalLabel = ref<string | null>(null)
@@ -79,7 +78,7 @@ watch(presets, (list) => {
   if (goalLabel.value && !list.some(g => g.label === goalLabel.value)) goalLabel.value = null
 })
 
-// 직접 조합: 세 줄에 원하는 옵션을 골라 그 조합이 뜰 확률을 본다. 비운 줄은 아무거나
+// 직접 조합에서 비운 줄은 아무 옵션이나
 const goalMode = ref<'preset' | 'custom'>('preset')
 const picks = ref<(string | null)[]>([null, null, null])
 const ordered = ref(false)
@@ -98,8 +97,16 @@ const chance = computed(() => {
 const ready = computed(() => to.value > from.value || chance.value !== null)
 const plan = computed(() => (ready.value && (chance.value === null || chance.value > 0) ? planPotential(method.value, level.value, from.value, to.value, stack.value, chance.value) : null))
 const ceilingNow = computed(() => (to.value > from.value ? method.value.ceiling[from.value]! : null))
+function setStack(value: number) {
+  stack.value = ceilingNow.value ? Math.min(Math.max(0, Math.round(value) || 0), ceilingNow.value - 1) : 0
+}
+watch(ceilingNow, () => setStack(stack.value))
+function commitStack(event: Event) {
+  const input = event.target as HTMLInputElement
+  setStack(Number(input.value))
+  input.value = String(stack.value)
+}
 
-// 결과 숫자는 억 단위로 줄여 읽기 쉽게
 const count = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}번`
 const withMeso = (tries: number, meso: number | null) => (meso === null ? count(tries) : `${count(tries)} · ${formatShortNumber(meso)}`)
 const gradeStyle = (i: number) => ({ '--grade': potentialGradeColor(POTENTIAL_GRADES[i]!) ?? 'var(--tip-line)' })
@@ -116,23 +123,18 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
       <form class="calc-inputs" @submit.prevent novalidate>
         <section class="calc-section">
           <h3 class="calc-section-title">장비</h3>
-          <label v-if="equipped.length" class="calc-load">
-            <span class="calc-load-label">내 장비에서 불러오기</span>
-            <select v-model="pickedSlot" class="field-input">
-              <option value="">직접 고르기</option>
-              <option v-for="i in equipped" :key="i.slot" :value="i.slot">{{ i.slot }} · {{ i.name }}</option>
-            </select>
-          </label>
-          <label class="calc-field">
-            <span class="calc-label">부위</span>
-            <select id="calc-part" v-model="part" class="field-input">
-              <option v-for="p in POTENTIAL_PARTS" :key="p" :value="p">{{ p }}</option>
-            </select>
-          </label>
+          <div v-if="me?.main" class="calc-load">
+            <label for="load-equip" class="calc-load-label">내 장비에서 불러오기</label>
+            <AppSelect id="load-equip" v-model="pickedSlot" :options="equipped.length ? equipOptions : []" :placeholder="equipPlaceholder" :disabled="!equipped.length" />
+          </div>
+          <div class="calc-field">
+            <label for="calc-part" class="calc-label">부위</label>
+            <AppSelect id="calc-part" v-model="part" :options="partOptions" />
+          </div>
           <div class="calc-field">
             <span class="calc-label">착용 레벨</span>
-            <div class="calc-chips grid" style="--cols: 4">
-              <button v-for="l in LEVELS" :key="l" type="button" class="calc-chip" :aria-pressed="level === l" @click="level = l">{{ l }}</button>
+            <div class="calc-chips grid" :style="{ '--cols': levelChips.length }">
+              <button v-for="l in levelChips" :key="l" type="button" class="calc-chip" :aria-pressed="level === l" @click="level = l">{{ l }}</button>
             </div>
           </div>
         </section>
@@ -165,18 +167,24 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
               <button v-for="(g, i) in POTENTIAL_GRADES" :key="g" type="button" class="calc-chip grade" :style="gradeStyle(i)" :disabled="i < from" :aria-pressed="to === i" @click="to = i">{{ g }}</button>
             </div>
           </div>
-          <div v-if="ceilingNow" class="calc-field">
-            <span class="calc-label">쌓인 천장 · {{ POTENTIAL_GRADES[from] }}, 최대 {{ ceilingNow }}번</span>
+          <!-- 등급을 올리지 않을 땐 천장이 없지만 자리는 남겨 둬서 아래가 들썩이지 않게 한다 -->
+          <div class="calc-field" :class="{ off: !ceilingNow }" :aria-hidden="!ceilingNow">
+            <span class="calc-label">{{ ceilingNow ? `쌓인 천장 · ${POTENTIAL_GRADES[from]}, 최대 ${ceilingNow}번` : '쌓인 천장 · 등급을 올릴 때만' }}</span>
             <div class="calc-stepper half">
-              <button type="button" aria-label="줄이기" :disabled="stack <= 0" @click="stack = Math.max(0, stack - 1)">−</button>
-              <input v-model.number="stack" type="number" min="0" :max="ceilingNow - 1" aria-label="쌓인 천장 횟수">
-              <button type="button" aria-label="늘리기" :disabled="stack >= ceilingNow - 1" @click="stack = Math.min(ceilingNow - 1, stack + 1)">+</button>
+              <button type="button" aria-label="줄이기" :disabled="!ceilingNow || stack <= 0" @click="setStack(stack - 1)">−</button>
+              <input :value="stack" type="number" min="0" :max="(ceilingNow ?? 1) - 1" :disabled="!ceilingNow" aria-label="쌓인 천장 횟수" @change="commitStack">
+              <button type="button" aria-label="늘리기" :disabled="!ceilingNow || stack >= ceilingNow - 1" @click="setStack(stack + 1)">+</button>
             </div>
           </div>
         </section>
 
         <section class="calc-section">
-          <h3 class="calc-section-title">목표 옵션<small>{{ part }}에 뜨는 것만</small></h3>
+          <h3 class="calc-section-title">
+            목표 옵션
+            <!-- 오류는 제목 줄 안에 띄워 아래가 밀리지 않게 한다 -->
+            <button v-if="tableError" type="button" class="table-retry" @click="refreshTable()">옵션표를 못 받았어요 · 다시 받기</button>
+            <small v-else>{{ part }}에 뜨는 것만</small>
+          </h3>
           <div class="calc-seg wide" role="group" aria-label="목표 고르는 방법">
             <button type="button" :aria-pressed="goalMode === 'preset'" @click="goalMode = 'preset'">추천 목표</button>
             <button type="button" :aria-pressed="goalMode === 'custom'" @click="goalMode = 'custom'">직접 조합</button>
@@ -196,17 +204,18 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
               <button type="button" :aria-pressed="ordered" @click="ordered = true">줄 순서대로</button>
             </div>
             <div class="combo">
-              <label v-for="(_, i) in picks" :key="i" class="combo-line">
+              <div v-for="(_, i) in picks" :key="i" class="combo-line">
                 <span class="combo-no" :class="{ on: picks[i] }">{{ i + 1 }}</span>
-                <select v-model="picks[i]" class="field-input" :aria-label="ordered ? `${i + 1}번째 줄 옵션` : `옵션 ${i + 1}`">
-                  <option :value="null">아무거나</option>
-                  <option v-for="t in comboList(i)" :key="t" :value="t">{{ t }}</option>
-                </select>
-              </label>
+                <AppSelect
+                  :model-value="picks[i] ?? ''"
+                  :options="[{ value: '', label: '아무거나' }, ...comboList(i).map(t => ({ value: t, label: t }))]"
+                  :label="ordered ? `${i + 1}번째 줄 옵션` : `옵션 ${i + 1}`"
+                  @update:model-value="v => (picks[i] = v || null)"
+                />
+              </div>
             </div>
             <p class="calc-hint">{{ ordered ? '고른 옵션이 그 줄에 그대로 떠야 해요.' : '고른 옵션이 세 줄 중 어디에든 뜨면 돼요.' }} 비운 칸은 아무 옵션이나 괜찮다는 뜻이에요.</p>
           </template>
-          <p v-if="tableError" class="form-error">{{ tableError }}</p>
         </section>
       </form>
 
@@ -265,7 +274,6 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
   border-color: var(--grade);
   color: var(--grade);
 }
-/* 직접 조합: 번호 동그라미 + 옵션 고르기. 고른 줄은 번호에 불이 들어온다 */
 .combo {
   display: grid;
   gap: 6px;
@@ -288,18 +296,32 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
   font-weight: 700;
 }
 .combo-no.on {
-  background: rgb(242 193 78 / 0.12);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
   border-color: var(--gold);
   color: var(--gold);
 }
 .half {
   max-width: 50%;
 }
+.off {
+  opacity: 0.45;
+}
+.table-retry {
+  margin-left: auto;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--loss);
+  font: inherit;
+  font-family: var(--f-body);
+  font-size: 11.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .split {
   display: grid;
   gap: 6px;
 }
-/* 등급 올리기와 옵션 맞추기에 쓰는 횟수를 그 등급 색 막대로 나눠 보여준다 */
 .stack {
   display: flex;
   overflow: hidden;

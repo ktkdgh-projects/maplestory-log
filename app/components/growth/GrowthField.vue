@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { GrowthDay } from '~/utils/growth'
+import type { GrowthDay } from '#shared/calc/growth'
 
 const props = defineProps<{ days: GrowthDay[], imageUrl: string | null }>()
 const selected = defineModel<number>({ required: true })
@@ -12,7 +12,6 @@ const PLATFORM_RANGE = 90
 const fieldWidth = computed(() => `max(100%, ${props.days.length * PLATFORM_SPACING + 40}px)`)
 const xOf = (i: number) => (props.days.length > 1 ? 4 + (i * 92) / (props.days.length - 1) : 50)
 
-// 발판 높이로 그날 얻은 경험치를 보여준다. 높을수록 많이 얻은 날
 const heights = computed(() => {
   const gains = props.days.map(d => Math.max(d.gainPercent ?? 0, 0))
   const max = Math.max(...gains)
@@ -143,7 +142,7 @@ watch(selected, () => centerSelected('smooth'))
   animation: rise-platform 0.6s var(--ease-spring) backwards, pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse {
-  50% { box-shadow: 0 0 12px rgb(242 193 78 / 0.55); }
+  50% { box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 55%, transparent); }
 }
 .platform.today span {
   color: var(--gold);
@@ -157,7 +156,7 @@ watch(selected, () => centerSelected('smooth'))
   background: var(--gain);
   border: 1px solid #2e6b3b;
   border-radius: 3px;
-  color: #0e2614;
+  color: var(--on-gain);
   font-family: var(--f-pixel);
   font-size: 9px;
   font-style: normal;
@@ -206,5 +205,11 @@ watch(selected, () => centerSelected('smooth'))
 .level-up {
   color: var(--gain);
   font-family: var(--f-title);
+}
+/* 한 화면에 맞추는 넓은 화면에선 아래 그래프·요약이 가려지지 않게 필드가 먼저 줄어든다 */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .scroll {
+    min-height: 150px;
+  }
 }
 </style>

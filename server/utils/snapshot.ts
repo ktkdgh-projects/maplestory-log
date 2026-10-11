@@ -27,7 +27,7 @@ async function fetchSnapshot(apiKey: string, ocid: string, date: string): Promis
 
 const LIVE_CACHE_MS = 10 * 60 * 1000
 
-// 오늘은 날짜 지정 조회가 안 되므로 실시간 값으로 진행 중인 하루를 만들고, 같은 응답의 캐릭터 정보와 함께 캐시한다. 키는 함수로 주면 캐시가 없을 때만 꺼낸다
+// 오늘은 날짜 지정 조회가 안 돼 실시간 값으로 진행 중인 하루를 만든다. 키는 함수로 주면 캐시가 없을 때만 꺼낸다
 export function fetchLive(apiKey: string | (() => Promise<string>), ocid: string, fresh = false): Promise<{ character: NonNullable<SnapshotsResponse['character']>, today: SnapshotPoint }> {
   return withCache(`live:${ocid}`, LIVE_CACHE_MS, async () => {
     const key = typeof apiKey === 'function' ? await apiKey() : apiKey
@@ -113,10 +113,9 @@ async function claimJob(filter: Record<string, unknown>): Promise<JobDoc | null>
 
 async function finishJob(job: JobDoc, result: string, startedAt: number, update: Partial<JobDoc>) {
   const { jobs, jobLogs } = await useCollections()
-  await Promise.all([
-    jobs.updateOne({ _id: job._id }, { $set: { lockedAt: null, ...update } }),
-    jobLogs.insertOne({ at: new Date(), userId: job.userId, ocid: job.ocid, date: job.date, result, ms: Date.now() - startedAt }),
-  ])
+  // 작업이 없어졌으면 그사이 탈퇴해 지운 것이라 기록을 남기지 않는다
+  const { matchedCount } = await jobs.updateOne({ _id: job._id }, { $set: { lockedAt: null, ...update } })
+  if (matchedCount) await jobLogs.insertOne({ at: new Date(), userId: job.userId, ocid: job.ocid, date: job.date, result, ms: Date.now() - startedAt })
 }
 
 const later = (ms: number) => new Date(Date.now() + ms)
@@ -153,7 +152,9 @@ export async function processSnapshotJobs(options: { budgetMs: number, userId?: 
       const message = redactApiKeys(error instanceof Error ? error.message : String(error))
 
       if (isError(error) && error.statusCode === 409) {
-        await finishJob(job, 'NO_KEY', startedAt, { status: 'failed', error: 'NO_KEY' })
+        // 탈퇴와 겹쳐 사용자 없이 남은 작업이면 기록 없이 지운다
+        if (!(await userExists(job.userId))) await jobs.deleteMany({ userId: job.userId })
+        else await finishJob(job, 'NO_KEY', startedAt, { status: 'failed', error: 'NO_KEY' })
         skippedUsers.push(job.userId)
       }
       else if (error instanceof NexonError && error.isKeyProblem) {

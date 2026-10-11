@@ -1,26 +1,45 @@
-import type { StarforceOptions, StarforcePlan } from '~/utils/starforceCalc'
+import type { StarforceOptions, StarforcePlan } from '#shared/calc/starforce'
 
-// 스타포스 계산(정확 기대값 + 모의 실험)을 화면과 따로 도는 Worker에 맡긴다. 높은 성급은 수백 ms가 걸려 버튼 반응이 멈추지 않게 한다.
-// cancel()은 돌고 있는 계산을 버리고(기다리던 결과는 오지 않는다) 다음 계산을 새 Worker로 받는다
+// cancel()한 계산의 Promise는 끝나지 않는다. 다음 계산은 새 Worker로 받는다
 export function useStarforceWorker() {
   let worker: Worker | null = null
   let seq = 0
-  const waiting = new Map<number, (plan: StarforcePlan) => void>()
+  const waiting = new Map<number, { resolve: (plan: StarforcePlan) => void, reject: (error: Error) => void }>()
 
+  function failAll(error: Error) {
+    for (const w of waiting.values()) w.reject(error)
+    waiting.clear()
+  }
   function ensure() {
     if (worker) return worker
     worker = new Worker(new URL('../workers/starforce.worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (event: MessageEvent<{ id: number, plan: StarforcePlan }>) => {
-      waiting.get(event.data.id)?.(event.data.plan)
+      waiting.get(event.data.id)?.resolve(event.data.plan)
       waiting.delete(event.data.id)
     }
+    // Worker가 죽으면 기다리던 계산이 영영 안 끝나므로 실패로 돌려주고 다음 계산은 새 Worker로 한다
+    const broken = () => {
+      worker?.terminate()
+      worker = null
+      failAll(new Error('계산하지 못했어요. 페이지를 새로 고쳐 주세요.'))
+    }
+    worker.onerror = broken
+    worker.onmessageerror = broken
     return worker
   }
   function plan(options: StarforceOptions): Promise<StarforcePlan> {
+    // 서버 렌더링엔 Worker가 없어서 결과를 기다리기만 한다(브라우저에서 다시 계산한다)
+    if (!import.meta.client) return new Promise(() => {})
     const id = ++seq
-    return new Promise((resolve) => {
-      waiting.set(id, resolve)
-      ensure().postMessage({ id, options: { ...options, protect: [...options.protect] } })
+    return new Promise((resolve, reject) => {
+      waiting.set(id, { resolve, reject })
+      try {
+        ensure().postMessage({ id, options: { ...options, protect: [...options.protect] } })
+      }
+      catch (error) {
+        waiting.delete(id)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
   function cancel() {

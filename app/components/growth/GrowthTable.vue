@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import type { GrowthDay } from '~/utils/growth'
+import type { GrowthDay } from '#shared/calc/growth'
 
 const props = defineProps<{ days: GrowthDay[] }>()
 const selected = defineModel<number>({ required: true })
 
-// 최근 날짜가 위로 오게 보여준다
 const rows = computed(() => props.days.map((day, i) => ({ day, i })).reverse())
 </script>
 
@@ -21,7 +20,15 @@ const rows = computed(() => props.days.map((day, i) => ({ day, i })).reverse())
         </tr>
       </thead>
       <tbody>
-        <tr v-for="{ day, i } in rows" :key="day.date" :class="{ on: i === selected, today: day.isToday }" @click="selected = i">
+        <tr
+          v-for="{ day, i } in rows"
+          :key="day.date"
+          :class="{ on: i === selected, today: day.isToday }"
+          tabindex="0"
+          :aria-selected="i === selected"
+          @click="selected = i"
+          @keydown.enter.space.prevent="selected = i"
+        >
           <td>{{ dayLabel(day) }}</td>
           <td>
             LV.{{ day.level }}
@@ -74,11 +81,15 @@ tbody tr {
   cursor: pointer;
   transition: background var(--fast) ease;
 }
+tbody tr:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
 tbody tr:hover {
   background: var(--panel);
 }
 tbody tr.on {
-  background: rgb(242 193 78 / 0.1);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
   box-shadow: inset 3px 0 0 var(--gold);
 }
 tbody tr.today td:first-child {
@@ -94,7 +105,7 @@ small {
   padding: 0 4px;
   background: var(--gain);
   border-radius: 3px;
-  color: #0e2614;
+  color: var(--on-gain);
   font-family: var(--f-pixel);
   font-size: 9px;
 }

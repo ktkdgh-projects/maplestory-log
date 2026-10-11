@@ -23,7 +23,7 @@ const memoFab = computed(() => !!me.value && navGroupOf(route.path)?.key === 'le
     </main>
 
     <footer class="footer">
-      <span>Data based on NEXON Open API · 넥슨의 공식 서비스가 아닙니다</span>
+      <span class="credit"><span>Data based on NEXON Open API</span> <span>· 넥슨의 공식 서비스가 아닙니다</span></span>
       <nav aria-label="안내">
         <NuxtLink to="/guide/api-key">키 발급 안내</NuxtLink>
         <NuxtLink to="/terms">이용약관</NuxtLink>
@@ -44,7 +44,7 @@ const memoFab = computed(() => !!me.value && navGroupOf(route.path)?.key === 'le
 }
 .banner {
   padding: 10px 16px;
-  background: rgb(255 138 122 / 0.08);
+  background: color-mix(in srgb, var(--loss) 8%, transparent);
   border-bottom: 1px solid var(--loss);
   color: var(--loss);
   text-align: center;
@@ -73,6 +73,10 @@ const memoFab = computed(() => !!me.value && navGroupOf(route.path)?.key === 'le
   color: var(--sub);
   font-size: 13px;
   text-align: center;
+}
+/* 좁으면 출처와 안내를 덩어리째 줄바꿈해 글자가 중간에서 꺾이지 않게 한다 */
+.credit span {
+  display: inline-block;
 }
 .footer nav {
   display: flex;
@@ -108,6 +112,9 @@ const memoFab = computed(() => !!me.value && navGroupOf(route.path)?.key === 'le
 @media (max-width: 640px) {
   .layout {
     padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+  .wrap {
+    padding: 14px 16px 24px;
   }
 }
 </style>

@@ -3,7 +3,7 @@ import { findBoss } from '#shared/data/bosses'
 
 const props = withDefaults(defineProps<{ bossId: string, size?: number }>(), { size: 40 })
 
-// 인게임 보스 아이콘(25px, 넥슨 저작물). 아이콘이 아직 없는 새 보스는 이름 두 글자로 대신한다
+// 인게임 보스 아이콘은 25px(넥슨 저작물). 아이콘이 아직 없는 새 보스는 이름 두 글자로 대신한다
 const ICON_PX = 25
 const ICONS = assetsByName(import.meta.glob<string>('~/assets/bosses/*.png', { eager: true, import: 'default' }))
 

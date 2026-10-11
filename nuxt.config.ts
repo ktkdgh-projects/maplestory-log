@@ -1,6 +1,6 @@
-// https://nuxt.com/docs/api/configuration/nuxt-config
 const CONTENT_SECURITY_POLICY = [
   `default-src 'self'`,
+  // SSR 인라인 스크립트(window.__NUXT__) 때문에 필요. nonce는 요청마다 HTML을 고쳐야 해서 보류
   `script-src 'self' 'unsafe-inline'`,
   `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
   `font-src 'self' https://fonts.gstatic.com`,
@@ -17,6 +17,9 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
 
   css: ['~/assets/css/tokens.css', '~/assets/css/base.css', '~/assets/css/calc.css'],
+
+  // 폴더는 묶음용. 파일 이름이 곧 태그 이름 (ui/AppModal.vue → <AppModal>)
+  components: [{ path: '~/components', pathPrefix: false }],
 
   app: {
     pageTransition: { name: 'page', mode: 'out-in' },
@@ -70,6 +73,10 @@ export default defineNuxtConfig({
           'Content-Security-Policy': CONTENT_SECURITY_POLICY,
           'X-Content-Type-Options': 'nosniff',
           'Referrer-Policy': 'strict-origin-when-cross-origin',
+          'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
+          'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+          'X-Frame-Options': 'DENY',
+          'Cross-Origin-Opener-Policy': 'same-origin',
         },
       },
     },

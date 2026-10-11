@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import type { CharacterDetail } from '#shared/types'
+import { findBestPresetCombo } from '#shared/calc/combatPower'
 
 const props = defineProps<{ character: CharacterDetail, refreshing?: boolean, refreshError?: string }>()
 const emit = defineEmits<{ refresh: [] }>()
 
+// 서버 렌더링과 어긋나지 않게 화면에 붙은 뒤에만 재고, 1분마다 다시 잰다
+const now = ref<number | null>(null)
+let clock: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  now.value = Date.now()
+  clock = setInterval(() => (now.value = Date.now()), 60_000)
+})
+onBeforeUnmount(() => clearInterval(clock))
 const fetchedAgo = computed(() => {
-  const minutes = Math.floor((Date.now() - Date.parse(props.character.fetchedAt)) / 60_000)
+  if (now.value === null) return ''
+  const minutes = Math.floor((now.value - Date.parse(props.character.fetchedAt)) / 60_000)
   return minutes < 1 ? '방금' : minutes < 60 ? `${minutes}분 전` : `${Math.floor(minutes / 60)}시간 전`
 })
 
@@ -33,11 +43,14 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
     <div class="head">
       <div class="name-row">
         <h1 class="name">{{ character.name }}</h1>
-        <button type="button" class="refresh" :class="{ spinning: refreshing }" :disabled="refreshing" :title="refreshing ? '받는 중…' : `${fetchedAgo} 정보 · 누르면 바로 최신화`" aria-label="최신화" @click="emit('refresh')">
+        <button type="button" class="refresh" :class="{ spinning: refreshing }" :disabled="refreshing" aria-label="최신화" @click="emit('refresh')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" /></svg>
         </button>
+        <!-- 언제 받은 정보인지, 최신화 실패 이유를 같은 자리에 보여 줘서 줄이 생기지 않는다 -->
+        <span class="fetched ellipsis" :class="{ failed: refreshError && !refreshing }" role="status">
+          {{ refreshing ? '최신 정보 받는 중…' : refreshError ? `최신화하지 못했어요 · ${refreshError}` : fetchedAgo ? `${fetchedAgo} 정보` : '' }}
+        </span>
       </div>
-      <p v-if="refreshError" class="form-error">{{ refreshError }}</p>
       <div class="badges">
         <span class="badge level">LV.{{ character.level }}</span>
         <span class="badge job">{{ character.job }}</span>
@@ -53,7 +66,7 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
       <span class="tile-label">
         전투력
         <HoverInfo v-if="recorded" title="실제 기록" align="left">
-          <span class="badge-mini record">{{ formatMonthDay(recorded.date) }} 기록</span>
+          <span class="badge-mini record">{{ formatDay(recorded.date) }} 기록</span>
           <template #info>
             <span>이 조합의 추산과 맞는 가장 최근 실제 전투력이에요</span>
           </template>
@@ -94,28 +107,35 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
   align-items: center;
   gap: 8px;
 }
-/* 닉네임 옆에 붙는 작은 원형 아이콘 버튼. 받는 동안 아이콘이 돈다 */
 .refresh {
   display: grid;
   flex: none;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  background: rgb(242 193 78 / 0.1);
-  border: 1px solid rgb(242 193 78 / 0.35);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
   border-radius: 50%;
   color: var(--gold);
   cursor: pointer;
   transition: background var(--fast) ease, border-color var(--fast) ease, transform var(--fast) var(--ease-spring);
 }
 .refresh:hover:not(:disabled) {
-  background: rgb(242 193 78 / 0.2);
+  background: color-mix(in srgb, var(--gold) 20%, transparent);
   border-color: var(--gold);
   transform: rotate(-30deg);
 }
 .refresh:disabled {
   cursor: wait;
+}
+.fetched {
+  min-width: 0;
+  color: var(--sub);
+  font-size: 12.5px;
+}
+.fetched.failed {
+  color: var(--loss);
 }
 .refresh svg {
   width: 16px;
@@ -134,7 +154,7 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
 }
 .name {
   margin: 0;
-  background: linear-gradient(90deg, #fff, #ffe3a3);
+  background: linear-gradient(90deg, #fff, var(--lamp-gold));
   background-clip: text;
   color: transparent;
   font-family: var(--f-title);
@@ -154,7 +174,7 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
   font-size: 15px;
 }
 .level {
-  background: linear-gradient(90deg, #ffb347, var(--gold));
+  background: linear-gradient(90deg, var(--gold-warm), var(--gold));
   color: var(--on-gold);
 }
 .job {
@@ -167,7 +187,8 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
 }
 .meta {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 4px 16px;
   color: var(--sub);
   font-size: 14px;
 }
@@ -200,8 +221,8 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
   gap: 1px;
   margin-top: 6px;
   padding: 6px 10px;
-  background: rgb(127 217 154 / 0.08);
-  border: 1px solid rgb(127 217 154 / 0.35);
+  background: color-mix(in srgb, var(--gain) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gain) 35%, transparent);
   border-radius: 6px;
   color: var(--sub);
   font-size: 12px;
@@ -213,8 +234,8 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
   font-weight: 400;
 }
 .combo.up {
-  background: rgb(242 193 78 / 0.1);
-  border-color: rgb(242 193 78 / 0.45);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
 }
 .combo.up b {
   color: var(--gold);
@@ -224,7 +245,6 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
   align-items: center;
   gap: 6px;
 }
-/* 추산은 계산 색, 실제 기록은 API 색 */
 .badge-mini {
   --c: var(--calc);
   padding: 0 7px;

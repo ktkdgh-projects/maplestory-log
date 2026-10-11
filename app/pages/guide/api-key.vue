@@ -3,7 +3,6 @@ useHead({ title: 'API 키 발급 안내 · 메이플스토리로그' })
 
 const { me } = await useMe()
 
-// 넥슨 Open API 애플리케이션 등록·목록 화면. 로그인 전이면 로그인 뒤 이 화면으로 돌아온다
 const CREATE_APP_URL = 'https://openapi.nexon.com/ko/my-application/create-app/'
 const MY_APPS_URL = 'https://openapi.nexon.com/ko/my-application/'
 
@@ -15,7 +14,6 @@ const STEPS = [
   { kind: 'paste', title: '여기에 붙여넣기', text: '키 등록 칸에 붙여넣으면 끝이에요.' },
 ] as const
 
-// 등록 화면에 적을 값. 복사 버튼으로 바로 붙여넣을 수 있게 한다
 const SITE_URL = 'https://maplestory-log.vercel.app'
 const FIELDS = [
   { label: '게임 선택', value: '메이플스토리' },
@@ -58,14 +56,10 @@ const NOTES = [
   <div class="page fit guide">
     <GameWindow title="API 키 발급 안내" sub="넥슨 로그인이 아니에요 · 5분이면 끝나요">
       <div class="hero">
-        <div class="npc">
-          <img src="/favicon.svg" alt="" class="face">
-          <p class="say">
-            넥슨 비밀번호 없이, 직접 발급한 <b>API 키</b>만으로 내 캐릭터 기록을 모아 드려요.
-          </p>
-        </div>
+        <NpcSay class="npc">
+          넥슨 비밀번호 없이, 직접 발급한 <b>API 키</b>만으로 내 캐릭터 기록을 모아 드려요.
+        </NpcSay>
         <div class="hero-actions">
-          <a :href="CREATE_APP_URL" target="_blank" rel="noopener" class="btn ghost">애플리케이션 등록 열기 ↗</a>
           <NuxtLink v-if="!me" to="/login" class="btn"><svg class="key-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8M16 7l3 3M14 9l2 2" /></svg>키 등록하러 가기</NuxtLink>
           <NuxtLink v-else to="/me" class="btn ghost">내 키 관리 →</NuxtLink>
         </div>
@@ -142,47 +136,7 @@ const NOTES = [
   gap: 16px;
 }
 .npc {
-  display: flex;
   flex: 1 1 420px;
-  gap: 14px;
-  align-items: center;
-}
-.face {
-  flex: none;
-  width: 54px;
-  height: 54px;
-  padding: 7px;
-  background: var(--bar);
-  border: 2px solid var(--tip-line);
-  border-radius: 10px;
-  animation: bob 2.4s ease-in-out infinite;
-}
-.say {
-  position: relative;
-  margin: 0;
-  padding: 9px 16px;
-  background: var(--bar);
-  border: 2px solid var(--tip-line);
-  border-radius: 10px;
-  font-size: 15px;
-  line-height: 1.6;
-  animation: rise-in 0.5s var(--ease-out) 0.15s backwards;
-}
-/* 말풍선 꼬리 */
-.say::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: -9px;
-  width: 14px;
-  height: 14px;
-  background: var(--bar);
-  border-bottom: 2px solid var(--tip-line);
-  border-left: 2px solid var(--tip-line);
-  transform: translateY(-50%) rotate(45deg);
-}
-.say b {
-  color: var(--gold);
 }
 .hero-actions {
   display: flex;
@@ -200,7 +154,6 @@ const NOTES = [
   gap: 16px;
 }
 
-/* 발급 순서: 번호 원을 세로 선으로 잇는다 */
 .steps {
   display: grid;
   margin: 0;
@@ -235,14 +188,14 @@ const NOTES = [
   background: var(--bar);
   border: 2px solid var(--api);
   border-radius: 50%;
-  box-shadow: 0 0 12px rgb(127 178 255 / 0.25);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--api) 25%, transparent);
   color: var(--api);
   font-family: var(--f-title);
   font-size: 18px;
 }
 .step:last-child .num {
   border-color: var(--gold);
-  box-shadow: 0 0 12px rgb(242 193 78 / 0.3);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 30%, transparent);
   color: var(--gold);
 }
 .step-body {
@@ -276,7 +229,6 @@ const NOTES = [
 .open {
   margin-top: 4px;
 }
-/* 등록 화면 입력값: 왼쪽 항목, 오른쪽 값 */
 .fields {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -377,7 +329,6 @@ const NOTES = [
   font-size: 13px;
 }
 
-/* 알아두세요: 색 막대로 성격을 나눈다 */
 .notes {
   display: grid;
   gap: 6px;
@@ -424,7 +375,7 @@ const NOTES = [
   display: grid;
   gap: 1px;
   padding: 7px 12px;
-  background: rgb(127 217 154 / 0.05);
+  background: color-mix(in srgb, var(--gain) 5%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 8px;
 }
@@ -434,9 +385,6 @@ const NOTES = [
 .unlocks span {
   color: var(--sub);
   font-size: 12px;
-}
-.small {
-  font-size: 13px;
 }
 /* 넓은 화면은 한 화면에 맞추고 발급 순서만 안에서 스크롤한다 */
 @media (min-width: 1100px) and (min-height: 700px) {
@@ -460,7 +408,6 @@ const NOTES = [
   .side > * {
     min-height: 0;
   }
-  /* 칸이 창 높이를 나눠 채운다 */
   .notes,
   .unlocks {
     flex: 1;
@@ -485,7 +432,6 @@ const NOTES = [
   }
 }
 @media (max-width: 480px) {
-  /* 좁은 화면은 항목 이름 아래에 값을 둔다 */
   .fields {
     grid-template-columns: 1fr;
   }

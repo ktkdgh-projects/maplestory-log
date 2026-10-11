@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { LedgerSettings } from '#shared/types'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 
-// 메소 내역·일별 기록·보스 수입 위쪽에 늘 같은 자리로 두는 줄: 보유 메소(맞추기)와 직접 등록
-// 일별 기록은 그날 패널에서 직접 등록하므로 위쪽 버튼을 숨긴다
+// 일별 기록은 그날 패널에서 직접 등록하므로 addButton을 끈다
 const props = withDefaults(defineProps<{ settings: LedgerSettings | null, addButton?: boolean }>(), { addButton: true })
 const emit = defineEmits<{ changed: [] }>()
 
@@ -13,14 +13,14 @@ const balance = computed(() => props.settings?.balance ?? null)
 
 <template>
   <div class="wallet">
-    <button type="button" class="balance" :title="balance ? `${formatDay(balance.checkedAt)}에 맞춘 ${formatKoreanNumber(balance.checked)}부터 계산 · 눌러서 다시 맞추기` : '보유 메소를 맞추면 지금 보유 메소를 보여 줘요'" @click="settingsOpen = true">
+    <button type="button" class="balance" :title="balance ? `${formatDay(balance.checkedAt)}에 맞춘 ${formatKoreanNumber(balance.checked)}부터 계산 · 눌러서 다시 맞추기` : '보유 메소를 맞추면 지금 보유 메소를 보여 드려요'" @click="settingsOpen = true">
       <span class="balance-label">보유 메소</span>
       <b v-if="balance">{{ formatKoreanNumber(balance.current) }}</b>
       <span v-else class="balance-empty">맞추기</span>
       <span class="gear" aria-hidden="true">⚙</span>
     </button>
-    <slot />
-    <button v-if="addButton" type="button" class="add" @click="entryOpen = true">＋ 직접 등록</button>
+    <span v-if="$slots.default" class="sources"><slot /></span>
+    <button v-if="addButton" type="button" class="add" @click="entryOpen = true">+ 직접 등록</button>
 
     <LedgerSettingsModal v-model="settingsOpen" :settings="settings" @saved="emit('changed')" />
     <LedgerEntryModal v-model="entryOpen" :entry="null" :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" :balance="balance?.current ?? null" @saved="emit('changed')" />
@@ -40,7 +40,7 @@ const balance = computed(() => props.settings?.balance ?? null)
   gap: 8px;
   min-height: 40px;
   padding: 0 12px;
-  background: linear-gradient(90deg, rgb(242 193 78 / 0.14), var(--panel));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 14%, transparent), var(--panel));
   border: 1px solid var(--gold);
   border-radius: 8px;
   color: var(--text);
@@ -77,7 +77,7 @@ const balance = computed(() => props.settings?.balance ?? null)
   min-height: 38px;
   margin-left: auto;
   padding: 0 16px;
-  background: rgb(242 193 78 / 0.1);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
   border: 1px solid var(--gold);
   border-radius: 999px;
   color: var(--gold);
@@ -86,7 +86,38 @@ const balance = computed(() => props.settings?.balance ?? null)
   transition: background var(--fast) ease, box-shadow var(--fast) ease;
 }
 .add:hover {
-  background: rgb(242 193 78 / 0.2);
-  box-shadow: 0 0 12px rgb(242 193 78 / 0.3);
+  background: color-mix(in srgb, var(--gold) 20%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 30%, transparent);
+}
+.sources {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sub);
+  font-size: 13px;
+}
+.sources :deep(.badge) {
+  padding: 2px 6px;
+  font-size: 11px;
+}
+@media (max-width: 520px) {
+  .balance {
+    flex: 1 1 auto;
+    white-space: nowrap;
+  }
+  /* 출처 표시는 아래 줄로 내려 보유 메소 칸이 눌리지 않게 한다 */
+  .sources {
+    order: 3;
+    width: 100%;
+  }
+  .balance b {
+    font-size: 17px;
+    white-space: nowrap;
+  }
+  .add {
+    min-height: 40px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
 }
 </style>

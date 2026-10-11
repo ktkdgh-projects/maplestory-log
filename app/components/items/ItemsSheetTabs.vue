@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { ItemSheet } from '#shared/types'
 
-// 시트 고르기 탭. 끌어서 순서를 바꾸면 놓을 때 새 순서를 알린다
 const props = defineProps<{ sheets: ItemSheet[], activeId: string | null, creating: boolean }>()
 const emit = defineEmits<{ select: [id: string], create: [], reorder: [ids: string[]] }>()
 
@@ -48,7 +47,7 @@ function drop() {
 </template>
 
 <style scoped>
-/* 엑셀 시트 탭: 표 아래에 매달린 사다리꼴 칸. 고른 시트는 표와 같은 색으로 이어지고 위 테두리가 없다 */
+/* 엑셀 시트 탭처럼 고른 시트는 표와 같은 색으로 이어지게 위 테두리를 없앤다 */
 .sheet-tabs {
   display: flex;
   flex-wrap: wrap;

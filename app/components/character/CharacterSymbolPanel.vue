@@ -7,10 +7,17 @@ const props = defineProps<{ symbols: SymbolInfo[] }>()
 const maxLevelOf = (symbol: SymbolInfo) => findSymbolTable(symbol.name)?.table.maxLevel ?? symbol.level
 const initialRanges = () => props.symbols.map(symbol => ({ from: symbol.level, to: maxLevelOf(symbol) }))
 const ranges = ref(initialRanges())
+// 최신화로 심볼이 늘거나 레벨이 바뀌면 구간을 다시 잡는다
+watch(() => props.symbols, () => (ranges.value = initialRanges()))
+// 구간을 건드리지 않았으면 '선택한 구간'이 곧 만렙까지라 같은 숫자를 두 번 보여 주지 않는다
+const untouched = computed(() => ranges.value.every((r, i) => {
+  const symbol = props.symbols[i]
+  return !symbol || (r.from === symbol.level && r.to === maxLevelOf(symbol))
+}))
 
 const rows = computed(() => props.symbols
   .map((symbol, i) => {
-    const range = ranges.value[i]!
+    const range = ranges.value[i] ?? { from: symbol.level, to: maxLevelOf(symbol) }
     return {
       symbol,
       range,
@@ -23,7 +30,6 @@ const rows = computed(() => props.symbols
   })
   .sort((a, b) => Number(a.symbol.level >= a.maxLevel) - Number(b.symbol.level >= b.maxLevel)))
 
-// 지금 레벨까지 이미 쓴 메소와 넣은 심볼 개수(아케인·어센틱 따로)
 const spent = computed(() => [true, false].flatMap((arcane) => {
   let meso = 0
   let total = 0
@@ -41,19 +47,19 @@ const spent = computed(() => [true, false].flatMap((arcane) => {
   if (!count) return []
   return [{
     label: `${arcane ? '아케인' : '어센틱'} ${count}개 · 심볼 ${symbols.toLocaleString('ko-KR')}개`,
-    tone: arcane ? 'var(--api)' : '#c48bff',
+    tone: arcane ? 'var(--api)' : 'var(--purple)',
     value: formatKoreanNumber(meso),
     unit: '메소',
     progress: total ? meso / total : 1,
-    sub: total > meso ? `만렙까지 ${formatKoreanNumber(total - meso)} 메소` : '모두 만렙',
+    sub: total > meso ? '' : '모두 만렙',
   }]
 }))
 
 const totals = computed(() => {
   const sum = (arcane: boolean) => rows.value.filter(r => r.arcane === arcane).reduce((acc, r) => acc + (r.cost?.meso ?? 0), 0)
   return [
-    { label: '선택한 구간 아케인', value: `${formatKoreanNumber(sum(true))} 메소`, tone: 'var(--api)' },
-    { label: '선택한 구간 어센틱', value: `${formatKoreanNumber(sum(false))} 메소`, tone: '#c48bff' },
+    { label: `${untouched.value ? '만렙까지' : '고른 구간'} 아케인`, value: `${formatKoreanNumber(sum(true))} 메소`, tone: 'var(--api)' },
+    { label: `${untouched.value ? '만렙까지' : '고른 구간'} 어센틱`, value: `${formatKoreanNumber(sum(false))} 메소`, tone: 'var(--purple)' },
   ]
 })
 </script>
@@ -109,7 +115,7 @@ const totals = computed(() => {
   list-style: none;
 }
 .card {
-  --tone: #c48bff;
+  --tone: var(--purple);
   display: grid;
   gap: 6px;
   padding: 8px 12px;
@@ -160,7 +166,7 @@ const totals = computed(() => {
 .reachable {
   margin-left: 4px;
   padding: 0 6px;
-  background: rgb(127 217 154 / 0.15);
+  background: color-mix(in srgb, var(--gain) 15%, transparent);
   border: 1px solid var(--gain);
   border-radius: 999px;
   color: var(--gain);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LegalSection } from '~/components/LegalDoc.vue'
+import type { LegalSection } from '~/components/legal/LegalDoc.vue'
 
 useHead({ title: '개인정보처리방침 · 메이플스토리로그' })
 

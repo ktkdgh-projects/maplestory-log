@@ -1,4 +1,3 @@
-// 브라우저에 모아 둔 메모 고침을 한 번에 저장한다
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const list = (await readBody<{ memos?: unknown }>(event))?.memos

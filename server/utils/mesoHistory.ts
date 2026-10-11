@@ -2,6 +2,8 @@ import type { ObjectId } from 'mongodb'
 import type { MesoHistoryDay, MesoHistoryKind, MesoHistoryResponse, MesoHistoryRow } from '#shared/types'
 import { DIFFICULTY_LABELS, findBoss, type BossDifficulty } from '#shared/data/bosses'
 import { findMesoEntryType } from '#shared/data/mesoEntries'
+import { dropSaleNet, mesoEntryDelta } from '#shared/calc/meso'
+import { clearMeso } from '#shared/calc/boss'
 
 // 같은 날 안에서 잔액을 쌓는 순서. 화면엔 거꾸로(나중 것이 위) 보여 준다
 const KIND_ORDER: MesoHistoryKind[] = ['hunt', 'sale', 'boss', 'item', 'entry']
@@ -18,7 +20,7 @@ function grouped(key: string, kind: MesoHistoryKind, children: MesoHistoryRow['c
 }
 
 export async function mesoHistory(userId: ObjectId, from: string, to: string): Promise<MesoHistoryResponse> {
-  const { feeRate: _feeRate, balanceDate, balance } = await loadLedgerSettings(userId)
+  const { balanceDate, balance } = await loadLedgerSettings(userId)
   // 잔액은 맞춘 날부터 쌓아야 하므로, 고른 기간보다 맞춘 날이 앞이면 거기서부터 받는다
   const start = balanceDate && balanceDate < from ? balanceDate : from
   const range = { $gte: start, $lte: to }
@@ -31,7 +33,6 @@ export async function mesoHistory(userId: ObjectId, from: string, to: string): P
     itemFlowEvents(userId, { from: start, to }),
   ])
 
-  // 날짜 → 종류 → 줄
   const byDate = new Map<string, MesoHistoryRow[]>()
   const add = (date: string, row: MesoHistoryRow) => (byDate.get(date) ?? byDate.set(date, []).get(date)!).push(row)
 
@@ -41,17 +42,16 @@ export async function mesoHistory(userId: ObjectId, from: string, to: string): P
     const detail = [minutes ? formatHuntTime(minutes) : '', fragments ? `조각 ${fragments.toLocaleString('ko-KR')}개` : ''].filter(Boolean).join(' · ')
     add(date, grouped(`hunt:${date}`, 'hunt', list.map(h => ({ label: h.memo ? `사냥 · ${h.memo}` : `사냥${h.minutes ? ` ${formatHuntTime(h.minutes)}` : ''}`, amount: h.meso, ref: { kind: 'hunt' as const, id: h._id.toHexString() } })), n => `사냥 ${n}번`, detail))
   }
-  // 조각 판매는 솔 에르다 조각 그림으로
   for (const [date, list] of Map.groupBy(saleDocs, s => s.date)) {
     const count = list.reduce((n, s) => n + s.count, 0)
     const gross = list.reduce((n, s) => n + s.count * s.unitPrice, 0)
     const detail = `개당 ${formatKoreanNumber(Math.round(gross / count))}${list.length > 1 ? '(평균)' : ''}`
     const row = grouped(`sale:${date}`, 'sale', list.map(s => ({ label: `조각 ${s.count.toLocaleString('ko-KR')}개 × ${formatKoreanNumber(s.unitPrice)}`, amount: dropSaleNet(s), icon: FRAGMENT_ICON, ref: { kind: 'sale' as const, id: s._id.toHexString() } })), () => `조각 ${count.toLocaleString('ko-KR')}개 판매`, detail)
-    add(date, { ...row, title: `조각 ${count.toLocaleString('ko-KR')}개 판매`, detail, icon: FRAGMENT_ICON })
+    add(date, { ...row, title: `조각 ${count.toLocaleString('ko-KR')}개 판매`, icon: FRAGMENT_ICON })
   }
   for (const [date, list] of Map.groupBy(clearDocs, c => c.date)) {
     const names = [...new Set(list.map(c => c.name))]
-    add(date, grouped(`boss:${date}`, 'boss', list.map(c => ({ label: `${c.name} · ${bossName(c.bossId, c.difficulty)}`, amount: clearMeso({ meso: c.meso, loot: (c.loot ?? []).map(l => ({ ...l, fee: l.fee ?? DEFAULT_AUCTION_FEE })) }), ref: { kind: 'clear' as const, id: c._id.toHexString() } })), n => `보스 ${n}마리`, names.join(' · ')))
+    add(date, grouped(`boss:${date}`, 'boss', list.map(c => ({ label: `${c.name} · ${bossName(c.bossId, c.difficulty)}`, amount: clearMeso({ meso: c.meso, loot: bossLootOf(c) }), ref: { kind: 'clear' as const, id: c._id.toHexString() } })), n => `보스 ${n}마리`, names.join(' · ')))
   }
   // 직접 적은 장비 줄은 아이콘이 없을 수 있어 아이콘 사전에서 같은 이름을 찾는다
   const known = await lookupItems(itemEvents.filter(e => !e.icon).map(e => e.name))
@@ -59,16 +59,15 @@ export async function mesoHistory(userId: ObjectId, from: string, to: string): P
   for (const [date, list] of Map.groupBy(itemEvents, e => e.date)) {
     add(date, grouped(`item:${date}`, 'item', list.map(e => ({ label: `${e.name} ${ITEM_KIND_LABELS[e.kind]}`, amount: e.amount, icon: iconOf(e) })), n => `장비 ${n}건`, '장비 결산에 적은 금액'))
   }
-  for (const doc of entryDocs) {
-    const entry = toMesoEntry(doc)
+  for (const entry of await toMesoEntries(entryDocs)) {
     const info = findMesoEntryType(entry.type)
     const rate = entry.cash && entry.amount ? `1억당 ${Math.round(entry.cash / (entry.amount / 1e8)).toLocaleString('ko-KR')}원` : ''
     const detail = [entry.item, rate, entry.memo].filter(Boolean).join(' · ')
     add(entry.date, { key: `entry:${entry.id}`, kind: 'entry', title: info?.label ?? '직접 등록', detail: detail || '직접 등록', amount: mesoEntryDelta(entry), balance: null, icon: entry.icon, children: [], ref: { kind: 'entry', id: entry.id }, entry })
   }
 
-  // 잔액: 맞춘 날의 시작 금액에서 날짜순·종류순으로 쌓는다
-  const dates = [...byDate.keys()].sort()
+  // 잔액은 맞춘 날의 시작 금액에서 날짜순·종류순으로 쌓는다
+  const dates = [...byDate.keys()]
   let running = balanceDate && balance !== null ? balance : null
   const series: { date: string, balance: number }[] = []
   const days: MesoHistoryDay[] = []
@@ -83,12 +82,12 @@ export async function mesoHistory(userId: ObjectId, from: string, to: string): P
         row.balance = running
       }
     }
-    if (date === balanceDate && balance !== null) rows.unshift({ key: `base:${date}`, kind: 'base', title: `보유 메소를 ${formatKoreanNumber(balance)}으로 맞춤`, detail: '이날 시작할 때 금액. 이보다 앞 기록은 잔액을 모른다', amount: 0, balance, icon: null, children: [], ref: null, entry: null })
+    if (date === balanceDate && balance !== null) rows.unshift({ key: `base:${date}`, kind: 'base', title: `보유 메소를 ${formatKoreanNumber(balance)}으로 맞춤`, detail: '이날 시작할 때 금액이에요. 이보다 앞 기록은 잔액을 알 수 없어요', amount: 0, balance, icon: null, children: [], ref: null, entry: null })
     if (date < from) continue
     days.push({ date, net: sum(rows), rows: rows.reverse() })
   }
 
-  // 그래프: 맞춘 날(또는 기간 시작)부터 날마다 그날 끝 잔액, 기록 없는 날은 전날 그대로
+  // 그래프는 날마다 그날 끝 잔액이고, 기록 없는 날은 전날 그대로다
   if (balanceDate && balance !== null) {
     const endOf = new Map(days.map(d => [d.date, d.rows[0]?.balance ?? null]))
     let last = balance
