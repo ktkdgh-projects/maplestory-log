@@ -51,7 +51,7 @@ function queue<T>(job: () => Promise<T>): Promise<T> {
         </p>
         <span v-else class="skeleton big-skeleton" />
         <div class="lines">
-          <ReviewSundayLine v-for="c in characters" :key="c.ocid" :character="c" :from="from" :to="to" :mvp="me.mvpDiscount" :queue="queue" @total="onTotal" />
+          <ReviewSundayLine v-for="c in characters" :key="c.ocid" :character="c" :from="from" :to="to" :queue="queue" @total="onTotal" />
         </div>
         <NuxtLink :to="{ path: '/review', query: { mode: 'sunday', date: from } }" class="more">결산 자세히 보기 →</NuxtLink>
       </template>

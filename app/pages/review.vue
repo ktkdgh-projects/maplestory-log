@@ -147,9 +147,8 @@ function toggle(key: string) {
   open.value = next
 }
 
-const mvp = computed(() => me.value?.mvpDiscount ?? 0)
 const levelPick = ref<Record<string, number>>({})
-const { starforceList, potentialList, levelOf, plans, potReviews, potLoading, ready, totals } = useReviewCompute(data, mvp, levelPick)
+const { starforceList, potentialList, levelOf, plans, potReviews, potLoading, ready, totals } = useReviewCompute(data, levelPick)
 const hasStarforce = computed(() => starforceList.value.length > 0)
 const hasPotential = computed(() => potentialList.value.length > 0)
 const empty = computed(() => !!data.value && !hasStarforce.value && !hasPotential.value)
@@ -175,7 +174,7 @@ const cubeText = (n: number) => `${Math.round(Math.abs(n)).toLocaleString('ko-KR
     <div class="review">
       <div class="toolbar">
         <div class="pick">
-          <AppSelect :model-value="ocid ?? ''" label="캐릭터" placeholder="캐릭터 고르기" @update:model-value="ocid = String($event)" :options="characters.map(c => ({ value: c.ocid, label: `${c.name} · ${c.job} · LV.${c.level}` }))" />
+          <CharacterSearch v-model="ocid" :characters="characters" all-label="전체 캐릭터" />
         </div>
         <div class="week" role="group" aria-label="날짜">
           <button type="button" class="nav" aria-label="지난주" @click="shiftWeek(-1)">‹</button>
@@ -277,11 +276,12 @@ const cubeText = (n: number) => `${Math.round(Math.abs(n)).toLocaleString('ko-KR
             :plan="plans[sfKey(s)] ?? null"
             :level="levelOf(s)"
             :open="open.has(sfKey(s))"
-            :character="data.character.name"
-            :ocid="data.character.ocid"
+            :character="s.character.name"
+            :show-owner="!data.character"
+            :ocid="s.character.ocid"
             :add-date="addDate"
             @toggle="toggle(sfKey(s))"
-            @level="(l: number) => (levelPick = { ...levelPick, [s.item]: l })"
+            @level="(l: number) => (levelPick = { ...levelPick, [reviewLevelKey(s)]: l })"
           />
         </div>
         <div v-if="hasPotential && (tab === 'potential' || !hasStarforce)" class="list">
@@ -292,8 +292,9 @@ const cubeText = (n: number) => `${Math.round(Math.abs(n)).toLocaleString('ko-KR
             :review="potReviews[potKey(p)] ?? null"
             :loading="potLoading"
             :open="open.has(potKey(p))"
-            :character="data.character.name"
-            :ocid="data.character.ocid"
+            :character="p.character.name"
+            :show-owner="!data.character"
+            :ocid="p.character.ocid"
             :add-date="addDate"
             @toggle="toggle(potKey(p))"
           />
@@ -325,10 +326,6 @@ const cubeText = (n: number) => `${Math.round(Math.abs(n)).toLocaleString('ko-KR
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-}
-.pick .field-input {
-  min-height: 38px;
-  width: 240px;
 }
 .week {
   display: flex;
@@ -643,9 +640,6 @@ a.near {
   }
   .seg {
     margin-left: 0;
-  }
-  .pick .field-input {
-    width: 100%;
   }
 }
 @media (max-width: 640px) {

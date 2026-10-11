@@ -7,6 +7,11 @@ export default defineEventHandler(async (event) => {
   if (!MVP_DISCOUNTS.some(d => d.rate === rate)) throw createError({ statusCode: 400, message: 'MVP 등급을 다시 골라 주세요.' })
 
   const { users } = await useCollections()
-  await users.updateOne({ _id: user._id }, { $set: { mvpDiscount: rate as number } })
+  const before = user.mvpDiscount ?? 0
+  if (before === rate) return { ok: true }
+  const now = new Date()
+  // 이력이 없던 사용자는 지금까지 쓴 값을 처음부터의 구간으로 남긴다
+  const history = user.mvpHistory?.length ? user.mvpHistory : [{ from: new Date(0), rate: before }]
+  await users.updateOne({ _id: user._id }, { $set: { mvpDiscount: rate as number, mvpHistory: [...history, { from: now, rate: rate as number }] } })
   return { ok: true }
 })

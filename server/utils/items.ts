@@ -1,6 +1,6 @@
 import type { ObjectId } from 'mongodb'
 import type { ItemIcon, ItemPurchase, ItemRow, ItemSheet } from '#shared/types'
-import { effectiveFee } from '#shared/calc/meso'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 import type { RowReference } from './itemFlows'
 import type { ItemRowDoc, ItemSheetDoc } from './mongo'
 
@@ -37,7 +37,7 @@ export function parseIdList(value: unknown): ObjectId[] {
   return value.map(v => parseId(typeof v === 'string' ? v : undefined))
 }
 
-function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: Map<string, ItemIcon>, mvp: number): ItemRow {
+function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: Map<string, ItemIcon>): ItemRow {
   return {
     id: doc._id.toHexString(),
     part: doc.part,
@@ -56,7 +56,7 @@ function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: 
     potentialEntries: doc.potentialEntries ?? (doc.potential && doc.potentialDate ? [{ date: doc.potentialDate, amount: doc.potential }] : []),
     sell: doc.sell,
     sellDate: doc.sellDate ?? null,
-    sellFee: effectiveFee(doc.sellFee, mvp),
+    sellFee: doc.sellFee ?? DEFAULT_AUCTION_FEE,
     memo: doc.memo,
     excluded: doc.excluded ?? false,
     level: doc.level ?? null,
@@ -64,13 +64,13 @@ function toItemRow(doc: ItemRowDoc, reference: RowReference | undefined, known: 
   }
 }
 
-export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[], references: Map<string, RowReference>, known: Map<string, ItemIcon>, mvp = 0): ItemSheet {
+export function toItemSheet(doc: ItemSheetDoc, rows: ItemRowDoc[], references: Map<string, RowReference>, known: Map<string, ItemIcon>): ItemSheet {
   return {
     id: doc._id.toHexString(),
     title: doc.title,
     ocid: doc.ocid,
     characterName: doc.characterName,
     excluded: doc.excluded ?? false,
-    rows: rows.filter(r => r.sheetId.equals(doc._id)).map(r => toItemRow(r, references.get(r._id.toHexString()), known, mvp)),
+    rows: rows.filter(r => r.sheetId.equals(doc._id)).map(r => toItemRow(r, references.get(r._id.toHexString()), known)),
   }
 }

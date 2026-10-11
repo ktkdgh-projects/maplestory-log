@@ -7,7 +7,7 @@ const emit = defineEmits<{ pick: [ocid: string] }>()
 const filter = ref('')
 const visible = computed(() => {
   const keyword = filter.value.trim()
-  return keyword ? props.characters.filter(c => c.name.includes(keyword) || c.job.includes(keyword) || c.world.includes(keyword)) : props.characters
+  return keyword ? props.characters.filter(c => matchCharacter(c, keyword)) : props.characters
 })
 </script>
 

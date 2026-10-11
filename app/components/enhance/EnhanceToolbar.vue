@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CharacterBrief } from '#shared/types'
-import { ENHANCE_HISTORY_DAYS, ENHANCE_PERIODS, useKstToday } from '~/composables/useEnhanceRecords'
+import { ENHANCE_HISTORY_DAYS } from '#shared/data/enhance'
+import { ENHANCE_PERIODS, useKstToday } from '~/composables/useEnhanceRecords'
 
 defineProps<{ characters: CharacterBrief[], syncing?: boolean, syncedFrom?: string | null }>()
 const ocid = defineModel<string | null>('ocid', { required: true })
@@ -15,7 +16,7 @@ const minDate = computed(() => addDays(today.value, -ENHANCE_HISTORY_DAYS))
   <div class="toolbar">
     <slot name="lead" />
     <div class="pick">
-      <AppSelect :model-value="ocid ?? ''" label="캐릭터" placeholder="캐릭터 고르기" @update:model-value="ocid = String($event)" :options="characters.map(c => ({ value: c.ocid, label: `${c.name} · ${c.job} · LV.${c.level}` }))" />
+      <CharacterSearch v-model="ocid" :characters="characters" />
     </div>
     <div class="seg" role="group" aria-label="기간">
       <button v-for="p in ENHANCE_PERIODS" :key="p.label" type="button" :aria-pressed="!pickedFrom && days === p.days" @click="days = p.days">{{ p.label }}</button>
@@ -42,15 +43,9 @@ const minDate = computed(() => addDays(today.value, -ENHANCE_HISTORY_DAYS))
   align-items: center;
   gap: 8px 12px;
 }
-.pick .field-input {
-  min-width: 240px;
-  min-height: 36px;
-}
 @media (max-width: 640px) {
-  .pick,
-  .pick .field-input {
+  .pick {
     width: 100%;
-    min-width: 0;
   }
   .seg {
     display: flex;

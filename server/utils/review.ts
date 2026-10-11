@@ -1,5 +1,5 @@
 import type { ObjectId } from 'mongodb'
-import type { EquipmentItem, PotentialTier, ReviewPotential, ReviewStarforce } from '#shared/types'
+import type { EquipmentItem, PotentialTier, ReviewOwner, ReviewPotential, ReviewStarforce } from '#shared/types'
 import { PROTECT_STARS } from '#shared/data/starforce'
 import type { EnhanceEventDoc } from './mongo'
 
@@ -67,8 +67,8 @@ const TOOL_FAMILIES = ['블랙 큐브', '레드 큐브', '에디셔널 큐브']
 const toolFamily = (name: string) => TOOL_FAMILIES.find(f => name.includes(f)) ?? name
 const monthDay = (at: Date) => kstDateOf(at).slice(5).split('-').map(Number).join('/')
 
-// 썬데이·할인 이벤트와 평소가 섞이면 기대값 조건이 달라 같은 장비도 조건별로 나눈다
-export async function reviewStarforce(userId: ObjectId, names: string[], range: Range, equipped: EquipmentItem[], mvp: number): Promise<ReviewStarforce[]> {
+// 썬데이·할인 이벤트와 평소가 섞이거나 그 사이 MVP 등급을 바꾸면 기대값 조건이 달라 같은 장비도 조건별로 나눈다
+export async function reviewStarforce(userId: ObjectId, owner: ReviewOwner, names: string[], range: Range, equipped: EquipmentItem[], mvp: MvpTimeline): Promise<ReviewStarforce[]> {
   const { enhanceEvents } = await useCollections()
   const match = { character: { $in: names } }
   const docs = await enhanceEvents.find({ userId, kind: 'starforce', ...match, ...rangeFilter(range) }).sort({ at: 1 }).toArray()
@@ -83,7 +83,7 @@ export async function reviewStarforce(userId: ObjectId, names: string[], range: 
   const restoreOf = new Map(restores.map(r => [r.eventId, r.restore]))
 
   const parts = [...Map.groupBy(docs.filter(d => d.beforeStar !== null && !d.scroll), d => d.item)].flatMap(([item, all]) => {
-    const groups = [...Map.groupBy(all, d => `${[...effectsAt(d.at)].sort().join(',')}|${(d.eventDiscount ?? 0) > 0}`).values()]
+    const groups = [...Map.groupBy(all, d => `${[...effectsAt(d.at)].sort().join(',')}|${(d.eventDiscount ?? 0) > 0}|${mvp.at(d.at)}`).values()]
     return groups.map(list => ({ item, list, split: groups.length > 1 }))
   })
   return parts.map(({ item, list, split }) => {
@@ -100,7 +100,7 @@ export async function reviewStarforce(userId: ObjectId, names: string[], range: 
       const stage = stages.get(star) ?? stages.set(star, { star, attempts: 0, success: 0, destroy: 0 }).get(star)!
       stage.attempts++
       tries++
-      meso += eventMeso(d, level, mvp) ?? 0
+      meso += eventMeso(d, level, mvp.at(d.at)) ?? 0
       if (d.protect && PROTECT_STARS.includes(star)) protectStars.add(star)
       const restore = restoreOf.get(d.eventId) ?? null
       if (restore) {
@@ -125,6 +125,7 @@ export async function reviewStarforce(userId: ObjectId, names: string[], range: 
     const sundayEffects = effectsAt(firstDoc.at)
     const discount = (firstDoc.eventDiscount ?? 0) > 0
     return {
+      character: owner,
       item,
       slot: g?.slot ?? null,
       icon: g?.icon ?? null,
@@ -139,6 +140,7 @@ export async function reviewStarforce(userId: ObjectId, names: string[], range: 
       protectStars: [...protectStars].sort((a, b) => a - b),
       discount,
       sundayEffects,
+      mvp: mvp.at(firstDoc.at),
       condition: split ? `${sundayEffects.length ? '썬데이' : discount ? '할인 이벤트' : '평소'} ${monthDay(firstDoc.at)}~` : null,
       stages: [...stages.values()].sort((a, b) => a.star - b.star),
       path,
@@ -179,7 +181,7 @@ async function stacksBefore(userId: ObjectId, names: string[], since: Date, want
   return new Map(counts.map(c => [`${c._id.item}\n${c._id.additional}\n${c._id.tool}`, c.count]))
 }
 
-export async function reviewPotential(userId: ObjectId, names: string[], range: Range, equipped: EquipmentItem[]): Promise<ReviewPotential[]> {
+export async function reviewPotential(userId: ObjectId, owner: ReviewOwner, names: string[], range: Range, equipped: EquipmentItem[]): Promise<ReviewPotential[]> {
   const { enhanceEvents } = await useCollections()
   const docs = await enhanceEvents.find({ userId, character: { $in: names }, kind: { $in: ['cube', 'potential'] }, ...rangeFilter(range) }).sort({ at: 1 }).toArray()
   if (!docs.length) return []
@@ -220,6 +222,7 @@ export async function reviewPotential(userId: ObjectId, names: string[], range: 
     const at = run.findLastIndex(d => optionsOf(d).join('|') === target)
     const g = gear.get(first.item)
     return {
+      character: owner,
       item: first.item,
       slot: g?.slot ?? null,
       icon: g?.icon ?? null,

@@ -66,11 +66,16 @@ function closeOutside(event: MouseEvent) {
   const row = (event.target as HTMLElement).closest('[data-row]')
   if (!row || row.getAttribute('data-row') !== open.value) open.value = null
 }
+let arming: ReturnType<typeof setTimeout> | undefined
 watch(open, (value) => {
-  if (value) setTimeout(() => document.addEventListener('click', closeOutside))
+  clearTimeout(arming)
+  if (value) arming = setTimeout(() => document.addEventListener('click', closeOutside))
   else document.removeEventListener('click', closeOutside)
 })
-onBeforeUnmount(() => document.removeEventListener('click', closeOutside))
+onBeforeUnmount(() => {
+  clearTimeout(arming)
+  document.removeEventListener('click', closeOutside)
+})
 const entryOpen = ref(false)
 const editing = ref<MesoEntry | null>(null)
 const sourceOf = (row: MesoHistoryRow, date: string) => {

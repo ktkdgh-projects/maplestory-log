@@ -2,7 +2,7 @@
 import type { ReviewPotential } from '#shared/types'
 import { mainTool, type PotentialReview } from '#shared/calc/review'
 
-const props = defineProps<{ p: ReviewPotential, review: PotentialReview | null, loading: boolean, open: boolean, character: string, ocid: string, addDate: string | null }>()
+const props = defineProps<{ p: ReviewPotential, review: PotentialReview | null, loading: boolean, open: boolean, character: string, ocid: string, addDate: string | null, showOwner?: boolean }>()
 const emit = defineEmits<{ toggle: [] }>()
 
 const tool = computed(() => mainTool(props.p))
@@ -38,7 +38,7 @@ const reason = computed(() => {
       <span v-else class="icon" />
       <span class="nm">
         <b>{{ p.item }}</b>
-        <small>{{ p.slot ?? '지금 안 낀 장비' }} · {{ p.additional ? '에디' : '윗잠' }} {{ p.tools.map(t => `${t.name} ${t.count}`).join(' · ') }} · <span :style="gradeStyle(p.fromGrade)">{{ p.fromGrade ?? '-' }}</span> → <span :style="gradeStyle(p.toGrade)">{{ p.toGrade ?? '-' }}</span></small>
+        <small><span v-if="showOwner" class="owner">{{ character }}</span>{{ p.slot ?? '지금 안 낀 장비' }} · {{ p.additional ? '에디' : '윗잠' }} {{ p.tools.map(t => `${t.name} ${t.count}`).join(' · ') }} · <span :style="gradeStyle(p.fromGrade)">{{ p.fromGrade ?? '-' }}</span> → <span :style="gradeStyle(p.toGrade)">{{ p.toGrade ?? '-' }}</span></small>
       </span>
       <span class="cell">{{ cube ? '쓴 큐브' : '쓴 메소' }}<span v-if="p.manual !== null && !cube" class="src">수기</span><b>{{ amount(spent) }}</b></span>
       <span class="cell avg">평균이면<b>{{ verdict ? amount(verdict.expected) : loading ? '…' : '-' }}</b></span>
@@ -184,6 +184,13 @@ const reason = computed(() => {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.owner {
+  margin-right: 6px;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  border-radius: 4px;
+  color: var(--gold);
 }
 .cell {
   display: grid;

@@ -1,6 +1,7 @@
 import type { ObjectId } from 'mongodb'
 import type { ItemFlow, ItemPurchase } from '#shared/types'
-import { afterFee, effectiveFee } from '#shared/calc/meso'
+import { afterFee } from '#shared/calc/meso'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 import type { ItemRowDoc, ItemSheetDoc } from './mongo'
 
 // shared: 같은 캐릭터에 같은 이름 장비가 여러 줄이라 기록을 어느 줄에 붙일지 몰라 비운 것. *Days: 날짜별 내역
@@ -10,7 +11,7 @@ export interface RowReference { starforce: number, potential: number, shared: bo
 const REFERENCE_FIELDS = { _id: 0, kind: 1, character: 1, item: 1, at: 1, beforeStar: 1, beforeGrade: 1, itemLevel: 1, tool: 1, scroll: 1, superior: 1, protect: 1, eventDiscount: 1 }
 
 // 구매일 이후 강화 기록으로 비용 참고값을 센다. 강화 기록 페이지와 같은 계산(MVP 할인·복구 메소 포함)이다
-export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], rows: ItemRowDoc[], mvp: number): Promise<Map<string, RowReference>> {
+export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], rows: ItemRowDoc[], mvp: MvpTimeline): Promise<Map<string, RowReference>> {
   const characterOf = new Map(sheets.filter(s => s.characterName).map(s => [s._id.toHexString(), s.characterName!]))
   const linked = rows.filter(r => characterOf.has(r.sheetId.toHexString()))
   const result = new Map<string, RowReference>()
@@ -50,7 +51,7 @@ export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], ro
     }
     for (const doc of byItem.get(rowKey(row)) ?? []) {
       if (since && doc.at < since) continue
-      add(doc.kind === 'starforce' ? starforceDays : potentialDays, doc.at, eventMeso(doc, row.level ?? null, mvp) ?? 0)
+      add(doc.kind === 'starforce' ? starforceDays : potentialDays, doc.at, eventMeso(doc, row.level ?? null, mvp.at(doc.at)) ?? 0)
     }
     for (const r of restoresByItem.get(rowKey(row)) ?? []) {
       if (!since || r.at >= since) add(starforceDays, r.at, r.restore.fee)
@@ -73,11 +74,10 @@ export interface ItemFlowEvent {
 
 // 참고값이 아닌 직접 적은 값만 쓰고, 가계부 미반영 시트와 제외한 줄은 뺀다
 export async function itemFlowEvents(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlowEvent[]> {
-  const { itemSheets, itemRows, users } = await useCollections()
-  const [excludedSheets, allRows, user] = await Promise.all([
+  const { itemSheets, itemRows } = await useCollections()
+  const [excludedSheets, allRows] = await Promise.all([
     itemSheets.find({ userId, excluded: true }, { projection: { _id: 1 } }).toArray(),
     itemRows.find({ userId, excluded: { $ne: true } }).toArray(),
-    users.findOne({ _id: userId }, { projection: { mvpDiscount: 1 } }),
   ])
   const skip = new Set(excludedSheets.map(s => s._id.toHexString()))
   const rows = allRows.filter(r => !skip.has(r.sheetId.toHexString()))
@@ -98,7 +98,7 @@ export async function itemFlowEvents(userId: ObjectId, range: { from?: string, t
       }
       else if (total && inRange(date)) push(date, kind, row, -total)
     }
-    if (row.sell && inRange(row.sellDate)) push(row.sellDate, 'sell', row, afterFee(row.sell, effectiveFee(row.sellFee, user?.mvpDiscount)))
+    if (row.sell && inRange(row.sellDate)) push(row.sellDate, 'sell', row, afterFee(row.sell, row.sellFee ?? DEFAULT_AUCTION_FEE))
   }
   return events.sort((a, b) => a.date.localeCompare(b.date))
 }

@@ -3,11 +3,10 @@ import type { CharacterBrief, EnhanceEvent, EnhanceKind, EnhanceSummary, Potenti
 import { POTENTIAL_GRADES, resetCost, type PotentialGrade } from '#shared/data/potential'
 import { BASE_RESTORE_STAR, restoreCopies, traceStar } from '#shared/data/starforce'
 import { starforceTryCost, traceRestoreFee } from '#shared/calc/starforce'
+import { ENHANCE_HISTORY_DAYS } from '#shared/data/enhance'
 import type { EnhanceEventDoc } from './mongo'
 import type { NexonHistoryEvent } from './nexon'
 
-// 오래된 기록은 지금 낀 장비와 상관없을 때가 많고 넥슨 호출만 많이 들어 반년까지만 모은다
-const HISTORY_BACKFILL_DAYS = 180
 const SYNC_LOCK_MS = 60 * 1000
 // 오늘 기록을 다시 받는 간격. 기간 버튼을 누를 때마다 넥슨을 부르면 화면이 느려진다
 const TODAY_SYNC_MS = 3 * 60 * 1000
@@ -74,7 +73,7 @@ export async function syncEnhanceHistory(userId: ObjectId, budgetMs: number) {
   if (!lock) return
 
   const yesterday = kstYesterday()
-  const limit = addDays(yesterday, -HISTORY_BACKFILL_DAYS)
+  const limit = addDays(yesterday, -ENHANCE_HISTORY_DAYS)
   const deadline = Date.now() + budgetMs
   let { oldest, newest, done, todayAt = null } = lock
   if ((lock.version ?? 1) < SYNC_VERSION) [oldest, newest, done] = [null, null, false]
@@ -210,16 +209,16 @@ const sinceFilter = (from: string | null) => (from ? { at: { $gte: kstDayStart(f
 type CostGroup = Pick<EnhanceEventDoc, 'item' | 'kind' | 'success' | 'destroyed' | 'beforeStar' | 'beforeGrade' | 'itemLevel' | 'tool' | 'protect' | 'superior' | 'scroll' | 'eventDiscount'>
 
 // 넥슨 기록엔 아이템 고유 번호가 없어서 같은 캐릭터·같은 이름으로 묶는다
-export async function summariesByItem(userId: ObjectId, names: string[], items: { name: string, level: number | null }[], from: string | null, mvp: number): Promise<Map<string, EnhanceSummary>> {
+export async function summariesByItem(userId: ObjectId, names: string[], items: { name: string, level: number | null }[], from: string | null, mvp: MvpTimeline): Promise<Map<string, EnhanceSummary>> {
   const { enhanceEvents } = await useCollections()
   const levels = new Map(items.map(i => [i.name, i.level]))
   const match = { character: { $in: names }, item: { $in: [...levels.keys()] } }
-  const [groups, restores] = await Promise.all([enhanceEvents.aggregate<{ _id: CostGroup, count: number, first: Date, last: Date }>([
+  const [groups, restores] = await Promise.all([enhanceEvents.aggregate<{ _id: CostGroup & { period: number }, count: number, first: Date, last: Date }>([
     { $match: { userId, ...match, ...sinceFilter(from) } },
     { $group: {
       _id: {
         item: '$item', kind: '$kind', success: '$success', destroyed: '$destroyed', beforeStar: '$beforeStar', beforeGrade: '$beforeGrade', itemLevel: '$itemLevel',
-        tool: '$tool', protect: '$protect', superior: '$superior', scroll: '$scroll', eventDiscount: '$eventDiscount',
+        tool: '$tool', protect: '$protect', superior: '$superior', scroll: '$scroll', eventDiscount: '$eventDiscount', period: mvpPeriodExpr(mvp.boundaries),
       },
       count: { $sum: 1 },
       first: { $min: '$at' },
@@ -231,7 +230,7 @@ export async function summariesByItem(userId: ObjectId, names: string[], items: 
   for (const { _id: g, count, first, last } of groups) {
     const s = result.get(g.item) ?? result.set(g.item, emptySummary()).get(g.item)!
     // 묶음 안에선 비용이 같으므로 한 번만 계산한다
-    const meso = (eventMeso(g, levels.get(g.item) ?? null, mvp) ?? 0) * count
+    const meso = (eventMeso(g, levels.get(g.item) ?? null, mvp.rates[g.period]) ?? 0) * count
     if (g.kind === 'starforce') {
       s.starforce.attempts += count
       if (g.success) s.starforce.success += count
@@ -287,7 +286,7 @@ export async function unwornRecordItems(userId: ObjectId, names: string[], worn:
 // 반년 동안 한 장비에 이보다 많이 누르는 일은 드물다. 넘으면 오래된 날부터 잘린다
 const MAX_DETAIL_EVENTS = 3000
 
-export async function starforceDetail(userId: ObjectId, names: string[], item: string, level: number | null, from: string | null, mvp: number): Promise<StarforceDetail> {
+export async function starforceDetail(userId: ObjectId, names: string[], item: string, level: number | null, from: string | null, mvp: MvpTimeline): Promise<StarforceDetail> {
   const { enhanceEvents } = await useCollections()
   const match = { character: { $in: names }, item }
   const [docs, restoreList] = await Promise.all([
@@ -301,7 +300,7 @@ export async function starforceDetail(userId: ObjectId, names: string[], item: s
   const stages = new Map<number, StarforceStage>()
   const days = new Map<string, StarforceDay>()
   for (const doc of docs) {
-    const meso = eventMeso(doc, level, mvp)
+    const meso = eventMeso(doc, level, mvp.at(doc.at))
     const restore = restores.get(doc.eventId) ?? null
     // 복구 메소는 터진 구간·그날에 더한다
     const spent = (meso ?? 0) + (restore?.fee ?? 0)

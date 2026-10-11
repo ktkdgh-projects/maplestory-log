@@ -3,21 +3,25 @@ import type { PotentialOptionTable, ReviewPotential, ReviewResponse, ReviewStarf
 import type { StarforcePlan } from '#shared/calc/starforce'
 import { mainTool, methodOfTool, optionTableQuery, reviewPotentialCalc, starforceActual, starforceOptions, type PotentialReview } from '#shared/calc/review'
 
-export const reviewStarforceKey = (s: ReviewStarforce) => `sf|${s.item}`
-export const reviewPotentialKey = (p: ReviewPotential) => `pot|${p.item}|${p.additional}`
+// 같은 장비도 캐릭터·조건별로 따로 펼치고 계산한다
+export const reviewStarforceKey = (s: ReviewStarforce) => `sf|${s.character.ocid}|${s.item}|${s.condition ?? ''}`
+export const reviewPotentialKey = (p: ReviewPotential) => `pot|${p.character.ocid}|${p.item}|${p.additional}`
+export const reviewLevelKey = (s: ReviewStarforce) => `${s.character.ocid}|${s.item}`
 
 // 결산 페이지와 썬데이 페이지 결산 카드가 같이 쓴다
-export function useReviewCompute(data: Readonly<Ref<ReviewResponse | null>>, mvp: Readonly<Ref<number>>, levelPick: Readonly<Ref<Record<string, number>>>) {
+export function useReviewCompute(data: Readonly<Ref<ReviewResponse | null>>, levelPick: Readonly<Ref<Record<string, number>>>) {
   const starforceList = computed(() => [...(data.value?.starforce ?? [])].sort((a, b) => starforceActual(b) - starforceActual(a)))
   const toolCount = (p: ReviewPotential) => p.tools.reduce((n, t) => n + t.count, 0)
   const potentialList = computed(() => [...(data.value?.potential ?? [])].sort((a, b) => b.meso - a.meso || toolCount(b) - toolCount(a)))
   // 지금 안 낀 장비는 사용자가 레벨을 고르면 계산한다
-  const levelOf = (s: ReviewStarforce) => s.level ?? levelPick.value[s.item] ?? null
+  const levelOf = (s: ReviewStarforce) => s.level ?? levelPick.value[reviewLevelKey(s)] ?? null
 
   const plans = shallowRef<Record<string, StarforcePlan>>({})
   const worker = useStarforceWorker()
   let planSeq = 0
-  watch([starforceList, levelPick, mvp], async ([list]) => {
+  // 조건이 같으면 1만 번 계산을 다시 하지 않는다
+  const planCache = new Map<string, StarforcePlan>()
+  watch([starforceList, levelPick], async ([list]) => {
     const seq = ++planSeq
     worker.cancel()
     const next: Record<string, StarforcePlan> = {}
@@ -25,8 +29,11 @@ export function useReviewCompute(data: Readonly<Ref<ReviewResponse | null>>, mvp
     for (const s of list) {
       const level = levelOf(s)
       if (!level || s.to <= s.from) continue
-      const plan = await worker.plan(starforceOptions(s, level, mvp.value))
+      const options = starforceOptions(s, level, s.mvp)
+      const cacheKey = JSON.stringify(options)
+      const plan = planCache.get(cacheKey) ?? await worker.plan(options)
       if (seq !== planSeq) return
+      planCache.set(cacheKey, plan)
       next[reviewStarforceKey(s)] = plan
       plans.value = { ...next }
     }
