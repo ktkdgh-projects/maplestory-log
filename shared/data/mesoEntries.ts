@@ -8,6 +8,8 @@ export const MESO_ENTRY_TYPES = [
   { key: 'etc-in', label: '기타 수입', direction: 'in', cash: false, item: false, fee: false },
 ] as const
 
+export const ITEM_FLOW_LABELS = { buy: '구매', starforce: '스타포스', potential: '잠재', sell: '판매' } as const
+
 export type MesoEntryType = typeof MESO_ENTRY_TYPES[number]['key']
 export type MesoEntryInfo = typeof MESO_ENTRY_TYPES[number]
 

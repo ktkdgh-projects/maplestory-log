@@ -67,6 +67,15 @@ export interface ItemFlow {
   earned: number
 }
 
+// 장비 결산에 적은 금액 한 건. 들어온 메소는 양수, 나간 메소는 음수
+export interface ItemFlowLine {
+  date: string
+  kind: 'buy' | 'starforce' | 'potential' | 'sell'
+  name: string
+  icon: string | null
+  amount: number
+}
+
 // 사냥에서 먹은 재료를 경매장에 판 기록. 개당 가격 × 개수에서 수수료를 떼고 수입으로 잡는다
 export interface DropSaleInput {
   date: string
@@ -109,6 +118,15 @@ export interface MesoHistoryRef {
   id: string
 }
 
+// 보스 한 건: 결정석 메소와 물욕템(판 금액은 수수료를 뗀 값, 안 팔았으면 0)을 따로 보여 준다
+export interface MesoHistoryBoss {
+  character: string
+  bossId: string
+  difficulty: string
+  meso: number
+  loot: { item: string, net: number }[]
+}
+
 export interface MesoHistoryRow {
   key: string
   kind: MesoHistoryKind
@@ -121,7 +139,8 @@ export interface MesoHistoryRow {
   // 장비 한 건이면 그 아이템 아이콘
   icon: string | null
   // 여러 건을 한 줄로 묶었으면 건별 내역
-  children: { label: string, amount: number, icon?: string | null, ref?: MesoHistoryRef | null }[]
+  // boss: 보스 한 건이면 캐릭터별로 다시 묶을 때 쓴다
+  children: { label: string, amount: number, icon?: string | null, ref?: MesoHistoryRef | null, boss?: MesoHistoryBoss }[]
   // 한 건짜리 줄을 지울 때 쓰는 값
   ref: MesoHistoryRef | null
   // 직접 등록한 건이면 고치기·지우기에 쓴다
@@ -150,10 +169,11 @@ export interface LedgerResponse {
   hunts: HuntEntry[]
   clears: BossClear[]
   items: ItemFlow[]
+  itemLines: ItemFlowLine[]
   sales: DropSale[]
   entries: MesoEntry[]
-  // 지금까지 먹은 개수 - 판 개수 (전체 기간)
-  stock: HuntDrops
+  // 날짜별 먹은 조각. 그 달에 걸친 주(목~수)까지 담는다
+  fragmentsByDate: Record<string, number>
 }
 
 export interface BossBoardResponse {

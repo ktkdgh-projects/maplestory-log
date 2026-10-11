@@ -4,7 +4,7 @@ import { dayIncome, type LedgerDay } from '#shared/calc/ledger'
 const props = defineProps<{ month: string, days: Map<string, LedgerDay> }>()
 const selected = defineModel<string>({ required: true })
 
-const LOOT_SHOWN = 4
+const LOOT_SHOWN = 3
 const today = kstToday()
 const cells = computed(() => calendarCells(props.month).map((date) => {
   const day = date ? props.days.get(date) : undefined
@@ -24,23 +24,31 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
         v-else
         type="button"
         class="cell"
-        :class="{ on: date === selected, today: date === today, future: date > today, sun: i % 7 === 0, sat: i % 7 === 6, reset: i % 7 === 4 }"
+        :class="{ on: date === selected, today: date === today, future: date > today, sun: i % 7 === 0, sat: i % 7 === 6 }"
         :style="{ '--heat': income / best }"
         :aria-pressed="date === selected"
         :aria-label="`${formatDay(date)} 선택`"
         :disabled="date > today"
         @click="selected = date"
       >
-        <span class="num">{{ Number(date.slice(8)) }}</span>
-        <template v-if="day">
-          <b v-if="income" class="income">+{{ formatShortNumber(income) }}</b>
-          <b v-if="spent" class="spent">-{{ formatShortNumber(spent) }}</b>
-          <small v-if="day.fragments" class="frag">조각 {{ day.fragments }}</small>
-          <span v-if="day.loot.length" class="loot">
-            <LedgerLootIcon v-for="(item, k) in day.loot.slice(0, LOOT_SHOWN)" :key="k" :item="item" :size="22" />
-            <small v-if="day.loot.length > LOOT_SHOWN">+{{ day.loot.length - LOOT_SHOWN }}</small>
+        <span class="in">
+          <span class="top">
+            <span class="num">{{ Number(date.slice(8)) }}</span>
+            <small v-if="date === today" class="tag now">오늘</small>
+            <small v-else-if="i % 7 === 4" class="tag">리셋</small>
+            <small v-if="day?.fragments" class="frag" :title="`솔 에르다 조각 ${day.fragments}개`"><img src="/icons/sol-erda-fragment.png" alt="">{{ day.fragments }}</small>
           </span>
-        </template>
+          <template v-if="day">
+            <b v-if="income" class="income">+{{ formatShortNumber(income) }}</b>
+            <span v-if="spent" class="sub">
+              <b class="spent">-{{ formatShortNumber(spent) }}</b>
+            </span>
+            <span v-if="day.loot.length" class="loot">
+              <LedgerLootIcon v-for="(item, k) in day.loot.slice(0, LOOT_SHOWN)" :key="k" :item="item" :size="18" />
+              <small v-if="day.loot.length > LOOT_SHOWN">+{{ day.loot.length - LOOT_SHOWN }}</small>
+            </span>
+          </template>
+        </span>
       </button>
     </template>
   </div>
@@ -70,15 +78,14 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
 .cell.sat .num {
   color: var(--api);
 }
+/* 칸 높이에 따라 줄 배치를 바꾸려고 칸을 크기 기준(container)으로 둔다 */
 .cell {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
   min-width: 0;
   min-height: 64px;
-  padding: 5px 7px;
+  padding: 0;
+  overflow: hidden;
+  container-type: size;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--gold) calc(var(--heat, 0) * 28%), transparent), transparent),
     var(--panel);
@@ -89,6 +96,50 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
   text-align: left;
   cursor: pointer;
   transition: transform var(--fast) var(--ease-out), border-color var(--fast) ease, box-shadow var(--fast) ease;
+}
+.in {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  height: 100%;
+  padding: 5px 7px;
+}
+/* 낮은 칸은 번 금액과 쓴 금액을 한 줄에 두어 물욕템 줄이 바닥에 그대로 남게 한다 */
+@container (max-height: 84px) and (min-width: 80px) {
+  .in {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    column-gap: 5px;
+    row-gap: 0;
+    padding: 2px 6px;
+  }
+  .top,
+  .loot {
+    grid-column: 1 / -1;
+  }
+  .top {
+    min-height: 14px;
+    line-height: 14px;
+  }
+  .income,
+  .sub {
+    line-height: 16px;
+  }
+  .sub {
+    grid-column: 2;
+  }
+  .loot {
+    align-self: end;
+  }
+}
+/* 한 화면 고정일 때는 칸이 달력 줄 높이에 맞춰 줄어야 아래 줄을 덮지 않는다 */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .cell {
+    min-height: 0;
+  }
 }
 .cell.blank {
   background: transparent;
@@ -104,16 +155,6 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
   opacity: 0.4;
   cursor: default;
 }
-.cell.reset::after {
-  content: "리셋";
-  position: absolute;
-  top: 5px;
-  right: 6px;
-  color: var(--calc);
-  font-family: var(--f-pixel);
-  font-size: 8px;
-  opacity: 0.7;
-}
 .cell.today {
   border-color: var(--gold);
 }
@@ -126,10 +167,32 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
   font-size: 15px;
   line-height: 1.1;
 }
-.cell.today .num::after {
-  content: " 오늘";
+.top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 18px;
+}
+.tag {
+  color: var(--calc);
+  font-family: var(--f-pixel);
+  font-size: 8px;
+  opacity: 0.7;
+}
+.tag.now {
   color: var(--gold);
+  font-family: var(--f-title);
   font-size: 11px;
+  opacity: 1;
+}
+.sub {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
 }
 .income {
   color: var(--gold);
@@ -146,18 +209,31 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
   line-height: 1.2;
 }
 .frag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
   color: var(--calc);
   font-size: 11px;
-  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.frag img {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 .loot {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   margin-top: auto;
 }
 .loot small {
-  margin-left: 2px;
+  margin-left: 1px;
   color: var(--gold);
   font-size: 11px;
 }
@@ -174,15 +250,16 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
     gap: 3px;
   }
   .cell {
-    min-height: 54px;
-    padding: 4px 3px;
+    min-height: 66px;
     border-radius: 6px;
+  }
+  .in {
+    padding: 4px 3px;
   }
   .num {
     font-size: 13px;
   }
-  .cell.today .num::after,
-  .cell.reset::after,
+  .tag,
   .frag {
     display: none;
   }

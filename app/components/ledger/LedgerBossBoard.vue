@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BossClear, BossPick, BossRosterCharacter, CharacterBrief } from '#shared/types'
 import { MAX_BOSS_CHARACTERS, WEEKLY_BOSS_LIMIT, bossOrder, bossPeriod, crystalPrice, findBoss, type BossDifficulty } from '#shared/data/bosses'
-import { clearMeso } from '#shared/calc/boss'
+import { clearMeso, lootMeso } from '#shared/calc/boss'
 
 const props = defineProps<{ week: string, roster: BossRosterCharacter[], clears: BossClear[], feeRate: number }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -90,7 +90,8 @@ function moveBy(ocid: string, delta: number, event: Event) {
 }
 
 type Cycle = 'weekly' | 'monthly'
-const sumMeso = (list: { boss: { cycle: Cycle }, clear?: BossClear }[], cycle: Cycle) => list.filter(b => b.boss.cycle === cycle).reduce((sum, b) => sum + clearMeso(b.clear!), 0)
+// 예상 금액과 견주는 건 결정석뿐이고, 물욕템을 판 금액은 따로 센다
+const sumCrystal = (list: { boss: { cycle: Cycle }, clear?: BossClear }[], cycle: Cycle) => list.filter(b => b.boss.cycle === cycle).reduce((sum, b) => sum + b.clear!.meso, 0)
 const sumPrice = (list: (BossPick & { boss: { cycle: Cycle } })[], cycle: Cycle) => list.filter(b => b.boss.cycle === cycle).reduce((sum, b) => sum + (crystalPrice(b.bossId, b.difficulty, b.party) ?? 0), 0)
 
 const rows = computed(() => ordered.value.map((character) => {
@@ -107,24 +108,25 @@ const rows = computed(() => ordered.value.map((character) => {
     weeklyTotal: weekly.length,
     // 월간 보스는 매주 잡는 게 아니라 주간 세팅을 다 잡았는지만 본다
     complete: weekly.length > 0 && weeklyDone === weekly.length,
-    earned: done.reduce((sum, b) => sum + clearMeso(b.clear!), 0),
+    crystal: done.reduce((sum, b) => sum + b.clear!.meso, 0),
+    loot: done.reduce((sum, b) => sum + lootMeso(b.clear!), 0),
     // 주간은 매주, 월간은 한 달에 한 번이라 합계를 따로 낸다
-    weeklyEarned: sumMeso(done, 'weekly'),
-    monthlyEarned: sumMeso(done, 'monthly'),
+    weeklyEarned: sumCrystal(done, 'weekly'),
+    monthlyEarned: sumCrystal(done, 'monthly'),
     weeklyExpected: sumPrice(bosses, 'weekly'),
     monthlyExpected: sumPrice(bosses, 'monthly'),
   }
 }))
-const sumRows = (key: 'weeklyEarned' | 'weeklyExpected' | 'monthlyEarned' | 'monthlyExpected') => rows.value.reduce((s, r) => s + r[key], 0)
+const sumRows = (key: 'weeklyEarned' | 'weeklyExpected' | 'monthlyEarned' | 'monthlyExpected' | 'loot') => rows.value.reduce((s, r) => s + r[key], 0)
 const totals = computed(() => ({
   weeklyEarned: sumRows('weeklyEarned'),
   weeklyExpected: sumRows('weeklyExpected'),
   monthlyEarned: sumRows('monthlyEarned'),
   monthlyExpected: sumRows('monthlyExpected'),
+  loot: sumRows('loot'),
   complete: rows.value.length > 0 && rows.value.every(r => r.complete),
   completeCount: rows.value.filter(r => r.complete).length,
 }))
-// 물욕템을 판 금액이 더해지면 예상보다 많이 벌 수 있어 막대는 끝에서 멈춘다
 const progress = computed(() => (totals.value.weeklyExpected ? Math.min(100, (totals.value.weeklyEarned / totals.value.weeklyExpected) * 100) : 0))
 
 // 남은 주간 보스를 화면에 먼저 체크하고 서버에는 한 번에 보낸다
@@ -226,11 +228,12 @@ function addCharacter(ocid: string) {
 <template>
   <div class="board">
     <div class="totals">
-      <span>이번 주 주간 보스 <b class="earned">{{ formatKoreanNumber(totals.weeklyEarned) }}</b></span>
+      <span>이번 주 주간 결정석 <b class="earned">{{ formatKoreanNumber(totals.weeklyEarned) }}</b></span>
       <span class="muted">/ 다 잡으면 {{ formatKoreanNumber(totals.weeklyExpected) }}</span>
       <span class="monthly-tag" :class="{ off: !totals.monthlyExpected }" title="월간 보스는 한 달에 한 번이라 주간과 따로 세요">
         {{ Number(clearDate.slice(5, 7)) }}월 월간 <b>{{ formatKoreanNumber(totals.monthlyEarned) }}</b> / {{ formatKoreanNumber(totals.monthlyExpected) }}
       </span>
+      <span class="loot-tag" :class="{ off: !totals.loot }" title="물욕템을 경매장에 팔고 받은 메소(수수료 뗀 값)">물욕 판매 <b>{{ formatKoreanNumber(totals.loot) }}</b></span>
       <span v-if="roster.length" class="progress-tag" :class="{ all: totals.complete }">
         {{ totals.complete ? '이번 주 전부 잡았어요 ✓' : `다 잡은 캐릭터 ${totals.completeCount}/${roster.length}` }}
       </span>
@@ -287,7 +290,9 @@ function addCharacter(ocid: string) {
             <span class="who-text">
               <b class="ellipsis">{{ r.character.name }} <span class="caret" aria-hidden="true">▾</span></b>
               <small class="ellipsis">{{ r.character.job }} · LV.{{ r.character.level }}</small>
-              <small><span :class="{ full: r.weeklyDone >= WEEKLY_BOSS_LIMIT }">{{ r.weeklyDone }}/{{ r.weeklyTotal }}</span> · <span class="gold">{{ formatKoreanNumber(r.earned) }}</span></small>
+              <small><span :class="{ full: r.weeklyDone >= WEEKLY_BOSS_LIMIT }">{{ r.weeklyDone }}/{{ r.weeklyTotal }}</span> 잡음</small>
+              <small>결정석 {{ formatShortNumber(r.crystal) }}</small>
+              <small class="gold" :class="{ off: !r.loot }">물욕 {{ formatShortNumber(r.loot) }}</small>
             </span>
           </button>
           <!-- 잡음·취소를 캐릭터 칸에 세로로 쌓아 보스 칸 너비를 줄이지 않는다 -->
@@ -402,6 +407,18 @@ function addCharacter(ocid: string) {
 }
 .monthly-tag b {
   color: var(--calc);
+  font-weight: 700;
+}
+.loot-tag {
+  padding: 2px 10px;
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
+  border-radius: 999px;
+  color: var(--sub);
+  font-size: 13px;
+}
+.loot-tag b {
+  color: var(--gold);
   font-weight: 700;
 }
 .bar {
@@ -560,6 +577,9 @@ function addCharacter(ocid: string) {
 .who-text small {
   color: var(--sub);
   font-size: 12px;
+}
+.who-text small.gold {
+  color: var(--gold);
 }
 .full {
   color: var(--gain);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { LedgerSettings, MesoEntry, MesoHistoryKind, MesoHistoryRef, MesoHistoryResponse, MesoHistoryRow } from '#shared/types'
+import type { LedgerSettings, MesoEntry, MesoHistoryBoss, MesoHistoryKind, MesoHistoryRef, MesoHistoryResponse, MesoHistoryRow } from '#shared/types'
 import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
+import { bossOrder, type BossDifficulty } from '#shared/data/bosses'
 
 const PERIODS = [
   { key: 'month', label: '이번 달' },
@@ -76,6 +77,20 @@ onBeforeUnmount(() => {
   clearTimeout(arming)
   document.removeEventListener('click', closeOutside)
 })
+// 보스 묶음은 일별 기록처럼 캐릭터별 한 줄로 다시 묶고, 누르면 그 캐릭터가 잡은 보스를 펼친다
+const lootTotal = (boss: MesoHistoryBoss | undefined) => (boss?.loot ?? []).reduce((n, l) => n + l.net, 0)
+const bossGroups = (row: MesoHistoryRow) => [...Map.groupBy(row.children, c => c.boss?.character ?? '')]
+  .map(([name, list]) => ({ name, list: list.toSorted((a, b) => bossOrder(a.boss?.bossId ?? '') - bossOrder(b.boss?.bossId ?? '')), amount: list.reduce((n, c) => n + c.amount, 0), loot: list.reduce((n, c) => n + lootTotal(c.boss), 0) }))
+  .sort((a, b) => b.amount - a.amount)
+const openGroup = ref<string | null>(null)
+const groupKey = (row: MesoHistoryRow, name: string) => `${row.key}:${name}`
+function toggleGroup(row: MesoHistoryRow, name: string) {
+  openGroup.value = openGroup.value === groupKey(row, name) ? null : groupKey(row, name)
+}
+watch(open, () => {
+  openGroup.value = null
+})
+
 const entryOpen = ref(false)
 const editing = ref<MesoEntry | null>(null)
 const sourceOf = (row: MesoHistoryRow, date: string) => {
@@ -215,14 +230,48 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
             </div>
             <div v-if="r.children.length" class="children-wrap">
               <ul class="children" :inert="open !== r.key">
-                <li v-for="(c, i) in r.children" :key="i">
-                  <img v-if="c.icon" :src="c.icon" alt="" class="child-icon">
-                  <span v-else class="child-dot" />
-                  <span class="child-label ellipsis">{{ c.label }}</span>
-                  <b class="child-amt" :class="c.amount < 0 ? 'loss' : 'gain'">{{ formatSigned(c.amount) }}</b>
-                  <button v-if="c.ref" type="button" class="child-del" title="지우기" :aria-label="`${c.label} 지우기`" @click="askRemove(c.ref, c.label, c.amount, d.date)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4.5h6V7M6 7l1 13h10l1-13" /></svg></button>
-                  <span v-else class="child-del-space" />
-                </li>
+                <template v-if="r.kind === 'boss'">
+                  <li v-for="g in bossGroups(r)" :key="g.name" class="cgroup" :class="{ open: openGroup === groupKey(r, g.name) }">
+                    <button type="button" class="cg-head" :aria-expanded="openGroup === groupKey(r, g.name)" @click="toggleGroup(r, g.name)">
+                      <span class="child-dot" />
+                      <span class="cg-name">
+                        <span class="ellipsis cg-title"><b>{{ g.name }}</b> · {{ g.list.length }}마리</span>
+                        <span class="stack">
+                          <span v-for="(c, k) in g.list" :key="k" class="stack-item" :style="{ zIndex: k + 1 }"><LedgerBossEmblem :boss-id="c.boss!.bossId" :size="20" /></span>
+                        </span>
+                        <LedgerBossSplit v-if="g.loot" class="cg-split" :crystal="g.amount - g.loot" :loot="g.loot" equals />
+                      </span>
+                      <b class="child-amt gain">{{ formatSigned(g.amount) }}</b>
+                      <svg class="cg-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                    </button>
+                    <div class="cg-wrap">
+                      <ul class="cg-list" :inert="openGroup !== groupKey(r, g.name)">
+                        <li v-for="(c, k) in g.list" :key="k">
+                          <i class="diff" :style="{ background: DIFFICULTY_COLORS[c.boss!.difficulty as BossDifficulty] }" />
+                          <span class="boss-line">
+                            <span class="child-label ellipsis">{{ bossLabel(c.boss!.bossId, c.boss!.difficulty) }}</span>
+                            <LedgerBossSplit v-if="c.boss!.loot.length" class="boss-split" :crystal="c.boss!.meso" :loot="lootTotal(c.boss)" equals>
+                              <template #icons><LedgerLootIcon v-for="(l, j) in c.boss!.loot" :key="j" :item="l.item" :size="18" /></template>
+                            </LedgerBossSplit>
+                          </span>
+                          <b class="child-amt" :class="c.amount < 0 ? 'loss' : 'gain'">{{ formatSigned(c.amount) }}</b>
+                          <button v-if="c.ref" type="button" class="child-del" title="지우기" :aria-label="`${c.label} 지우기`" @click="askRemove(c.ref, c.label, c.amount, d.date)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4.5h6V7M6 7l1 13h10l1-13" /></svg></button>
+                          <span v-else class="child-del-space" />
+                        </li>
+                      </ul>
+                    </div>
+                  </li>
+                </template>
+                <template v-else>
+                  <li v-for="(c, i) in r.children" :key="i">
+                    <img v-if="c.icon" :src="c.icon" alt="" class="child-icon">
+                    <span v-else class="child-dot" />
+                    <span class="child-label ellipsis">{{ c.label }}</span>
+                    <b class="child-amt" :class="c.amount < 0 ? 'loss' : 'gain'">{{ formatSigned(c.amount) }}</b>
+                    <button v-if="c.ref" type="button" class="child-del" title="지우기" :aria-label="`${c.label} 지우기`" @click="askRemove(c.ref, c.label, c.amount, d.date)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M9 7V4.5h6V7M6 7l1 13h10l1-13" /></svg></button>
+                    <span v-else class="child-del-space" />
+                  </li>
+                </template>
               </ul>
             </div>
           </div>
@@ -602,6 +651,123 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   text-align: right;
   white-space: nowrap;
 }
+/* 보스 캐릭터 줄: 위 줄과 같은 칸에 맞추고, 누르면 그 아래로 보스를 펼친다 */
+.children li.cgroup {
+  display: block;
+  padding: 0;
+}
+.cg-head {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 120px 58px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cg-head:hover {
+  background: color-mix(in srgb, var(--c) 7%, transparent);
+}
+.cg-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--sub);
+}
+.cg-name b {
+  color: var(--text);
+  font-weight: 400;
+}
+/* 칸은 줄어들 수 있고 그림은 제 크기로 넘쳐 다음 그림 밑에 깔린다 */
+.stack {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding-right: 20px;
+}
+.stack-item {
+  position: relative;
+  flex: 0 1 22px;
+  min-width: 6px;
+  height: 20px;
+}
+.stack-item > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-shadow: -2px 0 5px rgb(0 0 0 / 0.5);
+}
+.cg-caret {
+  grid-column: 5;
+  justify-self: end;
+  margin-right: 5px;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--sub);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  transition: transform var(--normal) var(--ease-out);
+}
+.cgroup.open .cg-caret {
+  transform: rotate(180deg);
+}
+.cg-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--normal) var(--ease-out);
+}
+.cgroup.open .cg-wrap {
+  grid-template-rows: 1fr;
+}
+.cg-list {
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 0 16px;
+  overflow: hidden;
+  list-style: none;
+}
+.cg-list li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 120px 58px;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+}
+.cg-title {
+  flex: none;
+  max-width: 45%;
+}
+.cg-split,
+.boss-split {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+}
+.boss-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.boss-line .child-label {
+  flex: none;
+  max-width: 50%;
+}
+.diff {
+  justify-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
 .child-dot {
   justify-self: center;
   width: 6px;
@@ -762,9 +928,21 @@ useHead({ title: '메소 내역 · 메이플스토리로그' })
   .children {
     padding-left: 12px;
   }
-  .children li {
+  .children li,
+  .cg-head,
+  .cg-list li {
     grid-template-columns: 20px minmax(0, 1fr) auto 36px;
     gap: 8px;
+  }
+  .cg-name .stack,
+  .cg-split,
+  .boss-split {
+    display: none;
+  }
+  .cg-caret {
+    grid-column: 4;
+    justify-self: center;
+    margin: 0;
   }
   .child-del,
   .child-del-space {

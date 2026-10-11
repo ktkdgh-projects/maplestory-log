@@ -21,6 +21,7 @@ const balance = computed(() => props.settings?.balance ?? null)
     </button>
     <span v-if="$slots.default" class="sources"><slot /></span>
     <button v-if="addButton" type="button" class="add" @click="entryOpen = true">+ 직접 등록</button>
+    <span v-if="$slots.end" class="end"><slot name="end" /></span>
 
     <LedgerSettingsModal v-model="settingsOpen" :settings="settings" @saved="emit('changed')" />
     <LedgerEntryModal v-model="entryOpen" :entry="null" :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" :balance="balance?.current ?? null" @saved="emit('changed')" />
@@ -33,6 +34,13 @@ const balance = computed(() => props.settings?.balance ?? null)
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
+}
+.end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 .balance {
   display: inline-flex;

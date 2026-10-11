@@ -1,12 +1,11 @@
 import type { ObjectId } from 'mongodb'
 import type { MesoHistoryDay, MesoHistoryKind, MesoHistoryResponse, MesoHistoryRow } from '#shared/types'
 import { DIFFICULTY_LABELS, findBoss, type BossDifficulty } from '#shared/data/bosses'
-import { findMesoEntryType } from '#shared/data/mesoEntries'
+import { findMesoEntryType, ITEM_FLOW_LABELS } from '#shared/data/mesoEntries'
 import { dropSaleNet, mesoEntryDelta } from '#shared/calc/meso'
-import { clearMeso } from '#shared/calc/boss'
+import { clearMeso, lootNet } from '#shared/calc/boss'
 
 const FRAGMENT_ICON = '/icons/sol-erda-fragment.png'
-const ITEM_KIND_LABELS = { buy: '구매', starforce: '스타포스', potential: '잠재', sell: '판매' } as const
 
 const bossName = (bossId: string, difficulty: string) => `${DIFFICULTY_LABELS[difficulty as BossDifficulty] ?? ''} ${findBoss(bossId)?.name ?? bossId}`.trim()
 const sum = (list: { amount: number }[]) => list.reduce((n, c) => n + c.amount, 0)
@@ -56,13 +55,11 @@ export async function mesoHistory(userId: ObjectId, from: string, to: string): P
   }
   for (const [date, list] of Map.groupBy(clearDocs, c => c.date)) {
     const names = [...new Set(list.map(c => c.name))]
-    add(date, grouped(`boss:${date}`, 'boss', list.map(c => ({ label: `${c.name} · ${bossName(c.bossId, c.difficulty)}`, amount: clearMeso({ meso: c.meso, loot: bossLootOf(c) }), ref: { kind: 'clear' as const, id: c._id.toHexString() } })), n => `보스 ${n}마리`, names.join(' · ')), latest(list))
+    const loot = list.reduce((n, c) => n + bossLootOf(c).reduce((m, l) => m + lootNet(l), 0), 0)
+    add(date, grouped(`boss:${date}`, 'boss', list.map(c => ({ label: `${c.name} · ${bossName(c.bossId, c.difficulty)}`, amount: clearMeso({ meso: c.meso, loot: bossLootOf(c) }), ref: { kind: 'clear' as const, id: c._id.toHexString() }, boss: { character: c.name, bossId: c.bossId, difficulty: c.difficulty, meso: c.meso, loot: bossLootOf(c).map(l => ({ item: l.item, net: lootNet(l) })) } })), n => `보스 ${n}마리`, loot ? `결정석 ${formatKoreanNumber(sum(list.map(c => ({ amount: c.meso }))))} + 물욕 ${formatKoreanNumber(loot)}` : names.join(' · ')), latest(list))
   }
-  // 직접 적은 장비 줄은 아이콘이 없을 수 있어 아이콘 사전에서 같은 이름을 찾는다
-  const known = await lookupItems(itemEvents.filter(e => !e.icon).map(e => e.name))
-  const iconOf = (e: (typeof itemEvents)[number]) => e.icon ?? known.get(iconKey(e.name))?.icon ?? null
-  for (const [date, list] of Map.groupBy(itemEvents, e => e.date)) {
-    add(date, grouped(`item:${date}`, 'item', list.map(e => ({ label: `${e.name} ${ITEM_KIND_LABELS[e.kind]}`, amount: e.amount, icon: iconOf(e) })), n => `장비 ${n}건`, '장비 결산에 적은 금액'), Math.max(0, ...list.map(e => e.at ?? 0)))
+  for (const [date, list] of Map.groupBy(await withItemIcons(itemEvents), e => e.date)) {
+    add(date, grouped(`item:${date}`, 'item', list.map(e => ({ label: `${e.name} ${ITEM_FLOW_LABELS[e.kind]}`, amount: e.amount, icon: e.icon })), n => `장비 ${n}건`, '장비 결산에 적은 금액'), Math.max(0, ...list.map(e => e.at ?? 0)))
   }
   const entryAt = new Map(entryDocs.map(d => [d._id.toHexString(), d.createdAt.getTime()]))
   for (const entry of await toMesoEntries(entryDocs)) {

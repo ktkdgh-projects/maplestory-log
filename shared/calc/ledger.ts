@@ -1,6 +1,6 @@
 import type { BossClear, DropSale, HuntDrops, HuntEntry, ItemFlow, MesoEntry } from '#shared/types'
 import { findBoss } from '#shared/data/bosses'
-import { clearMeso } from './boss'
+import { clearMeso, lootMeso } from './boss'
 import { dropSaleNet, mesoEntryDelta } from './meso'
 
 const HUNT_DROP_KEYS: (keyof HuntDrops)[] = ['fragments', 'traces']
@@ -8,8 +8,9 @@ const HUNT_DROP_KEYS: (keyof HuntDrops)[] = ['fragments', 'traces']
 export interface LedgerDay extends HuntDrops {
   huntMeso: number
   bossMeso: number
-  // bossMeso·clears 중 월간 보스(검은 마법사) 몫
-  bossMonthly: number
+  // bossMeso 중 물욕템을 판 금액. 나머지가 결정석
+  bossLoot: number
+  // clears 중 월간 보스(검은 마법사) 수
   monthlyClears: number
   saleMeso: number
   // 장비 결산에서 넘어온 지출: 구매 + 강화. itemSpent는 둘의 합
@@ -26,7 +27,7 @@ export interface LedgerDay extends HuntDrops {
   loot: string[]
 }
 
-const emptyDay = (): LedgerDay => ({ huntMeso: 0, bossMeso: 0, bossMonthly: 0, monthlyClears: 0, saleMeso: 0, itemBought: 0, itemEnhanced: 0, itemSpent: 0, itemEarned: 0, entryIn: 0, entryOut: 0, minutes: 0, hunts: 0, clears: 0, loot: [], fragments: 0, traces: 0 })
+const emptyDay = (): LedgerDay => ({ huntMeso: 0, bossMeso: 0, bossLoot: 0, monthlyClears: 0, saleMeso: 0, itemBought: 0, itemEnhanced: 0, itemSpent: 0, itemEarned: 0, entryIn: 0, entryOut: 0, minutes: 0, hunts: 0, clears: 0, loot: [], fragments: 0, traces: 0 })
 
 export const dayIncome = (d: LedgerDay) => d.huntMeso + d.bossMeso + d.saleMeso + d.itemEarned + d.entryIn
 export const dayNet = (d: LedgerDay) => dayIncome(d) - d.itemSpent - d.entryOut
@@ -46,10 +47,8 @@ export function summarizeLedger(hunts: HuntEntry[], clears: BossClear[], items: 
   for (const c of clears) {
     for (const target of [day(c.date), total]) {
       target.bossMeso += clearMeso(c)
-      if (findBoss(c.bossId)?.cycle === 'monthly') {
-        target.bossMonthly += clearMeso(c)
-        target.monthlyClears++
-      }
+      target.bossLoot += lootMeso(c)
+      if (findBoss(c.bossId)?.cycle === 'monthly') target.monthlyClears++
       target.clears++
       target.loot.push(...c.loot.map(l => l.item))
     }

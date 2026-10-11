@@ -1,5 +1,5 @@
 import type { ObjectId } from 'mongodb'
-import type { ItemFlow, ItemPurchase } from '#shared/types'
+import type { ItemFlow, ItemFlowLine, ItemPurchase } from '#shared/types'
 import { afterFee } from '#shared/calc/meso'
 import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 import type { ItemRowDoc, ItemSheetDoc } from './mongo'
@@ -63,13 +63,7 @@ export async function rowReferences(userId: ObjectId, sheets: ItemSheetDoc[], ro
   return result
 }
 
-export interface ItemFlowEvent {
-  date: string
-  kind: 'buy' | 'starforce' | 'potential' | 'sell'
-  name: string
-  icon: string | null
-  // 들어온 메소는 양수, 나간 메소는 음수
-  amount: number
+export interface ItemFlowEvent extends ItemFlowLine {
   // 장비 결산엔 날짜만 있어서, 그 줄을 같은 날 만들었으면 만든 시각을 쓴다
   at: number | null
 }
@@ -106,9 +100,19 @@ export async function itemFlowEvents(userId: ObjectId, range: { from?: string, t
   return events.sort((a, b) => a.date.localeCompare(b.date))
 }
 
+// 직접 적은 장비 줄은 아이콘이 없을 수 있어 아이콘 사전에서 같은 이름을 찾는다
+export async function withItemIcons<T extends ItemFlowLine>(events: T[]): Promise<T[]> {
+  const known = await lookupItems(events.filter(e => !e.icon).map(e => e.name))
+  return events.map(e => (e.icon ? e : { ...e, icon: known.get(iconKey(e.name))?.icon ?? null }))
+}
+
 export async function itemFlows(userId: ObjectId, range: { from?: string, to?: string }): Promise<ItemFlow[]> {
+  return sumItemFlows(await itemFlowEvents(userId, range))
+}
+
+export function sumItemFlows(events: ItemFlowLine[]): ItemFlow[] {
   const days = new Map<string, ItemFlow>()
-  for (const e of await itemFlowEvents(userId, range)) {
+  for (const e of events) {
     const day = days.get(e.date) ?? days.set(e.date, { date: e.date, bought: 0, enhanced: 0, earned: 0 }).get(e.date)!
     if (e.kind === 'buy') day.bought -= e.amount
     else if (e.kind === 'sell') day.earned += e.amount

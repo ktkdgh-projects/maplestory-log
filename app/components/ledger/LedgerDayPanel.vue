@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { BossClear, DropSale, HuntDrops, HuntEntry, ItemFlow, MesoEntry } from '#shared/types'
+import type { BossClear, DropSale, HuntEntry, ItemFlow, ItemFlowLine, MesoEntry } from '#shared/types'
+import { ITEM_FLOW_LABELS } from '#shared/data/mesoEntries'
 import { bossOrder, type BossDifficulty } from '#shared/data/bosses'
 import { dayNet, mesoPerHour, summarizeLedger } from '#shared/calc/ledger'
 import { dropSaleNet, mesoEntryDelta } from '#shared/calc/meso'
-import { clearMeso } from '#shared/calc/boss'
+import { clearMeso, lootMeso } from '#shared/calc/boss'
 
-const props = defineProps<{ date: string, hunts: HuntEntry[], clears: BossClear[], items: ItemFlow[], sales: DropSale[], entries: MesoEntry[], stock: HuntDrops, feeRate: number, balance: number | null }>()
+const props = defineProps<{ date: string, hunts: HuntEntry[], clears: BossClear[], items: ItemFlow[], itemLines: ItemFlowLine[], sales: DropSale[], entries: MesoEntry[], feeRate: number, balance: number | null }>()
 const emit = defineEmits<{ changed: [] }>()
 
 // 'new'·'sale'은 새로 적기, 그 밖에는 고치는 기록의 id
@@ -18,20 +19,42 @@ function openEntry(entry: MesoEntry | null) {
   editingEntry.value = entry
   entryOpen.value = true
 }
+// 직접 등록은 종류(경매장 판매·기타 지출 등)별로 합쳐 보여 준다
+const entryParts = computed(() => [...Map.groupBy(props.entries, e => e.type)].map(([type, list]) => ({ type, label: mesoEntryLabel(type), amount: list.reduce((n, e) => n + mesoEntryDelta(e), 0) })).sort((a, b) => b.amount - a.amount))
 const entryDetail = (e: MesoEntry) => [e.item, e.cash && e.amount ? `1억당 ${Math.round(e.cash / (e.amount / 1e8)).toLocaleString('ko-KR')}원` : '', e.memo].filter(Boolean).join(' · ')
 
 // 보스가 많으면 길게 늘어지므로 캐릭터별 한 줄로 묶는다
 const openGroup = ref<string | null>(null)
 const clearGroups = computed(() => {
-  const groups = new Map<string, { ocid: string, name: string, clears: BossClear[], meso: number }>()
+  const groups = new Map<string, { ocid: string, name: string, clears: BossClear[], meso: number, loot: number }>()
   for (const c of props.clears) {
-    const g = groups.get(c.ocid) ?? groups.set(c.ocid, { ocid: c.ocid, name: c.name, clears: [], meso: 0 }).get(c.ocid)!
+    const g = groups.get(c.ocid) ?? groups.set(c.ocid, { ocid: c.ocid, name: c.name, clears: [], meso: 0, loot: 0 }).get(c.ocid)!
     g.clears.push(c)
     g.meso += clearMeso(c)
+    g.loot += lootMeso(c)
   }
   for (const g of groups.values()) g.clears.sort((a, b) => bossOrder(a.bossId) - bossOrder(b.bossId))
   return [...groups.values()].sort((a, b) => b.meso - a.meso)
 })
+
+// 기록이 많아지면 한 종류만 골라 본다. 고른 종류는 날짜를 옮겨도 그대로 둔다
+const FILTERS = [
+  { key: 'all', label: '전체', c: 'var(--gold)' },
+  { key: 'hunt', label: '사냥', c: 'var(--exp)' },
+  { key: 'sale', label: '판매', c: 'var(--gain)' },
+  { key: 'boss', label: '보스', c: 'var(--api)' },
+  { key: 'item', label: '장비', c: 'var(--loss)' },
+  { key: 'entry', label: '직접', c: 'var(--calc)' },
+] as const
+type Filter = (typeof FILTERS)[number]['key']
+const filter = ref<Filter>('all')
+const counts = computed<Record<Filter, number>>(() => {
+  const c = { hunt: props.hunts.length, sale: props.sales.length, boss: props.clears.length, item: props.itemLines.length, entry: props.entries.length }
+  return { all: c.hunt + c.sale + c.boss + c.item + c.entry, ...c }
+})
+const shows = (key: Filter) => filter.value === 'all' || filter.value === key
+// 전체에서는 빈 종류를 제목 줄만 남겨 자리를 아끼고, 한 종류만 볼 때는 빈 안내를 띄운다
+const emptyShown = (key: Filter) => filter.value === key
 
 watch(() => props.date, () => {
   editing.value = null
@@ -58,19 +81,25 @@ function onSaved() {
     </header>
     <div class="parts">
       <span><i class="dot" style="--c: var(--exp)" />사냥 {{ formatKoreanNumber(summary.huntMeso) }}</span>
-      <span><i class="dot" style="--c: var(--api)" />보스 {{ formatKoreanNumber(summary.bossMeso) }}</span>
+      <span><i class="dot" style="--c: var(--api)" />보스 <LedgerBossSplit :crystal="summary.bossMeso - summary.bossLoot" :loot="summary.bossLoot" /></span>
       <span v-if="summary.saleMeso"><i class="dot" style="--c: var(--gain)" />조각 판매 {{ formatKoreanNumber(summary.saleMeso) }}</span>
-      <span v-if="summary.entryIn || summary.entryOut"><i class="dot" style="--c: var(--calc)" />직접 등록<template v-if="summary.entryIn"> +{{ formatKoreanNumber(summary.entryIn) }}</template><template v-if="summary.entryOut"> -{{ formatKoreanNumber(summary.entryOut) }}</template></span>
+      <span v-for="p in entryParts" :key="p.type"><i class="dot" style="--c: var(--calc)" />{{ p.label }} {{ formatSigned(p.amount) }}</span>
       <NuxtLink v-if="summary.itemSpent || summary.itemEarned" to="/items" class="item-link">
         <i class="dot" style="--c: var(--loss)" />장비<template v-if="summary.itemBought"> 구매 -{{ formatKoreanNumber(summary.itemBought) }}</template><template v-if="summary.itemEnhanced"> 강화 -{{ formatKoreanNumber(summary.itemEnhanced) }}</template><template v-if="summary.itemEarned"> 판매 +{{ formatKoreanNumber(summary.itemEarned) }}</template>
       </NuxtLink>
     </div>
+    <div class="tabs" role="tablist" aria-label="기록 종류">
+      <button v-for="f in FILTERS" :key="f.key" type="button" role="tab" :aria-selected="filter === f.key" :class="{ none: !counts[f.key] }" :style="{ '--c': f.c }" @click="filter = f.key">
+        {{ f.label }}<b>{{ counts[f.key] }}</b>
+      </button>
+    </div>
 
-    <section class="sec" style="--c: var(--exp)">
+    <div class="list">
+    <section v-show="shows('hunt')" class="sec" style="--c: var(--exp)">
       <header class="sec-head">
         <i class="dot" />
         <h3>사냥</h3>
-        <span class="sec-note">{{ hunts.length ? `${hunts.length}번` : '' }}</span>
+        <span class="sec-note">{{ hunts.length ? `${hunts.length}번` : '없음' }}</span>
         <button type="button" class="add" :class="{ off: editing === 'new' }" :tabindex="editing === 'new' ? -1 : 0" @click="editing = 'new'">+ 기록</button>
       </header>
       <LedgerHuntForm v-if="editing === 'new'" :key="`new-${date}`" :date="date" :entry="null" @saved="onSaved" @cancel="editing = null" />
@@ -94,14 +123,14 @@ function onSaved() {
           </div>
         </li>
       </ul>
-      <p v-else-if="editing !== 'new'" class="empty">사냥 기록이 없어요</p>
+      <p v-else-if="editing !== 'new' && emptyShown('hunt')" class="empty">사냥 기록이 없어요</p>
     </section>
 
-    <section class="sec" style="--c: var(--gain)">
+    <section v-show="shows('sale')" class="sec" style="--c: var(--gain)">
       <header class="sec-head">
         <i class="dot" />
         <h3>조각 판매</h3>
-        <span class="sec-note">보유 {{ Math.max(0, stock.fragments).toLocaleString('ko-KR') }}개</span>
+        <span class="sec-note">{{ sales.length ? `${sales.length}건` : '없음' }}</span>
         <button type="button" class="add" :class="{ off: editing === 'sale' }" :tabindex="editing === 'sale' ? -1 : 0" @click="editing = 'sale'">+ 기록</button>
       </header>
       <LedgerSaleForm v-if="editing === 'sale'" :key="`sale-${date}`" :date="date" :fee-rate="feeRate" @saved="onSaved" @cancel="editing = null" />
@@ -122,14 +151,14 @@ function onSaved() {
           </div>
         </li>
       </ul>
-      <p v-else-if="editing !== 'sale'" class="empty">판 조각이 없어요</p>
+      <p v-else-if="editing !== 'sale' && emptyShown('sale')" class="empty">판 조각이 없어요</p>
     </section>
 
-    <section class="sec" style="--c: var(--api)">
+    <section v-show="shows('boss')" class="sec" style="--c: var(--api)">
       <header class="sec-head">
         <i class="dot" />
         <h3>보스</h3>
-        <span class="sec-note">{{ clears.length ? `${clears.length}마리` : '' }}</span>
+        <span class="sec-note">{{ clears.length ? `${clears.length}마리` : '없음' }}</span>
         <NuxtLink :to="{ path: '/ledger/bosses', query: { date } }" class="add">체크하기 →</NuxtLink>
       </header>
       <ul v-if="clears.length" class="rows">
@@ -155,9 +184,9 @@ function onSaved() {
               <li v-for="c in g.clears" :key="c.id">
                 <i class="diff" :style="{ background: DIFFICULTY_COLORS[c.difficulty as BossDifficulty] }" />
                 <span class="boss ellipsis">{{ bossLabel(c.bossId, c.difficulty) }}<template v-if="c.party > 1"> · {{ c.party }}인</template></span>
-                <span v-if="c.loot.length" class="loot-names">
-                  <LedgerLootIcon v-for="l in c.loot" :key="l.item" :item="l.item" :size="20" />
-                </span>
+                <LedgerBossSplit v-if="c.loot.length" class="d-split" :crystal="c.meso" :loot="lootMeso(c)" short equals>
+                  <template #icons><LedgerLootIcon v-for="l in c.loot" :key="l.item" :item="l.item" :size="18" /></template>
+                </LedgerBossSplit>
                 <b class="d-amt">{{ formatKoreanNumber(clearMeso(c)) }}</b>
                 <LedgerAct kind="del" label="체크 취소" @click="remove(`/api/ledger/clears/${c.id}`, `${g.name} · ${bossLabel(c.bossId, c.difficulty)}`, clearMeso(c))" />
               </li>
@@ -165,14 +194,40 @@ function onSaved() {
           </div>
         </li>
       </ul>
-      <p v-else class="empty">잡은 보스가 없어요</p>
+      <p v-else-if="emptyShown('boss')" class="empty">잡은 보스가 없어요</p>
     </section>
 
-    <section class="sec" style="--c: var(--calc)">
+    <section v-show="shows('item')" class="sec" style="--c: var(--loss)">
+      <header class="sec-head">
+        <i class="dot" />
+        <h3>장비</h3>
+        <span class="sec-note">{{ itemLines.length ? `${itemLines.length}건` : '없음' }}</span>
+        <NuxtLink to="/items" class="add">장비 결산 →</NuxtLink>
+      </header>
+      <ul v-if="itemLines.length" class="rows">
+        <li v-for="(l, k) in itemLines" :key="k">
+          <div class="r">
+            <span class="ic" :class="{ img: l.icon }">
+              <img v-if="l.icon" :src="l.icon" alt="">
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4zM9 7V4h6v3" /></svg>
+            </span>
+            <span class="main">
+              <b class="ellipsis">{{ l.name }}</b>
+              <small class="ellipsis">{{ ITEM_FLOW_LABELS[l.kind] }}</small>
+            </span>
+            <b class="amt" :class="l.amount < 0 ? 'loss' : 'gain'">{{ formatSigned(l.amount) }}</b>
+            <span class="acts" />
+          </div>
+        </li>
+      </ul>
+      <p v-else-if="emptyShown('item')" class="empty">장비 결산에 적은 금액이 없어요</p>
+    </section>
+
+    <section v-show="shows('entry')" class="sec" style="--c: var(--calc)">
       <header class="sec-head">
         <i class="dot" />
         <h3>직접 등록</h3>
-        <span class="sec-note">{{ entries.length ? `${entries.length}건` : '' }}</span>
+        <span class="sec-note">{{ entries.length ? `${entries.length}건` : '없음' }}</span>
         <button type="button" class="add" @click="openEntry(null)">+ 기록</button>
       </header>
       <ul v-if="entries.length" class="rows">
@@ -194,8 +249,9 @@ function onSaved() {
           </div>
         </li>
       </ul>
-      <p v-else class="empty">직접 등록한 기록이 없어요</p>
+      <p v-else-if="emptyShown('entry')" class="empty">직접 등록한 기록이 없어요</p>
     </section>
+    </div>
     <LedgerEntryModal v-model="entryOpen" :entry="editingEntry" :date="date" :fee-rate="feeRate" :balance="balance" @saved="emit('changed')" />
   </div>
 </template>
@@ -204,8 +260,77 @@ function onSaved() {
 .day {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+.tabs {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding: 3px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 9px;
+}
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  color: var(--sub);
+  font: 13px var(--f-title);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+.tabs button b {
+  min-width: 18px;
+  padding: 0 5px;
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+  border-radius: 999px;
+  color: var(--c);
+  font-size: 11.5px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 17px;
+  text-align: center;
+}
+.tabs button.none b {
+  background: none;
+  color: var(--sub);
+  opacity: 0.6;
+}
+.tabs button:hover {
+  color: var(--text);
+}
+.tabs button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--c) 16%, var(--bar));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent);
+  color: var(--text);
+}
+/* 날짜·합계·종류 고르기는 위에 두고 기록만 이 안에서 스크롤한다 */
+.list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   gap: 12px;
   min-height: 0;
+  margin-right: -8px;
+  padding-right: 8px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.head,
+.parts {
+  flex: none;
 }
 .head {
   display: flex;
@@ -252,13 +377,14 @@ function onSaved() {
 
 .sec {
   display: grid;
-  gap: 6px;
+  flex: none;
+  gap: 4px;
 }
 .sec-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 30px;
 }
 .sec-head .dot {
   margin-right: 2px;
@@ -309,7 +435,7 @@ h3 {
   grid-template-columns: 30px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
-  min-height: 50px;
+  min-height: 46px;
   padding: 6px 4px 6px 10px;
   background: var(--panel);
   border: 1px solid var(--panel-line);
@@ -497,9 +623,9 @@ h3 {
   flex: 1;
   min-width: 0;
 }
-.loot-names {
-  display: flex;
-  gap: 2px;
+.d-split {
+  font-size: 12px;
+  font-weight: 400;
 }
 .d-amt {
   color: var(--gain);
