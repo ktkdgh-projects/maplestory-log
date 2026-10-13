@@ -1,7 +1,5 @@
 import { ObjectId } from 'mongodb'
 
-const MAX_ROWS = 60
-
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
   const body = await readBody<{ sheetId?: unknown, name?: unknown }>(event)

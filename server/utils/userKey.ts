@@ -14,6 +14,8 @@ export async function getUserApiKey(userId: ObjectId): Promise<string> {
 
 // 서버 키 하루 호출 한도를 여러 IP가 나눠 다 써 버리지 않게, 로그인 없는 검색은 전체를 합쳐 하루 이만큼만 받는다
 const ANONYMOUS_DAILY_LIMIT = 3000
+// 한 IP가 하루 전체 한도를 혼자 다 써서 다른 사람 검색을 막지 못하게 한다
+const ANONYMOUS_IP_DAILY_LIMIT = 150
 
 async function countAnonymousSearch() {
   const today = kstToday()
@@ -35,6 +37,7 @@ export async function searchApiKey(event: H3Event, bucket: string): Promise<stri
   const apiKey = useRuntimeConfig().nexonApiKey
   if (!apiKey) throw createError({ statusCode: 503, message: '지금은 로그인 없이 검색할 수 없어요.' })
   await rateLimit(event, bucket, 30, 60)
+  await rateLimit(event, 'anonymous-day', ANONYMOUS_IP_DAILY_LIMIT, 24 * 60 * 60)
   await countAnonymousSearch()
   return apiKey
 }
@@ -51,7 +54,7 @@ export async function markKeyStatus(userId: ObjectId, status: UserDoc['keyStatus
 }
 
 export function assertSameKey(user: UserDoc, apiKey: unknown) {
-  if (typeof apiKey !== 'string' || !user.keyHash || hashApiKey(apiKey.trim()) !== user.keyHash) {
+  if (typeof apiKey !== 'string' || !user.keyHash || !sameHash(hashApiKey(apiKey.trim()), user.keyHash)) {
     throw createError({ statusCode: 403, message: '입력한 키가 등록된 키와 달라요.' })
   }
 }

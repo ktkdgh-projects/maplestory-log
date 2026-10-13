@@ -9,6 +9,7 @@ export default defineEventHandler(async (event) => {
   if (!sheet) throw createError({ statusCode: 404, message: '시트를 찾을 수 없어요.' })
   if (!sheet.ocid) throw createError({ statusCode: 400, message: '캐릭터를 연결한 시트만 장비를 불러올 수 있어요.' })
 
+  await rateLimit(event, 'nexon', NEXON_RATE_LIMIT, 60)
   const apiKey = await getUserApiKey(user._id)
   const equipment = await nexon.itemEquipment(apiKey, sheet.ocid).catch((error) => {
     throw toHttpError(error)
@@ -16,7 +17,7 @@ export default defineEventHandler(async (event) => {
   await collectCharacterIcons(apiKey, sheet.ocid, equipment.item_equipment.map(i => ({ name: i.item_name, icon: i.item_icon, slot: i.item_equipment_slot, level: Number(i.item_base_option?.base_equipment_level) || undefined })))
   const existing = await itemRows.find({ userId: user._id, sheetId: id }, { projection: { name: 1, level: 1 } }).toArray()
   const have = new Set(existing.map(r => r.name))
-  const fresh = equipment.item_equipment.filter(item => !have.has(item.item_name))
+  const fresh = equipment.item_equipment.filter(item => !have.has(item.item_name)).slice(0, Math.max(0, MAX_ROWS - existing.length))
   if (fresh.length) {
     const { feeRate } = await loadLedgerSettings(user._id)
     await itemRows.insertMany(fresh.map((item, i) => ({

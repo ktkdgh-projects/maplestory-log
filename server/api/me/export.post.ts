@@ -19,6 +19,7 @@ function toCsv(header: string[], rows: unknown[][]): string {
 
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
+  await rateLimit(event, 'export', 10, 60)
   const body = await readBody<{ apiKey?: unknown, format?: unknown, table?: unknown }>(event)
   assertSameKey(user, body?.apiKey)
   const format = body?.format === 'csv' ? 'csv' : 'json'

@@ -3,6 +3,7 @@ import type { SnapshotsResponse } from '#shared/types'
 const ALLOWED_DAYS = [7, 14, 30]
 // 한 번 부를 때 채우는 시간. 남은 날은 화면이 다시 불러 이어서 채운다
 const FILL_BUDGET_MS = 5000
+const ANONYMOUS_FILL_DAYS = 7
 
 // 채운 스냅샷은 ocid 기준이라 다른 사용자와 같이 쓴다
 export default defineEventHandler(async (event): Promise<SnapshotsResponse> => {
@@ -23,7 +24,9 @@ export default defineEventHandler(async (event): Promise<SnapshotsResponse> => {
     const { ocid } = live.character
 
     const dates = recentKstDates(days)
-    const pending = paused ? 0 : await fillSnapshots(apiKey, ocid, dates, FILL_BUDGET_MS)
+    // 로그인 없이는 서버 키로 채우므로 최근 7일만 채워 넥슨 호출을 줄인다
+    const fillDates = event.context.user ? dates : dates.slice(-ANONYMOUS_FILL_DAYS)
+    const pending = paused ? 0 : await fillSnapshots(apiKey, ocid, fillDates, FILL_BUDGET_MS)
 
     const { snapshots } = await useCollections()
     const docs = await snapshots.find({ ocid, date: { $gte: dates[0]!, $lte: dates.at(-1)! }, empty: false }).sort({ date: 1 }).toArray()

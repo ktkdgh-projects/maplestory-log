@@ -10,13 +10,15 @@ export default defineEventHandler(async (event) => {
 
   const { users, sessions } = await useCollections()
   const now = new Date()
+  const keyHash = hashApiKey(apiKey)
+  const before = await users.findOne({ nexonAccountId: accountId }, { projection: { keyHash: 1 } })
   const user = await users.findOneAndUpdate(
     { nexonAccountId: accountId },
     {
       $set: {
         keyEnc: encryptApiKey(apiKey),
         keyVersion: KEY_VERSION,
-        keyHash: hashApiKey(apiKey),
+        keyHash,
         keyLast4: apiKey.slice(-4),
         keyStatus: 'valid',
         keyStatusReason: null,
@@ -31,6 +33,8 @@ export default defineEventHandler(async (event) => {
 
   // 로그인한 채로 다시 로그인하면 이전 세션이 쿠키만 잃고 남으므로 지운다
   if (event.context.session) await sessions.deleteOne({ _id: event.context.session._id })
+  // 새 키로 들어오면 예전 키로 열린 다른 기기 세션은 끊는다(새 키 발급은 유출 대응일 수 있다)
+  if (before?.keyHash && !sameHash(before.keyHash, keyHash)) await revokeSessions(user._id)
   await createSession(event, user._id, body.remember !== false)
   return { needsMain: !user.mainOcid, characters }
 })

@@ -14,9 +14,11 @@ const MEMO_MAX = 200
 const MAX_LEDGER_RECORDS = 5000
 
 const fail = (message: string) => createError({ statusCode: 400, message })
+// 메이플스토리 서비스 시작 전 날짜는 받지 않는다
+const GAME_START = '2003-04-29'
 
 // 형식만 맞는 2026-13-01 같은 날짜는 Date로 바꿨다 되돌리면 달라진다
-const realDate = (value: string) => {
+export const realDate = (value: string) => {
   const ms = Date.parse(`${value}T00:00:00Z`)
   return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === value
 }
@@ -27,7 +29,7 @@ export async function assertLedgerRoom<T extends { userId: ObjectId }>(collectio
 }
 
 export function parseDate(value: unknown): string {
-  if (typeof value !== 'string' || !DATE_PATTERN.test(value) || !realDate(value) || value > kstToday()) throw fail('날짜를 오늘이나 그 전으로 골라 주세요.')
+  if (typeof value !== 'string' || !DATE_PATTERN.test(value) || !realDate(value) || value < GAME_START || value > kstToday()) throw fail('날짜를 오늘이나 그 전으로 골라 주세요.')
   return value
 }
 

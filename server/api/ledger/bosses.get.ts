@@ -6,7 +6,7 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 export default defineEventHandler(async (event): Promise<BossBoardResponse> => {
   const user = requireUser(event)
   const query = getQuery(event).week
-  const week = bossPeriod('weekly', typeof query === 'string' && DATE_PATTERN.test(query) ? query : kstToday())
+  const week = bossPeriod('weekly', typeof query === 'string' && DATE_PATTERN.test(query) && realDate(query) ? query : kstToday())
   // 주가 두 달에 걸치면 월간 보스(검은 마법사)는 두 달 것을 모두 보여준다
   const months = [bossPeriod('monthly', week), bossPeriod('monthly', addDays(week, 6))]
 

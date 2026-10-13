@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
   const field = kind === 'starforce' ? 'starforceEntries' : 'potentialEntries'
   const current = row[field] ?? (row[kind] && row[`${kind}Date`] ? [{ date: row[`${kind}Date`]!, amount: row[kind]! }] : [])
   const entries = [...current.filter(e => e.date !== date), { date, amount }].sort((a, b) => a.date.localeCompare(b.date))
+  if (entries.length > MAX_PURCHASES) throw createError({ statusCode: 409, message: `날짜별 내역은 ${MAX_PURCHASES}건까지 넣을 수 있어요. 장비 결산에서 정리해 주세요.` })
   await itemRows.updateOne({ _id: row._id }, {
     $set: { [field]: entries, [kind]: entries.reduce((sum, e) => sum + e.amount, 0), [`${kind}Date`]: entries.at(-1)!.date },
   })

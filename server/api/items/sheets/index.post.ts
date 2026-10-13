@@ -12,6 +12,7 @@ export default defineEventHandler(async (event) => {
 
   let character: { ocid: string, name: string } | null = null
   if (typeof body?.ocid === 'string' && body.ocid) {
+    await rateLimit(event, 'nexon', NEXON_RATE_LIMIT, 60)
     const { characters } = await fetchAccountCharacters(await getUserApiKey(user._id))
     character = characters.find(c => c.ocid === body.ocid) ?? null
     if (!character) throw createError({ statusCode: 400, message: '내 계정의 캐릭터만 연결할 수 있어요.' })

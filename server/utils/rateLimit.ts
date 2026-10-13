@@ -1,8 +1,17 @@
 import type { H3Event } from 'h3'
 
+// 넥슨 API를 부르는 쓰기 요청(장비 불러오기·시트 만들기·대표 캐릭터)의 1분 한도
+export const NEXON_RATE_LIMIT = 20
+
+// Vercel이 직접 채우는 헤더를 먼저 본다. X-Forwarded-For 첫 값은 다른 프록시 뒤에선 사용자가 꾸밀 수 있다
+function clientIp(event: H3Event): string {
+  const vercel = getHeader(event, 'x-vercel-forwarded-for') ?? getHeader(event, 'x-real-ip')
+  return vercel?.split(',')[0]?.trim() || getRequestIP(event, { xForwardedFor: true }) || 'unknown'
+}
+
 // 서버리스 인스턴스끼리 메모리를 공유하지 않으므로 횟수는 DB에 센다
 export async function rateLimit(event: H3Event, bucket: string, limit: number, windowSec: number) {
-  const ip = getRequestIP(event, { xForwardedFor: true }) ?? 'unknown'
+  const ip = clientIp(event)
   const windowStart = Math.floor(Date.now() / 1000 / windowSec) * windowSec
   const { rateLimits } = await useCollections()
   const doc = await rateLimits.findOneAndUpdate(

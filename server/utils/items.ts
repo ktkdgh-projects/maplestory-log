@@ -16,7 +16,8 @@ export function parseMeso(value: unknown, label: string): number {
   return n
 }
 
-const MAX_PURCHASES = 200
+export const MAX_PURCHASES = 200
+export const MAX_ROWS = 60
 
 export function parsePurchases(value: unknown): ItemPurchase[] {
   if (!Array.isArray(value) || value.length > MAX_PURCHASES) throw fail(`구매 내역은 ${MAX_PURCHASES}건까지 적을 수 있어요.`)
