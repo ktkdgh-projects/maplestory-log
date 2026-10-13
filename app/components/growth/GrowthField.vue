@@ -139,10 +139,20 @@ watch(selected, () => centerSelected('smooth'))
   background: repeating-linear-gradient(180deg, var(--grass) 0 5px, var(--dirt) 5px 100%);
   border: 1px dashed var(--gold);
   border-bottom: 0;
-  animation: rise-platform 0.6s var(--ease-spring) backwards, pulse 1.6s ease-in-out infinite;
+  animation: rise-platform 0.6s var(--ease-spring) backwards;
+}
+/* 빛은 미리 그려 둔 겹에서 투명도만 바꿔야 매 프레임 그림자를 다시 그리지 않는다 */
+.platform.today::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 55%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse {
-  50% { box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 55%, transparent); }
+  50% { opacity: 1; }
 }
 .platform.today span {
   color: var(--gold);

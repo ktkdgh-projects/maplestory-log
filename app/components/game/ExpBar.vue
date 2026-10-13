@@ -50,7 +50,13 @@ const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.55) 50%, transparent 70%) 0 0 / 200% 100%;
-  animation: shimmer 2.6s linear infinite;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.55) 50%, transparent 70%);
+  will-change: transform;
+  animation: sweep 2.6s linear infinite;
+}
+/* 배경 위치를 옮기면 매 프레임 다시 그려서, 빛줄기 칸을 통째로 밀어 지나가게 한다 */
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 </style>

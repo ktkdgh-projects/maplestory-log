@@ -303,11 +303,11 @@ h3 {
   height: 72px;
   background: radial-gradient(circle at 50% 50%, #ffe27a 0 45%, rgb(255 226 122 / 0.25) 46% 70%, transparent 71%);
   border-radius: 50%;
-  box-shadow: 0 0 30px rgb(255 214 90 / 0.35);
+  box-shadow: 0 0 36px rgb(255 214 90 / 0.42);
   animation: rise 3s ease-in-out infinite;
 }
 @keyframes rise {
-  50% { transform: translateY(-4px); box-shadow: 0 0 40px rgb(255 214 90 / 0.5); }
+  50% { transform: translateY(-4px); }
 }
 .wait-text {
   display: grid;

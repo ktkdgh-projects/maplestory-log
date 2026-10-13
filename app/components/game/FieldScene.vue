@@ -51,6 +51,7 @@ const leafStyle = (i: number) => ({
 .field {
   position: relative;
   overflow: hidden;
+  container-type: inline-size;
   background: linear-gradient(#3f6fc4, #79a8e6 55%, var(--sky-bot));
   border: 1px solid var(--panel-line);
   border-radius: 10px;
@@ -65,8 +66,11 @@ const leafStyle = (i: number) => ({
   border-radius: 50%;
   background: radial-gradient(circle, rgb(255 236 170 / 0.8), transparent 65%);
 }
+/* 구름은 transform으로만 옮겨야 매 프레임 다시 그리지 않는다. 끝점은 필드 폭(cqw) 기준 */
 .cloud {
   position: absolute;
+  left: 0;
+  will-change: transform;
   background: var(--cloud);
   border-radius: 30px;
   opacity: 0.85;
@@ -95,8 +99,8 @@ const leafStyle = (i: number) => ({
 .c2 { top: 28%; width: 100px; height: 26px; animation-duration: 64s; animation-delay: -40s; }
 .c3 { top: 8%; width: 60px; height: 17px; animation-duration: 38s; animation-delay: -25s; opacity: 0.7; }
 @keyframes drift {
-  from { left: -130px; }
-  to { left: 100%; }
+  from { transform: translateX(-130px); }
+  to { transform: translateX(100cqw); }
 }
 .scenery {
   position: absolute;

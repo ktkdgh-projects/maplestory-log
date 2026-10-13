@@ -14,7 +14,8 @@ const CONTENT_SECURITY_POLICY = [
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: true },
+  // 개발 서버·브라우저 메모리를 많이 써서 꺼 둔다. 필요할 때만 켠다
+  devtools: { enabled: false },
 
   css: ['~/assets/css/tokens.css', '~/assets/css/base.css', '~/assets/css/calc.css'],
 
