@@ -149,7 +149,7 @@ watch(selected, () => centerSelected('smooth'))
   box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 55%, transparent);
   opacity: 0;
   pointer-events: none;
-  animation: pulse 1.6s ease-in-out infinite;
+  animation: pulse 1.6s ease-in-out 3;
 }
 @keyframes pulse {
   50% { opacity: 1; }
@@ -171,7 +171,7 @@ watch(selected, () => centerSelected('smooth'))
   font-size: 9px;
   font-style: normal;
   line-height: 14px;
-  animation: bob 1.8s ease-in-out infinite;
+  animation: bob 1.8s ease-in-out 3;
 }
 .walker {
   position: absolute;

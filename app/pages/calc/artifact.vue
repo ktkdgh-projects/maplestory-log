@@ -670,10 +670,9 @@ const at = (weeks: number | null) => `${goal.value.plain ? Math.min((weeks ?? 0)
   gap: 6px;
   min-width: 0;
   padding: 3px 10px;
-  background: rgb(14 17 28 / 0.78);
+  background: rgb(14 17 28 / 0.86);
   border: 1px solid rgb(255 255 255 / 0.08);
   border-radius: 999px;
-  backdrop-filter: blur(2px);
   font-size: 12.5px;
   white-space: nowrap;
 }

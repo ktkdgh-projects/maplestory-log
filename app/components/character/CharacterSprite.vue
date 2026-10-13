@@ -35,7 +35,7 @@ img {
   max-width: none;
   translate: -50% 0;
   image-rendering: pixelated;
-  animation: bob 2.4s steps(4, jump-none) infinite;
+  animation: bob 2.4s steps(4, jump-none) 3;
   transition: scale var(--fast) ease;
 }
 img.flip {
@@ -51,7 +51,7 @@ img.flip {
   border-radius: 50%;
   background: rgb(0 0 0 / 0.25);
   filter: blur(2px);
-  animation: shadow 2.4s ease-in-out infinite;
+  animation: shadow 2.4s ease-in-out 3;
 }
 @keyframes shadow {
   50% { scale: 0.85; opacity: 0.7; }

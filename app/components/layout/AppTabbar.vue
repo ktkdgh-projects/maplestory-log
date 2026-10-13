@@ -35,9 +35,8 @@ const sundayBadge = useSundayBadge()
   display: none;
   grid-template-columns: repeat(5, 1fr);
   padding: 6px 0 calc(8px + env(safe-area-inset-bottom, 0px));
-  background: rgb(14 17 28 / 0.96);
+  background: rgb(14 17 28 / 0.98);
   border-top: 1px solid var(--win-line);
-  backdrop-filter: blur(10px);
 }
 .tab {
   position: relative;
@@ -80,7 +79,7 @@ const sundayBadge = useSundayBadge()
   box-shadow: 0 0 6px var(--gold);
 }
 .dot.new {
-  animation: blink 1.6s ease-in-out infinite;
+  animation: blink 1.6s ease-in-out 3;
 }
 .flag {
   position: absolute;

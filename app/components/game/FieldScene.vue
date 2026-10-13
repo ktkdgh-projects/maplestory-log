@@ -51,7 +51,6 @@ const leafStyle = (i: number) => ({
 .field {
   position: relative;
   overflow: hidden;
-  container-type: inline-size;
   background: linear-gradient(#3f6fc4, #79a8e6 55%, var(--sky-bot));
   border: 1px solid var(--panel-line);
   border-radius: 10px;
@@ -66,15 +65,12 @@ const leafStyle = (i: number) => ({
   border-radius: 50%;
   background: radial-gradient(circle, rgb(255 236 170 / 0.8), transparent 65%);
 }
-/* 구름은 transform으로만 옮겨야 매 프레임 다시 그리지 않는다. 끝점은 필드 폭(cqw) 기준 */
+/* 계속 흘러가는 움직임은 화면을 쉬지 않고 다시 그리게 해서, 구름은 멈춰 두고 잎은 처음에 한 번만 떨어진다 */
 .cloud {
   position: absolute;
-  left: 0;
-  will-change: transform;
   background: var(--cloud);
   border-radius: 30px;
   opacity: 0.85;
-  animation: drift linear infinite;
 }
 .cloud::before,
 .cloud::after {
@@ -95,13 +91,9 @@ const leafStyle = (i: number) => ({
   width: 40%;
   height: 130%;
 }
-.c1 { top: 16%; width: 80px; height: 22px; animation-duration: 48s; animation-delay: -10s; }
-.c2 { top: 28%; width: 100px; height: 26px; animation-duration: 64s; animation-delay: -40s; }
-.c3 { top: 8%; width: 60px; height: 17px; animation-duration: 38s; animation-delay: -25s; opacity: 0.7; }
-@keyframes drift {
-  from { transform: translateX(-130px); }
-  to { transform: translateX(100cqw); }
-}
+.c1 { top: 16%; left: 14%; width: 80px; height: 22px; }
+.c2 { top: 28%; left: 58%; width: 100px; height: 26px; }
+.c3 { top: 8%; left: 36%; width: 60px; height: 17px; opacity: 0.7; }
 .scenery {
   position: absolute;
   bottom: calc(var(--ground-height, 30px) - 2px);
@@ -127,7 +119,7 @@ const leafStyle = (i: number) => ({
   position: absolute;
   top: -20px;
   opacity: 0.85;
-  animation: fall linear infinite;
+  animation: fall linear 1 forwards;
   pointer-events: none;
 }
 @keyframes fall {

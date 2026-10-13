@@ -225,7 +225,7 @@ h3 {
   text-align: center;
 }
 .empty img {
-  animation: bob 2.4s ease-in-out infinite;
+  animation: bob 2.4s ease-in-out 3;
 }
 @media (max-width: 800px) {
   .create {

@@ -165,10 +165,6 @@ onBeforeUnmount(() => {
     radial-gradient(circle, transparent 52%, color-mix(in srgb, var(--calc) 30%, transparent) 53%, transparent 55%),
     repeating-conic-gradient(color-mix(in srgb, var(--api) 18%, transparent) 0 4deg, transparent 4deg 22.5deg);
   mask: radial-gradient(circle, #000 30%, transparent 70%);
-  animation: spin 40s linear infinite;
-}
-@keyframes spin {
-  to { rotate: 360deg; }
 }
 .sprite {
   position: absolute;

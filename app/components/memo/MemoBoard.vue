@@ -207,7 +207,7 @@ const stateText = computed(() => {
   text-align: center;
 }
 .blank img {
-  animation: bob 2.4s ease-in-out infinite;
+  animation: bob 2.4s ease-in-out 3;
 }
 .item-skeleton {
   height: 68px;

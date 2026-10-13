@@ -797,7 +797,7 @@ function addCharacter(ocid: string) {
   text-align: center;
 }
 .empty img {
-  animation: bob 2.4s ease-in-out infinite;
+  animation: bob 2.4s ease-in-out 3;
 }
 /* 쓸 수 없는 버튼·표시도 자리는 남긴다 */
 .off {

@@ -3,21 +3,18 @@ import { seededRandom } from '#shared/calc/random'
 
 const STAR_COUNT = 46
 const LEAF_COUNT = 8
-const STAR_GROUPS = 3
 
 // 서버·브라우저 렌더가 같도록 고정 시드 난수를 쓴다. Math.sin 난수는 둘의 끝자리 소수가 달라 정수 연산으로 만든다
 const seeded = (n: number) => seededRandom(n * 7919 + 1)()
 const stars = Array.from({ length: STAR_COUNT }, (_, i) => ({
   left: `${seeded(i) * 100}%`,
-  top: `${seeded(i + 100) * 100}%`,
+  top: `${seeded(i + 100) * 62}%`,
   size: `${1 + Math.round(seeded(i + 200) * 2)}px`,
 }))
-// 별마다 따로 깜빡이면 매 프레임 다시 그려서, 몇 묶음으로 나눠 묶음째 깜빡인다
-const starGroups = Array.from({ length: STAR_GROUPS }, (_, g) => stars.filter((_, i) => i % STAR_GROUPS === g))
 const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   left: `${(i * 13 + seeded(i + 400) * 10) % 100}%`,
   duration: `${16 + seeded(i + 500) * 12}s`,
-  delay: `${-seeded(i + 600) * 28}s`,
+  delay: `${-seeded(i + 600) * 12}s`,
   size: `${10 + Math.round(seeded(i + 700) * 8)}px`,
 }))
 </script>
@@ -25,9 +22,7 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
 <template>
   <div class="background" aria-hidden="true">
     <div class="moon" />
-    <div v-for="(group, g) in starGroups" :key="`g${g}`" class="stars" :style="{ animationDelay: `${-g * 1.4}s` }">
-      <span v-for="(s, i) in group" :key="i" class="star" :style="{ left: s.left, top: s.top, width: s.size, height: s.size }" />
-    </div>
+    <span v-for="(s, i) in stars" :key="`s${i}`" class="star" :style="{ left: s.left, top: s.top, width: s.size, height: s.size }" />
     <div class="cloud c1" />
     <div class="cloud c2" />
     <div class="cloud c3" />
@@ -40,17 +35,16 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
         <path d="M-20 260 L-20 214 q120 -40 300 -30 q140 8 230 34 q120 -36 300 -28 q170 8 260 30 q130 -40 300 -32 q90 4 120 20 L1460 260z" />
         <path class="grass" d="M-20 214 q120 -40 300 -30 q140 8 230 34 q120 -36 300 -28 q170 8 260 30 q130 -40 300 -32 q90 4 120 20" />
       </g>
+      <g class="platforms">
+        <g transform="translate(300 60)"><rect class="dirt" width="120" height="16" rx="4" /><rect class="top" width="120" height="5" rx="2" /></g>
+        <g transform="translate(620 20)"><rect class="dirt" width="90" height="14" rx="4" /><rect class="top" width="90" height="5" rx="2" /></g>
+        <g transform="translate(860 80)"><rect class="dirt" width="140" height="16" rx="4" /><rect class="top" width="140" height="5" rx="2" /></g>
+        <g transform="translate(80 110)"><rect class="dirt" width="80" height="14" rx="4" /><rect class="top" width="80" height="5" rx="2" /></g>
+      </g>
       <g class="sign">
         <rect x="1180" y="160" width="6" height="40" />
         <rect x="1160" y="152" width="46" height="18" rx="3" />
       </g>
-    </svg>
-    <!-- 발판은 따로 떼어 통째로 움직여야 섬 그림 전체를 매번 다시 그리지 않는다 -->
-    <svg class="islands platforms" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMax slice">
-      <g transform="translate(300 60)"><rect class="dirt" width="120" height="16" rx="4" /><rect class="top" width="120" height="5" rx="2" /></g>
-      <g transform="translate(620 20)"><rect class="dirt" width="90" height="14" rx="4" /><rect class="top" width="90" height="5" rx="2" /></g>
-      <g transform="translate(860 80)"><rect class="dirt" width="140" height="16" rx="4" /><rect class="top" width="140" height="5" rx="2" /></g>
-      <g transform="translate(80 110)"><rect class="dirt" width="80" height="14" rx="4" /><rect class="top" width="80" height="5" rx="2" /></g>
     </svg>
     <img v-for="(l, i) in leaves" :key="`l${i}`" src="/favicon.svg" alt="" class="leaf" :style="{ left: l.left, width: l.size, animationDuration: l.duration, animationDelay: l.delay }">
   </div>
@@ -80,14 +74,7 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   box-shadow: 0 0 80px 24px rgb(245 220 150 / 0.22);
   opacity: 0.85;
 }
-/* 움직임은 모두 transform·opacity로만 해서 그래픽 카드가 맡게 한다 */
-/* 별은 하늘 위쪽(62%)에만 있어서 묶음 칸도 그만큼만 잡아 그래픽 메모리를 아낀다 */
-.stars {
-  position: absolute;
-  inset: 0 0 38%;
-  will-change: opacity;
-  animation: twinkle 4.2s ease-in-out infinite;
-}
+/* 계속 움직이는 배경은 브라우저가 쉬지 않고 화면을 다시 그리게 해서(쿨러 소음), 배경은 멈춰 두고 잎만 처음에 한 번 부드럽게 떨어진다 */
 .star {
   position: absolute;
   border-radius: 50%;
@@ -95,18 +82,12 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   box-shadow: 0 0 4px #fff;
   opacity: 0.7;
 }
-@keyframes twinkle {
-  50% { opacity: 0.25; }
-}
 .cloud {
   position: absolute;
-  left: 0;
   height: 34px;
   background: rgb(220 228 255 / 0.12);
   border-radius: 50%;
   filter: blur(8px);
-  will-change: transform;
-  animation: drift linear infinite;
 }
 .cloud::before,
 .cloud::after {
@@ -127,13 +108,9 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   width: 35%;
   height: 120%;
 }
-.c1 { top: 16%; width: 220px; animation-duration: 140s; animation-delay: -30s; }
-.c2 { top: 32%; width: 300px; animation-duration: 190s; animation-delay: -120s; }
-.c3 { top: 50%; width: 180px; animation-duration: 160s; animation-delay: -80s; }
-@keyframes drift {
-  from { transform: translateX(-320px); }
-  to { transform: translateX(100vw); }
-}
+.c1 { top: 16%; left: 8%; width: 220px; }
+.c2 { top: 32%; left: 55%; width: 300px; }
+.c3 { top: 50%; left: 28%; width: 180px; }
 .islands {
   position: absolute;
   bottom: 0;
@@ -153,13 +130,6 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   stroke: rgb(110 200 120 / 0.7);
   stroke-width: 4;
 }
-.platforms {
-  will-change: transform;
-  animation: float 6s ease-in-out infinite;
-}
-@keyframes float {
-  50% { transform: translateY(-6px); }
-}
 .platforms .dirt {
   fill: rgb(122 85 54 / 0.45);
 }
@@ -173,8 +143,7 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   position: absolute;
   top: -30px;
   opacity: 0.35;
-  will-change: transform;
-  animation: fall linear infinite;
+  animation: fall linear 1 forwards;
 }
 @keyframes fall {
   0% { transform: translate(0, 0) rotate(0deg); }
@@ -182,8 +151,8 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   100% { transform: translate(-20px, 110vh) rotate(400deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .background * {
-    animation: none !important;
+  .leaf {
+    display: none;
   }
 }
 </style>

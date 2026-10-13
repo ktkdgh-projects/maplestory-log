@@ -135,9 +135,9 @@ async function logout() {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: linear-gradient(90deg, rgb(14 17 28 / 0.92), rgb(35 30 60 / 0.92));
+  /* 뒤 흐림(backdrop-filter)은 화면이 바뀔 때마다 다시 계산돼 무거워서, 거의 불투명한 색으로 대신한다 */
+  background: linear-gradient(90deg, rgb(14 17 28 / 0.97), rgb(35 30 60 / 0.97));
   border-bottom: 1px solid var(--win-line);
-  backdrop-filter: blur(10px);
 }
 .bar {
   display: flex;
@@ -163,7 +163,7 @@ async function logout() {
 .logo img {
   transform-origin: 50% 90%;
   transition: transform var(--normal) var(--ease-spring);
-  animation: sway 4s ease-in-out infinite;
+  animation: sway 4s ease-in-out 2;
 }
 .logo:hover img {
   transform: rotate(-18deg) scale(1.15);
@@ -259,7 +259,7 @@ async function logout() {
   box-shadow: 0 0 8px var(--gain);
 }
 .lamp.blink {
-  animation: blink 1.6s ease-in-out infinite;
+  animation: blink 1.6s ease-in-out 3;
 }
 @keyframes blink {
   50% { opacity: 0.4; }
