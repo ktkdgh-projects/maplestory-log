@@ -18,7 +18,7 @@ const sundayBadge = useSundayBadge()
       <template v-if="group.key === 'sunday'">
         <b v-if="sundayBadge.kind === 'upcoming'" class="flag soon" aria-hidden="true">D-{{ sundayBadge.days }}</b>
         <b v-else-if="sundayBadge.kind === 'today'" class="flag live" aria-hidden="true">오늘</b>
-        <i v-else class="dot" :class="sundayBadge.kind" aria-hidden="true" />
+        <i v-else class="dot deco" :class="sundayBadge.kind" aria-hidden="true" />
         <span class="sr-only">{{ sundayBadgeLabel(sundayBadge) }}</span>
       </template>
     </NuxtLink>
@@ -79,7 +79,7 @@ const sundayBadge = useSundayBadge()
   box-shadow: 0 0 6px var(--gold);
 }
 .dot.new {
-  animation: blink 1.6s ease-in-out 3;
+  animation: blink 1.6s ease-in-out 2;
 }
 .flag {
   position: absolute;

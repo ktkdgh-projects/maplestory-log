@@ -244,7 +244,7 @@ function addCharacter(ocid: string) {
     <p class="hint-line" :class="{ show: failure }" role="alert">{{ failure || ' ' }}</p>
 
     <div v-if="!roster.length" class="empty">
-      <img src="/favicon.svg" alt="" width="44" height="44">
+      <img src="/favicon.svg" alt="" width="44" height="44" class="deco">
       <p class="muted">주간 보스를 도는 캐릭터를 추가하고, 캐릭터를 눌러 보스를 골라 주세요.</p>
       <button type="button" class="btn" @click="openPicker">+ 캐릭터 추가</button>
     </div>
@@ -797,7 +797,7 @@ function addCharacter(ocid: string) {
   text-align: center;
 }
 .empty img {
-  animation: bob 2.4s ease-in-out 3;
+  animation: bob 2.4s ease-in-out 2;
 }
 /* 쓸 수 없는 버튼·표시도 자리는 남긴다 */
 .off {

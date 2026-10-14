@@ -13,8 +13,9 @@ const stars = Array.from({ length: STAR_COUNT }, (_, i) => ({
 }))
 const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
   left: `${(i * 13 + seeded(i + 400) * 10) % 100}%`,
-  duration: `${16 + seeded(i + 500) * 12}s`,
-  delay: `${-seeded(i + 600) * 12}s`,
+  // 떨어지는 동안은 브라우저가 계속 화면을 다시 그려서, 처음 10초 안에 다 떨어지게 둔다
+  duration: `${7 + seeded(i + 500) * 3}s`,
+  delay: `${-seeded(i + 600) * 4}s`,
   size: `${10 + Math.round(seeded(i + 700) * 8)}px`,
 }))
 </script>
@@ -46,7 +47,7 @@ const leaves = Array.from({ length: LEAF_COUNT }, (_, i) => ({
         <rect x="1160" y="152" width="46" height="18" rx="3" />
       </g>
     </svg>
-    <img v-for="(l, i) in leaves" :key="`l${i}`" src="/favicon.svg" alt="" class="leaf" :style="{ left: l.left, width: l.size, animationDuration: l.duration, animationDelay: l.delay }">
+    <img v-for="(l, i) in leaves" :key="`l${i}`" src="/favicon.svg" alt="" class="leaf deco" :style="{ left: l.left, width: l.size, animationDuration: l.duration, animationDelay: l.delay }">
   </div>
 </template>
 

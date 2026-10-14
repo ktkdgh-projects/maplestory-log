@@ -11,8 +11,8 @@ const fieldStyle = computed(() => ({
 // 떨어지는 잎마다 위치·속도·지연을 달리해서 같은 움직임이 반복돼 보이지 않게 한다
 const leafStyle = (i: number) => ({
   left: `${(i * 37) % 100}%`,
-  animationDuration: `${7 + (i % 4) * 1.7}s`,
-  animationDelay: `${-i * 1.3}s`,
+  animationDuration: `${5 + (i % 4)}s`,
+  animationDelay: `${-(i % 3)}s`,
   width: `${12 + (i % 3) * 4}px`,
 })
 </script>
@@ -41,7 +41,7 @@ const leafStyle = (i: number) => ({
       <path class="hill near" d="M-20 240 Q160 160 360 200 Q520 230 640 190 Q740 160 820 190 L820 240Z" />
       <rect class="fence" x="0" y="200" width="800" height="40" fill="url(#field-fence)" />
     </svg>
-    <img v-for="i in leaves" :key="i" src="/favicon.svg" alt="" class="leaf" :style="leafStyle(i)">
+    <img v-for="i in leaves" :key="i" src="/favicon.svg" alt="" class="leaf deco" :style="leafStyle(i)">
     <div class="ground"><span class="flowers" /></div>
     <slot />
   </div>

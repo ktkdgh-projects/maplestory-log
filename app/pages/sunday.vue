@@ -110,7 +110,7 @@ const showLastWeek = ref(false)
         <!-- 일요일이 지나고 다음 발표 전까지 -->
         <section v-else class="waiting">
           <div class="wait-card">
-            <span class="sun" aria-hidden="true" />
+            <span class="sun deco" aria-hidden="true" />
             <div class="wait-text">
               <span class="badge soon">발표 전</span>
               <h3>{{ dayText(nextSunday) }} 썬데이 메이플을 기다리는 중</h3>
@@ -304,7 +304,7 @@ h3 {
   background: radial-gradient(circle at 50% 50%, #ffe27a 0 45%, rgb(255 226 122 / 0.25) 46% 70%, transparent 71%);
   border-radius: 50%;
   box-shadow: 0 0 36px rgb(255 214 90 / 0.42);
-  animation: rise 3s ease-in-out 3;
+  animation: rise 3s ease-in-out 2;
 }
 @keyframes rise {
   50% { transform: translateY(-4px); }

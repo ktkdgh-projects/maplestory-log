@@ -10,7 +10,7 @@ const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
       <span>EXP {{ rate.toFixed(3) }}%</span>
     </div>
     <div class="track">
-      <div class="fill" :style="{ width }" />
+      <div class="fill deco-after" :style="{ width }" />
     </div>
   </div>
 </template>
@@ -51,9 +51,8 @@ const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
   position: absolute;
   inset: 0;
   background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.55) 50%, transparent 70%);
-  animation: sweep 2.6s linear 2;
+  animation: sweep 2.6s linear 1;
 }
-/* 빛줄기는 처음에 두 번만 부드럽게 지나간다 */
 @keyframes sweep {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }

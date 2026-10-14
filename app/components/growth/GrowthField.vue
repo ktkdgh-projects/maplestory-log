@@ -53,13 +53,13 @@ watch(selected, () => centerSelected('smooth'))
         :key="d.date"
         type="button"
         class="platform"
-        :class="{ today: d.isToday }"
+        :class="{ 'today': d.isToday, 'deco-after': d.isToday }"
         :style="{ left: `${xOf(i)}%`, height: `${heights[i]}px`, animationDelay: `${i * 30}ms` }"
         :aria-pressed="selected === i"
         :aria-label="`${formatMonthDay(d.date)} 선택`"
         @click="selected = i"
       >
-        <i v-if="d.levelUp" class="flag" aria-label="레벨업">UP</i>
+        <i v-if="d.levelUp" class="flag deco" aria-label="레벨업">UP</i>
         <span>{{ d.isToday ? '오늘' : Number(d.date.slice(8)) }}</span>
       </button>
 
@@ -149,7 +149,7 @@ watch(selected, () => centerSelected('smooth'))
   box-shadow: 0 0 12px color-mix(in srgb, var(--gold) 55%, transparent);
   opacity: 0;
   pointer-events: none;
-  animation: pulse 1.6s ease-in-out 3;
+  animation: pulse 1.6s ease-in-out 2;
 }
 @keyframes pulse {
   50% { opacity: 1; }
@@ -171,7 +171,7 @@ watch(selected, () => centerSelected('smooth'))
   font-size: 9px;
   font-style: normal;
   line-height: 14px;
-  animation: bob 1.8s ease-in-out 3;
+  animation: bob 1.8s ease-in-out 2;
 }
 .walker {
   position: absolute;

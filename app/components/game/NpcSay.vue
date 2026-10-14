@@ -5,7 +5,7 @@ withDefaults(defineProps<{ tone?: string }>(), { tone: 'var(--gold)' })
 
 <template>
   <div class="npc" :style="{ '--npc-tone': tone }">
-    <img src="/favicon.svg" alt="" class="face">
+    <img src="/favicon.svg" alt="" class="face deco">
     <p class="say"><slot /></p>
   </div>
 </template>
@@ -25,7 +25,7 @@ withDefaults(defineProps<{ tone?: string }>(), { tone: 'var(--gold)' })
   background: var(--bar);
   border: 2px solid var(--tip-line);
   border-radius: 10px;
-  animation: bob 2.4s ease-in-out 3;
+  animation: bob 2.4s ease-in-out 2;
 }
 .say {
   position: relative;

@@ -146,7 +146,7 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
         </template>
       </ItemsSheet>
       <div v-else key="empty" class="empty">
-        <img src="/favicon.svg" alt="" width="48" height="48">
+        <img src="/favicon.svg" alt="" width="48" height="48" class="deco">
         <p class="muted">캐릭터별로 장비 구매가와 큐브·스타포스 비용을 정리해 보세요.</p>
         <button type="button" class="btn" @click="openCreate">+ 첫 시트 만들기</button>
       </div>
@@ -225,7 +225,7 @@ h3 {
   text-align: center;
 }
 .empty img {
-  animation: bob 2.4s ease-in-out 3;
+  animation: bob 2.4s ease-in-out 2;
 }
 @media (max-width: 800px) {
   .create {

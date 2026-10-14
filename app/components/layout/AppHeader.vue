@@ -65,7 +65,7 @@ async function logout() {
   <header class="menubar">
     <div class="bar">
       <NuxtLink to="/" class="logo">
-        <img src="/favicon.svg" alt="" width="28" height="28">
+        <img src="/favicon.svg" alt="" width="28" height="28" class="deco">
         <span>메이플스토리로그</span>
       </NuxtLink>
       <nav ref="groupsEl" class="groups" aria-label="메뉴">
@@ -74,7 +74,7 @@ async function logout() {
             {{ group.label }}
             <template v-if="group.key === 'sunday'">
               <span v-if="sundayBadge.kind === 'waiting'" class="lamp" />
-              <span v-else-if="sundayBadge.kind === 'new'" class="lamp on blink" />
+              <span v-else-if="sundayBadge.kind === 'new'" class="lamp on blink deco" />
               <span v-else-if="sundayBadge.kind === 'upcoming'" class="chip soon"><i class="lamp on" />D-{{ sundayBadge.days }}</span>
               <span v-else-if="sundayBadge.kind === 'today'" class="chip live"><i class="lamp on today" />오늘</span>
             </template>
@@ -163,7 +163,7 @@ async function logout() {
 .logo img {
   transform-origin: 50% 90%;
   transition: transform var(--normal) var(--ease-spring);
-  animation: sway 4s ease-in-out 2;
+  animation: sway 4s ease-in-out 1;
 }
 .logo:hover img {
   transform: rotate(-18deg) scale(1.15);
@@ -259,7 +259,7 @@ async function logout() {
   box-shadow: 0 0 8px var(--gain);
 }
 .lamp.blink {
-  animation: blink 1.6s ease-in-out 3;
+  animation: blink 1.6s ease-in-out 2;
 }
 @keyframes blink {
   50% { opacity: 0.4; }

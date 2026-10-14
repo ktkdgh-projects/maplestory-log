@@ -17,8 +17,8 @@ const imageStyle = computed(() => ({
 
 <template>
   <div class="sprite" :style="{ '--scale': crispScale }">
-    <img :src="src" alt="" :style="imageStyle" :class="{ flip }" draggable="false">
-    <span class="shadow" />
+    <img :src="src" alt="" class="deco" :style="imageStyle" :class="{ flip }" draggable="false">
+    <span class="shadow deco" />
   </div>
 </template>
 
@@ -35,7 +35,7 @@ img {
   max-width: none;
   translate: -50% 0;
   image-rendering: pixelated;
-  animation: bob 2.4s steps(4, jump-none) 3;
+  animation: bob 2.4s steps(4, jump-none) 2;
   transition: scale var(--fast) ease;
 }
 img.flip {
@@ -51,7 +51,7 @@ img.flip {
   border-radius: 50%;
   background: rgb(0 0 0 / 0.25);
   filter: blur(2px);
-  animation: shadow 2.4s ease-in-out 3;
+  animation: shadow 2.4s ease-in-out 2;
 }
 @keyframes shadow {
   50% { scale: 0.85; opacity: 0.7; }

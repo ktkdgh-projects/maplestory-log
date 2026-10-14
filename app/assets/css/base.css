@@ -91,6 +91,12 @@ select optgroup {
   }
 }
 
+/* 장식 움직임(둥실·깜빡임·흔들기·반짝임·잎)은 그 페이지를 처음 볼 때만 한다. plugins/motion이 처음 여는 페이지에만 html에 fresh를 잠깐 붙인다 */
+:root:not(.fresh) .deco,
+:root:not(.fresh) .deco-after::after {
+  animation: none !important;
+}
+
 @keyframes bob {
   50% {
     transform: translateY(-4px);
