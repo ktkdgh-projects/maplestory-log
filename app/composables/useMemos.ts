@@ -137,6 +137,18 @@ export function useMemos() {
     }
   }
 
+  // 끌어서 바꾼 순서는 화면에 바로 두고 저장한다. 실패하면 서버 순서로 되돌린다
+  async function reorder(ids: string[]) {
+    try {
+      await $fetch('/api/memos/order', { method: 'PUT', body: { ids } })
+      failure.value = ''
+    }
+    catch (e) {
+      failure.value = errorMessage(e)
+      await load()
+    }
+  }
+
   // 실패하면 그대로 던져서 확인 모달이 오류를 보여 주게 한다
   async function remove(memo: Memo) {
     busy.value = true
@@ -165,5 +177,5 @@ export function useMemos() {
     state.value = 'idle'
   }
 
-  return { memos, state, failure, busy, load, edit, flush, create, remove, forget }
+  return { memos, state, failure, busy, load, edit, flush, create, remove, reorder, forget }
 }

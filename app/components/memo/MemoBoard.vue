@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Memo } from '#shared/types'
 
-const { memos, state, failure, busy, load, edit, create, remove } = useMemos()
+const { memos, state, failure, busy, load, edit, create, remove, reorder } = useMemos()
 onMounted(load)
 
 const list = computed(() => memos.value ?? [])
@@ -15,6 +15,27 @@ async function add() {
   activeId.value = memo.id
   await nextTick()
   titleInput.value?.focus()
+}
+
+// 끄는 동안은 화면에서만 옮기고 놓을 때 저장한다
+const dragId = ref<string | null>(null)
+let dragStart = ''
+function startDrag(memo: Memo) {
+  dragId.value = memo.id
+  dragStart = list.value.map(m => m.id).join()
+}
+function over(index: number) {
+  if (!memos.value) return
+  const from = memos.value.findIndex(m => m.id === dragId.value)
+  if (from < 0 || from === index) return
+  const [moved] = memos.value.splice(from, 1)
+  memos.value.splice(index, 0, moved!)
+}
+function drop() {
+  if (!dragId.value) return
+  dragId.value = null
+  const ids = list.value.map(m => m.id)
+  if (ids.join() !== dragStart) reorder(ids)
 }
 
 // 실패하면 확인 모달이 그 자리에 이유를 보여 준다
@@ -46,7 +67,17 @@ const stateText = computed(() => {
     <aside class="list">
       <button type="button" class="btn compact" :disabled="busy || !memos" @click="add">+ 새 메모</button>
       <ul v-if="memos">
-        <li v-for="m in list" :key="m.id">
+        <li
+          v-for="(m, i) in list"
+          :key="m.id"
+          :class="{ dragging: dragId === m.id }"
+          draggable="true"
+          title="끌어서 순서 바꾸기"
+          @dragstart="startDrag(m)"
+          @dragover.prevent="over(i)"
+          @drop.prevent="drop"
+          @dragend="drop"
+        >
           <button type="button" class="item" :aria-current="m.id === active?.id" @click="activeId = m.id">
             <b class="ellipsis" :class="{ empty: !m.title && !m.body.trim() }">{{ titleOf(m) }}</b>
             <span class="ellipsis preview">{{ restOf(m).split('\n')[0] || ' ' }}</span>
@@ -84,7 +115,7 @@ const stateText = computed(() => {
       </div>
     </section>
     <div v-else-if="memos" class="blank">
-      <img src="/favicon.svg" alt="" width="48" height="48">
+      <img src="/favicon.svg" alt="" width="48" height="48" class="deco">
       <p class="muted">시세, 할 일, 보스 파티 시간처럼 따로 둘 곳 없는 것들을 적어 두세요.</p>
       <button type="button" class="btn" :disabled="busy" @click="add">+ 첫 메모 만들기</button>
       <p v-if="failure" class="form-error">{{ failure }}</p>
@@ -117,6 +148,9 @@ const stateText = computed(() => {
   padding: 0 4px 0 0;
   overflow-y: auto;
   list-style: none;
+}
+.dragging {
+  opacity: 0.45;
 }
 .item {
   display: grid;
@@ -207,7 +241,7 @@ const stateText = computed(() => {
   text-align: center;
 }
 .blank img {
-  animation: bob 2.4s ease-in-out 3;
+  animation: bob 2.4s ease-in-out 2;
 }
 .item-skeleton {
   height: 68px;

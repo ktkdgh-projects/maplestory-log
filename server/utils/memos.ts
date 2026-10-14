@@ -9,6 +9,8 @@ export function toMemo(doc: MemoDoc): Memo {
   return { id: doc._id.toHexString(), title: doc.title, body: doc.body, updatedAt: doc.updatedAt.toISOString() }
 }
 
+export const memoSortKey = (doc: Pick<MemoDoc, 'order' | 'createdAt'>) => doc.order ?? -doc.createdAt.getTime()
+
 export const memoOwner = (userId: ObjectId) => sha256(`memo:${userId.toHexString()}`).slice(0, 16)
 
 // 비워 둔 칸은 그대로 두고, 들어온 칸만 길이를 잘라 받는다

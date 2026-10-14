@@ -76,6 +76,8 @@ export interface MemoDoc {
   userId: ObjectId
   title: string
   body: string
+  // 끌어서 정한 순서. 없으면 만든 순서(최신 위)로 둔다
+  order?: number
   createdAt: Date
   updatedAt: Date
 }
