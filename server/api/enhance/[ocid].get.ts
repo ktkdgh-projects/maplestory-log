@@ -7,6 +7,7 @@ const SYNC_BUDGET_MS = 5000
 export default defineEventHandler(async (event): Promise<EnhanceResponse> => {
   const deadline = Date.now() + REQUEST_BUDGET_MS
   const user = requireUser(event)
+  await limitUserNexon(event)
   const { from: fromQuery } = getQuery(event)
   const from = fromQuery ? parseDate(fromQuery) : null
   const apiKey = getUserApiKey(user._id)
@@ -17,16 +18,16 @@ export default defineEventHandler(async (event): Promise<EnhanceResponse> => {
   if (user.keyStatus === 'valid' && !paused) await syncEnhanceHistory(user._id, Math.min(SYNC_BUDGET_MS, deadline - Date.now()))
 
   const { historySync } = await useCollections()
-  const [detail, sync] = await Promise.all([
-    getCharacterDetail(await apiKey, character.ocid).catch((error) => {
+  const [detail, sync, names] = await Promise.all([
+    apiKey.then(key => getCharacterDetail(key, character.ocid)).catch((error) => {
       throw toHttpError(error)
     }),
     historySync.findOne({ _id: user._id }),
+    characterNames(character),
   ])
   const equipped = detail.presets[detail.presetNo - 1] ?? detail.presets[0] ?? []
   // 장비를 바꿔도 기간 합계가 줄지 않게, 지금 안 낀 장비의 기록도 같이 보여 준다. 다른 프리셋에 있으면 그 정보를 쓴다
   const presetItems = new Map(detail.presets.flat().map(i => [i.name, i]))
-  const names = await characterNames(character)
   const unworn = await unwornRecordItems(user._id, names, new Set(equipped.map(i => i.name)), from)
   const missing = unworn.filter(u => !presetItems.has(u.name))
   let icons = await lookupItems(missing.map(u => u.name))

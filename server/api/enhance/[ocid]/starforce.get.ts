@@ -2,6 +2,7 @@ import type { StarforceDetail } from '#shared/types'
 
 export default defineEventHandler(async (event): Promise<StarforceDetail> => {
   const user = requireUser(event)
+  await limitUserNexon(event)
   const query = getQuery(event)
   const item = typeof query.item === 'string' ? query.item.trim() : ''
   if (!item || item.length > 100) throw createError({ statusCode: 400, message: '장비 이름을 확인해 주세요.' })

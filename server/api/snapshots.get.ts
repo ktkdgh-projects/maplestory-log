@@ -5,6 +5,7 @@ const VISIT_BUDGET_MS = 5000
 
 export default defineEventHandler(async (event): Promise<SnapshotsResponse> => {
   const user = requireUser(event)
+  await limitUserNexon(event)
   const query = getQuery(event)
   const days = Number(query.days)
   const range = ALLOWED_DAYS.includes(days) ? days : 14

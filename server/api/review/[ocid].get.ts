@@ -28,6 +28,7 @@ async function reviewOne(userId: ObjectId, character: CharacterBrief, names: str
 // ocid가 all이면 기록이 있는 캐릭터를 모두 합친다. 기대값 비교는 브라우저가 한다
 export default defineEventHandler(async (event): Promise<ReviewResponse> => {
   const user = requireUser(event)
+  await limitUserNexon(event)
   const today = kstToday()
   const range = parseReviewRange(getQuery(event), today)
   const ocid = getRouterParam(event, 'ocid')

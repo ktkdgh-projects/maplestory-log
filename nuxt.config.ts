@@ -17,6 +17,13 @@ export default defineNuxtConfig({
   // 개발 서버·브라우저 메모리를 많이 써서 꺼 둔다. 필요할 때만 켠다
   devtools: { enabled: false },
 
+  // 게임 그림(보스·물욕템 등)은 JS 안에 글자로 넣지 않고 따로 받아 캐시한다. 넣으면 가계부 코드 묶음이 100KB 가까이 커진다
+  vite: {
+    build: {
+      assetsInlineLimit: (file: string) => (/[\/]app[\/]assets[\/](bosses|loot|artifact|meister)[\/]/.test(file) ? false : undefined),
+    },
+  },
+
   css: ['~/assets/css/tokens.css', '~/assets/css/base.css', '~/assets/css/calc.css'],
 
   // 폴더는 묶음용. 파일 이름이 곧 태그 이름 (ui/AppModal.vue → <AppModal>)
@@ -49,6 +56,8 @@ export default defineNuxtConfig({
     mongoUri: '',
     cronSecret: '',
     keyEncSecret: '',
+    // 암호화 시크릿을 바꿀 때만 예전 값을 잠시 넣어 둔다. 예전 키로 저장된 값은 꺼낼 때 새 시크릿으로 다시 저장된다
+    keyEncSecretPrev: '',
     keyHashSecret: '',
     // 관리자 넥슨 계정 id. 여러 명이면 쉼표로 구분 (NUXT_ADMIN_ACCOUNT_IDS)
     adminAccountIds: '',

@@ -5,11 +5,12 @@ export const KEY_VERSION = 1
 const AUTH_TAG_LENGTH = 16
 const API_KEY_PATTERN = /\b(?:test|live)_[0-9a-f]{32,}\b/gi
 
-function encryptionKey(): Buffer {
-  const key = Buffer.from(useRuntimeConfig().keyEncSecret, 'base64')
-  if (key.length !== 32) throw new Error('NUXT_KEY_ENC_SECRET은 base64로 인코딩한 32바이트여야 합니다')
+function toKey(secret: string, name: string): Buffer {
+  const key = Buffer.from(secret, 'base64')
+  if (key.length !== 32) throw new Error(`${name}은 base64로 인코딩한 32바이트여야 합니다`)
   return key
 }
+const encryptionKey = () => toKey(useRuntimeConfig().keyEncSecret, 'NUXT_KEY_ENC_SECRET')
 
 export function encryptApiKey(apiKey: string) {
   const iv = randomBytes(12)
@@ -22,10 +23,22 @@ export function encryptApiKey(apiKey: string) {
   }
 }
 
-export function decryptApiKey(enc: { iv: string, tag: string, data: string }): string {
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(enc.iv, 'base64'), { authTagLength: AUTH_TAG_LENGTH })
+function decryptWith(key: Buffer, enc: { iv: string, tag: string, data: string }): string {
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(enc.iv, 'base64'), { authTagLength: AUTH_TAG_LENGTH })
   decipher.setAuthTag(Buffer.from(enc.tag, 'base64'))
   return Buffer.concat([decipher.update(Buffer.from(enc.data, 'base64')), decipher.final()]).toString('utf8')
+}
+
+// 시크릿을 바꾸는 동안엔 예전 시크릿으로도 풀어 본다. stale이면 새 시크릿으로 다시 저장해야 한다
+export function decryptApiKey(enc: { iv: string, tag: string, data: string }): { apiKey: string, stale: boolean } {
+  try {
+    return { apiKey: decryptWith(encryptionKey(), enc), stale: false }
+  }
+  catch (error) {
+    const prev = useRuntimeConfig().keyEncSecretPrev
+    if (!prev) throw error
+    return { apiKey: decryptWith(toKey(prev, 'NUXT_KEY_ENC_SECRET_PREV'), enc), stale: true }
+  }
 }
 
 export function hashApiKey(apiKey: string): string {

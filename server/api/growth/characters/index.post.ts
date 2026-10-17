@@ -1,5 +1,6 @@
 export default defineEventHandler(async (event) => {
   const user = requireUser(event)
+  await limitUserNexon(event)
   const { ocid } = await readBody<{ ocid?: unknown }>(event)
   if (typeof ocid !== 'string') throw createError({ statusCode: 400, message: '캐릭터를 골라 주세요.' })
 

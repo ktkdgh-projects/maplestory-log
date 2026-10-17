@@ -6,6 +6,7 @@ const ARTIFACT_CACHE_MS = 10 * 60 * 1000
 
 export default defineEventHandler(async (event): Promise<ArtifactResponse> => {
   const user = requireUser(event)
+  await limitUserNexon(event)
   const keyPromise = getUserApiKey(user._id)
   keyPromise.catch(() => {})
   const character = await ownCharacter(user._id, getRouterParam(event, 'ocid'), () => keyPromise)

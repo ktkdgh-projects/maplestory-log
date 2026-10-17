@@ -9,7 +9,25 @@ export async function getUserApiKey(userId: ObjectId): Promise<string> {
   if (!user?.keyEnc || user.keyStatus === 'invalid' || user.keyStatus === 'deleted') {
     throw createError({ statusCode: 409, message: '등록된 키가 작동하지 않아요. 내 정보에서 새 키를 등록해 주세요.' })
   }
-  return decryptApiKey(user.keyEnc)
+  try {
+    const { apiKey, stale } = decryptApiKey(user.keyEnc)
+    if (stale) await users.updateOne({ _id: userId }, { $set: { keyEnc: encryptApiKey(apiKey), keyVersion: KEY_VERSION } })
+    return apiKey
+  }
+  catch {
+    // 시크릿이 바뀌어 더는 풀 수 없는 키. 500 대신 다시 등록하라고 알린다
+    await markKeyStatus(userId, 'invalid', 'DECRYPT')
+    throw createError({ statusCode: 409, message: '등록된 키를 다시 읽지 못했어요. 내 정보에서 키를 다시 등록해 주세요.' })
+  }
+}
+
+// 로그인한 사람이 자기 키로 넥슨을 부르는 조회의 1분 한도. 화면을 오가며 쓰는 양보다 넉넉하다
+const USER_NEXON_RATE_LIMIT = 120
+
+// 자기 키로 넥슨을 부르는 요청 앞에 둔다. 스크립트로 두드려 키 한도를 다 써 버리지 않게 사람마다 센다
+export async function limitUserNexon(event: H3Event) {
+  const user = requireUser(event)
+  await rateLimit(event, `user-nexon:${user._id.toHexString()}`, USER_NEXON_RATE_LIMIT, 60)
 }
 
 // 서버 키 하루 호출 한도를 여러 IP가 나눠 다 써 버리지 않게, 로그인 없는 검색은 전체를 합쳐 하루 이만큼만 받는다
@@ -33,7 +51,10 @@ async function countAnonymousSearch() {
 // 로그인 전엔 서버 키를 IP당·하루 전체 횟수를 제한해서 쓴다
 export async function searchApiKey(event: H3Event, bucket: string): Promise<string> {
   const user = event.context.user
-  if (user) return getUserApiKey(user._id)
+  if (user) {
+    await limitUserNexon(event)
+    return getUserApiKey(user._id)
+  }
   const apiKey = useRuntimeConfig().nexonApiKey
   if (!apiKey) throw createError({ statusCode: 503, message: '지금은 로그인 없이 검색할 수 없어요.' })
   await rateLimit(event, bucket, 30, 60)

@@ -26,6 +26,7 @@ export default defineEventHandler(async (event): Promise<UnionResponse> => {
   if (!ocid || !/^[0-9a-f]{32}$/.test(ocid)) throw createError({ statusCode: 400, message: '캐릭터를 확인해 주세요.' })
   const user = event.context.user
   if (!user) return raiderUnion(event, ocid)
+  await limitUserNexon(event)
   const apiKey = await getUserApiKey(user._id)
 
   const characters = await accountCharacters(user._id, async () => apiKey)
