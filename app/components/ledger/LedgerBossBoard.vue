@@ -48,7 +48,7 @@ function clearOf(ocid: string, bossId: string) {
   return clears.value.find(c => c.ocid === ocid && c.bossId === bossId && c.period === period)
 }
 const keyOf = (ocid: string, bossId: string) => `${ocid}:${bossId}`
-const pendingClear = (c: BossRosterCharacter, pick: BossPick): BossClear => ({ bossId: pick.bossId, difficulty: pick.difficulty, party: pick.party, id: `pending-${keyOf(c.ocid, pick.bossId)}`, ocid: c.ocid, name: c.name, period: periodOf(pick.bossId), date: clearDate.value, meso: crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0, loot: [] })
+const pendingClear = (c: BossRosterCharacter, pick: BossPick): BossClear => ({ bossId: pick.bossId, difficulty: pick.difficulty, party: pick.party, id: `pending-${keyOf(c.ocid, pick.bossId)}`, ocid: c.ocid, name: c.name, period: periodOf(pick.bossId), date: clearDate.value, meso: crystalPrice(pick.bossId, pick.difficulty, pick.party, clearDate.value) ?? 0, loot: [] })
 
 // 끄는 동안은 화면에서만 옮기고 놓을 때 저장한다
 const order = ref(roster.value.map(c => c.ocid))

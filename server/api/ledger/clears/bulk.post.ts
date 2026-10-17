@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
     .map(pick => ({
       updateOne: {
         filter: { userId: user._id, ocid: c.ocid, period, bossId: pick.bossId },
-        update: { $setOnInsert: { _id: new ObjectId(), name: c.name, difficulty: pick.difficulty, party: pick.party, date, meso: crystalPrice(pick.bossId, pick.difficulty, pick.party)!, createdAt: now } },
+        update: { $setOnInsert: { _id: new ObjectId(), name: c.name, difficulty: pick.difficulty, party: pick.party, date, meso: crystalPrice(pick.bossId, pick.difficulty, pick.party, date)!, createdAt: now } },
         upsert: true,
       },
     })))

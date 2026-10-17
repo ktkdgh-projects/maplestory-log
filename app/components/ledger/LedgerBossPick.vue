@@ -19,13 +19,13 @@ function onCard(event: MouseEvent) {
       <span class="name ellipsis" :title="boss.name">{{ boss.name }}</span>
       <div class="diffs">
         <button
-          v-for="(price, diff) in boss.prices"
+          v-for="(_, diff) in boss.prices"
           :key="diff"
           type="button"
           class="diff"
           :class="{ on: pick?.difficulty === diff }"
           :style="{ '--tone': DIFFICULTY_COLORS[diff as BossDifficulty] }"
-          :title="`${DIFFICULTY_LABELS[diff as BossDifficulty]} ${boss.name} · ${formatKoreanNumber(price!)} 메소`"
+          :title="`${DIFFICULTY_LABELS[diff as BossDifficulty]} ${boss.name} · ${formatKoreanNumber(crystalPrice(boss.id, diff, 1) ?? 0)} 메소`"
           :disabled="locked"
           :aria-pressed="pick?.difficulty === diff"
           @click="emit('difficulty', diff)"

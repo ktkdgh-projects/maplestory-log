@@ -1,7 +1,7 @@
-import { addDays } from '../utils/kst'
+import { addDays, kstToday } from '../utils/kst'
 
-// 결정 판매가(1인 기준)는 9/17 패치, 검은 마법사는 10/01 적용분. 출처: 나무위키 「강렬한 힘의 결정」·메덕후·maple.ai.kr (2026-10-09 확인, 두 곳 이상 일치 값)
-export const BOSS_PRICE_DATE = '2026-10-01'
+// 결정 판매가(1인 기준)는 9/17 패치, 검은 마법사는 10/01 적용분. 출처: 넥슨 9/17 업데이트 공지(news/update/813), 2026-10-18 인게임 판매 현황으로 확인
+const BASE_PRICE_DATE = '2026-10-01'
 
 // 9/17 패치로 주간 결정 판매 개수 제한은 사라졌고 캐릭터당 주간 보스 처치만 12회로 남았다
 export const WEEKLY_BOSS_LIMIT = 12
@@ -31,8 +31,8 @@ export const BOSSES: BossInfo[] = [
   { id: 'baldrix', name: '발드릭스', cycle: 'weekly', prices: { normal: 1_320_000_000, hard: 3_078_000_000 } },
   { id: 'limbo', name: '림보', cycle: 'weekly', prices: { normal: 995_000_000, hard: 2_385_000_000 } },
   { id: 'bellona', name: '벨로나', cycle: 'weekly', prices: { easy: 396_000_000, normal: 824_000_000, hard: 2_950_000_000 } },
-  { id: 'star', name: '찬란한 흉성', cycle: 'weekly', prices: { normal: 593_000_000, hard: 2_678_000_000 } },
-  { id: 'kaling', name: '카링', cycle: 'weekly', prices: { easy: 320_000_000, normal: 576_000_000, hard: 1_560_000_000, extreme: 5_387_000_000 } },
+  { id: 'star', name: '찬란한 흉성', cycle: 'weekly', prices: { normal: 576_000_000, hard: 2_678_000_000 } },
+  { id: 'kaling', name: '카링', cycle: 'weekly', prices: { easy: 320_000_000, normal: 593_000_000, hard: 1_560_000_000, extreme: 5_387_000_000 } },
   { id: 'adversary', name: '최초의 대적자', cycle: 'weekly', prices: { easy: 261_000_000, normal: 532_000_000, hard: 1_390_000_000, extreme: 4_712_000_000 } },
   { id: 'kalos', name: '칼로스', cycle: 'weekly', prices: { easy: 238_000_000, normal: 479_000_000, chaos: 1_230_000_000, extreme: 4_104_000_000 } },
   { id: 'seren', name: '세렌', cycle: 'weekly', prices: { normal: 167_000_000, hard: 302_000_000, extreme: 1_840_000_000 } },
@@ -54,6 +54,17 @@ export const BOSSES: BossInfo[] = [
   { id: 'blackmage', name: '검은 마법사', cycle: 'monthly', prices: { hard: 465_000_000, extreme: 5_680_000_000 } },
 ]
 
+// 그날부터 바뀌는 가격. 10/22 익스트림 카링 체력 하향으로 하드 유피테르와 가격을 맞바꾼다(테스트월드 공지 news/all/202)
+const PRICE_CHANGES: { date: string, bossId: string, difficulty: BossDifficulty, price: number }[] = [
+  { date: '2026-10-22', bossId: 'kaling', difficulty: 'extreme', price: 4_845_000_000 },
+  { date: '2026-10-22', bossId: 'jupiter', difficulty: 'hard', price: 5_387_000_000 },
+]
+
+// 그날 적용되는 가격표의 기준 날짜
+export function bossPriceDate(date = kstToday()): string {
+  return PRICE_CHANGES.reduce((latest, c) => (c.date <= date && c.date > latest ? c.date : latest), BASE_PRICE_DATE)
+}
+
 export function findBoss(id: string): BossInfo | undefined {
   return BOSSES.find(b => b.id === id)
 }
@@ -62,11 +73,13 @@ export function bossOrder(id: string): number {
   return BOSSES.findIndex(b => b.id === id)
 }
 
-// 파티원 수로 1/n 나누고 소수점은 버린다
-export function crystalPrice(bossId: string, difficulty: string, party: number): number | null {
+// 잡은 날의 가격을 파티원 수로 1/n 나누고 소수점은 버린다
+export function crystalPrice(bossId: string, difficulty: string, party: number, date = kstToday()): number | null {
   const prices = findBoss(bossId)?.prices
-  const price = prices && Object.hasOwn(prices, difficulty) ? prices[difficulty as BossDifficulty] : undefined
-  return price === undefined ? null : Math.floor(price / Math.max(1, party))
+  if (!prices || !Object.hasOwn(prices, difficulty)) return null
+  const change = PRICE_CHANGES.findLast(c => c.bossId === bossId && c.difficulty === difficulty && c.date <= date)
+  const price = change?.price ?? prices[difficulty as BossDifficulty]!
+  return Math.floor(price / Math.max(1, party))
 }
 
 // 주간 보스는 매주 목요일 0시(KST), 월간 보스는 매달 1일에 초기화된다

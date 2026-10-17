@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
   const _id = new ObjectId()
   const result = await bossClears.updateOne(
     { userId: user._id, ocid: character.ocid, period, bossId: boss.id },
-    { $setOnInsert: { _id, name: character.name, difficulty: pick.difficulty, party: pick.party, date, meso: crystalPrice(boss.id, pick.difficulty, pick.party)!, createdAt: new Date() } },
+    { $setOnInsert: { _id, name: character.name, difficulty: pick.difficulty, party: pick.party, date, meso: crystalPrice(boss.id, pick.difficulty, pick.party, date)!, createdAt: new Date() } },
     { upsert: true },
   )
   if (!result.upsertedCount) throw createError({ statusCode: 409, message: '이번 주기에 이미 잡은 보스예요.' })

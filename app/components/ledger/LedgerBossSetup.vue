@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { BossPick, BossRosterCharacter } from '#shared/types'
-import { BOSSES, BOSS_PRICE_DATE, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, crystalPrice, findBoss, type BossInfo } from '#shared/data/bosses'
+import { BOSSES, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, bossPriceDate, crystalPrice, findBoss, type BossInfo } from '#shared/data/bosses'
 
 const props = defineProps<{ character: BossRosterCharacter, others: BossRosterCharacter[] }>()
 const emit = defineEmits<{ save: [bosses: BossPick[]], copy: [ocid: string, bosses: BossPick[]], close: [] }>()
@@ -106,7 +106,7 @@ onBeforeUnmount(() => {
     <div class="head">
       <h3>{{ character.name }}의 보스 세팅</h3>
       <span class="muted">주간 <b :class="{ full }">{{ weeklyCount }}/{{ WEEKLY_BOSS_LIMIT }}</b> · 다 잡으면 <b class="gold">{{ formatKoreanNumber(expected.weekly) }}</b><template v-if="expected.monthly"> · 월간 <b class="gold">{{ formatKoreanNumber(expected.monthly) }}</b></template></span>
-      <span class="footnote">결정석 {{ formatDay(BOSS_PRICE_DATE) }} 기준 · 고른 카드의 빈 곳을 누르면 빠져요</span>
+      <span class="footnote">결정석 {{ formatDay(bossPriceDate()) }} 기준 · 고른 카드의 빈 곳을 누르면 빠져요</span>
       <div class="tools">
         <div v-if="others.length" class="copy">
           <button type="button" class="btn ghost compact" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen">
