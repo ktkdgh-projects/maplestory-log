@@ -73,7 +73,7 @@ const hasLinks = computed(() => !!props.ocid && props.label !== '구매')
         기록 {{ estimated ? '약 ' : '' }}{{ formatEok(reference) }}
       </button>
       <button v-else-if="shared" type="button" class="shared" @click="open = true">기록 나눌 수 없음</button>
-      <button type="button" class="count" @click="open = true">{{ entries.length ? `${entries.length}건` : '+ 내역' }}</button>
+      <button type="button" class="count" :class="{ none: !entries.length }" @click="open = true">{{ entries.length ? `${entries.length}건` : '+ 내역' }}</button>
     </div>
 
     <AppModal v-model="open" :title="`${name} ${label} 내역`" :width="460">
@@ -173,6 +173,10 @@ const hasLinks = computed(() => !!props.ocid && props.label !== '구매')
 .shared {
   color: var(--sub);
 }
+/* 아직 내역이 없는 칸의 "+ 내역"은 늘 보이되 금액 칸보다 한 단계 옅게 */
+.count.none {
+  color: var(--faint);
+}
 .ref:hover,
 .count:hover,
 .shared:hover {
@@ -196,7 +200,7 @@ const hasLinks = computed(() => !!props.ocid && props.label !== '구매')
   align-items: center;
   gap: 10px;
   padding: 4px 4px 4px 10px;
-  background: rgb(255 255 255 / 0.03);
+  background: color-mix(in srgb, var(--tint) 3%, transparent);
   border-radius: 8px;
   font-variant-numeric: tabular-nums;
 }

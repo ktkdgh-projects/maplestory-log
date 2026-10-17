@@ -99,7 +99,7 @@ const sizeStyle = computed(() => (props.fit ? { width: 'fit-content', maxWidth: 
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgb(5 7 14 / 0.65);
+  background: color-mix(in srgb, var(--sunk) 65%, transparent);
   backdrop-filter: blur(3px);
 }
 .modal {

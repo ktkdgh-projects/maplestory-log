@@ -106,7 +106,7 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  background: #11152a;
+  background: var(--field);
   border: 1px solid var(--panel-line);
   border-radius: 12px;
 }
@@ -126,13 +126,13 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
   color: var(--text);
 }
 .bigseg .top[aria-selected="true"] {
-  background: rgb(127 178 255 / 0.16);
-  box-shadow: inset 0 0 0 1px rgb(127 178 255 / 0.55);
+  background: color-mix(in srgb, var(--api) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--api) 55%, transparent);
   color: var(--api);
 }
 .bigseg .add[aria-selected="true"] {
-  background: rgb(183 156 255 / 0.16);
-  box-shadow: inset 0 0 0 1px rgb(183 156 255 / 0.55);
+  background: color-mix(in srgb, var(--calc) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--calc) 55%, transparent);
   color: var(--calc);
 }
 .strip {
@@ -183,11 +183,13 @@ const gradeStyle = (g: string | null) => ({ '--grade': potentialGradeColor(g) ??
 .body > .list.add {
   --side: var(--calc);
 }
+/* 줄마다 진한 바탕이면 눈에 걸려서 같은 색의 옅은 배지로 둔다 */
 .grade {
   padding: 1px 7px;
-  background: var(--grade);
+  background: color-mix(in srgb, var(--grade) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--grade) 55%, transparent);
   border-radius: 5px;
-  color: #10131f;
+  color: var(--grade);
   font-size: 11px;
   font-weight: 800;
 }

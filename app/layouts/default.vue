@@ -9,7 +9,6 @@ const memoFab = computed(() => !!me.value && navGroupOf(route.path)?.key === 'le
 
 <template>
   <div class="layout">
-    <AppBackground />
     <AppHeader />
 
     <Transition name="fade">

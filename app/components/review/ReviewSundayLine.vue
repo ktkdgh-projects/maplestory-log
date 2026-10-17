@@ -46,13 +46,13 @@ const what = computed(() => [
   gap: 10px;
   min-height: 44px;
   padding: 6px 10px;
-  background: rgb(255 255 255 / 0.03);
+  background: color-mix(in srgb, var(--tint) 3%, transparent);
   border-radius: 8px;
   color: var(--text);
   text-decoration: none;
 }
 a.line:hover {
-  background: rgb(255 255 255 / 0.06);
+  background: color-mix(in srgb, var(--tint) 6%, transparent);
 }
 .who {
   display: grid;

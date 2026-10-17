@@ -12,6 +12,7 @@ const sheets = computed<ItemSheet[]>(() => data.value?.sheets ?? [])
 const activeId = ref<string | null>(sheets.value[0]?.id ?? null)
 // 보던 시트가 다른 기기에서 지워졌으면 첫 시트를 보여 준다
 const active = computed(() => sheets.value.find(s => s.id === activeId.value) ?? sheets.value[0] ?? null)
+const activeInvest = computed(() => (active.value ? itemTotals(active.value.rows).invest : 0))
 const pageError = ref('')
 async function reorderSheets(ids: string[]) {
   pageError.value = ''
@@ -95,6 +96,7 @@ useHead({ title: '장비 결산 · 메이플스토리로그' })
       <div class="tile" style="--tone: var(--gold)">
         <span class="tile-label">전체 들인 메소</span>
         <span class="tile-value">{{ formatKoreanNumber(totals.invest) }}</span>
+        <span v-if="active && sheets.length > 1" class="tile-label">{{ active.title }} 시트 {{ formatKoreanNumber(activeInvest) }}</span>
       </div>
       <div class="tile" style="--tone: var(--gain)">
         <span class="tile-label">판매로 회수</span>

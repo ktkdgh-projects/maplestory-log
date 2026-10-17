@@ -99,13 +99,13 @@ const dayText = (iso: string) => {
 }
 .state {
   padding: 1px 8px;
-  border: 1px solid rgb(127 217 154 / 0.5);
+  border: 1px solid color-mix(in srgb, var(--gain) 50%, transparent);
   border-radius: 999px;
   color: var(--gain);
   font-size: 12px;
 }
 .state.todo {
-  border-color: rgb(242 193 78 / 0.5);
+  border-color: color-mix(in srgb, var(--gold) 50%, transparent);
   color: var(--gold);
 }
 .origin {
@@ -130,7 +130,7 @@ const dayText = (iso: string) => {
   cursor: pointer;
 }
 .effect:has(input:checked) {
-  background: rgb(242 193 78 / 0.12);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
   border-color: var(--gold);
   color: var(--gold);
 }

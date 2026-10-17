@@ -121,7 +121,7 @@ useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그`
 }
 .eyebrow {
   margin: 0;
-  color: rgb(255 255 255 / 0.9);
+  color: color-mix(in srgb, var(--tint) 90%, transparent);
   font-family: var(--f-pixel);
   font-size: 13px;
   letter-spacing: 0.25em;
@@ -133,7 +133,7 @@ useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그`
   font-size: clamp(30px, 5vw, 56px);
   font-weight: 400;
   line-height: 1.15;
-  text-shadow: 0 3px 0 rgb(14 17 28 / 0.45), 0 8px 24px rgb(14 17 28 / 0.35);
+  text-shadow: 0 3px 0 color-mix(in srgb, var(--sunk) 45%, transparent), 0 8px 24px color-mix(in srgb, var(--sunk) 35%, transparent);
 }
 .hero em {
   background: linear-gradient(90deg, var(--gold-light), var(--gold-warm));
@@ -141,13 +141,13 @@ useHead(() => ({ title: name.value ? `${name.value} · 메이플스토리로그`
   color: transparent;
   font-style: normal;
   text-shadow: none;
-  filter: drop-shadow(0 3px 0 rgb(14 17 28 / 0.45));
+  filter: drop-shadow(0 3px 0 color-mix(in srgb, var(--sunk) 45%, transparent));
 }
 .lead {
   margin: 0;
-  color: rgb(255 255 255 / 0.92);
+  color: color-mix(in srgb, var(--tint) 92%, transparent);
   font-size: clamp(15px, 1.6vw, 18px);
-  text-shadow: 0 1px 6px rgb(14 17 28 / 0.5);
+  text-shadow: 0 1px 6px color-mix(in srgb, var(--sunk) 50%, transparent);
 }
 .actions {
   display: flex;

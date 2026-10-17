@@ -18,7 +18,7 @@ const leafStyle = (i: number) => ({
 </script>
 
 <template>
-  <div class="field" :style="fieldStyle">
+  <div class="field field-scene" :style="fieldStyle">
     <div class="sun" />
     <div class="cloud c1" />
     <div class="cloud c2" />

@@ -8,6 +8,7 @@ const { flush: flushMemos, forget: forgetMemos } = useMemos()
 
 const activeGroup = computed(() => navGroupOf(route.path))
 const sundayBadge = useSundayBadge()
+const today = kstToday()
 
 const linkOf = (item: NavItem) => navLinkOf(item, route.query)
 
@@ -78,7 +79,7 @@ async function logout() {
               <span v-else-if="sundayBadge.kind === 'upcoming'" class="chip soon"><i class="lamp on" />D-{{ sundayBadge.days }}</span>
               <span v-else-if="sundayBadge.kind === 'today'" class="chip live"><i class="lamp on today" />오늘</span>
             </template>
-            <span v-else-if="group.isNew" class="new">NEW</span>
+            <span v-else-if="group.newUntil && today <= group.newUntil" class="new">NEW</span>
             <span v-if="group.key === 'sunday'" class="sr-only">{{ sundayBadgeLabel(sundayBadge) }}</span>
           </NuxtLink>
           <button
@@ -100,6 +101,7 @@ async function logout() {
       </nav>
       <div class="right">
         <HeaderSearch />
+        <ThemeToggle />
         <div v-if="me" ref="profile" class="profile">
           <button type="button" class="me" :aria-expanded="profileOpen" aria-haspopup="menu" @click="profileOpen = !profileOpen">
             <span class="face" :class="{ broken: me.keyStatus === 'invalid' || me.keyStatus === 'deleted' }">
@@ -136,7 +138,7 @@ async function logout() {
   top: 0;
   z-index: 10;
   /* 뒤 흐림(backdrop-filter)은 화면이 바뀔 때마다 다시 계산돼 무거워서, 거의 불투명한 색으로 대신한다 */
-  background: linear-gradient(90deg, rgb(14 17 28 / 0.97), rgb(35 30 60 / 0.97));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--sunk) 97%, transparent), color-mix(in srgb, var(--title) 97%, transparent));
   border-bottom: 1px solid var(--win-line);
 }
 .bar {
@@ -308,7 +310,7 @@ async function logout() {
   gap: 2px;
   min-width: 200px;
   padding: 6px;
-  background: rgb(14 17 32 / 0.98);
+  background: color-mix(in srgb, var(--sunk) 98%, transparent);
   border: 1px solid var(--tip-line);
   border-radius: 10px;
   box-shadow: 0 14px 30px rgb(0 0 0 / 0.5);
@@ -399,7 +401,7 @@ async function logout() {
   gap: 8px;
   height: 36px;
   padding: 0 10px 0 3px;
-  background: rgb(255 255 255 / 0.04);
+  background: color-mix(in srgb, var(--tint) 4%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 999px;
   color: var(--text);
@@ -444,7 +446,7 @@ async function logout() {
   font-size: 11px;
 }
 .subbar {
-  background: rgb(26 31 51 / 0.85);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
   border-top: 1px solid var(--panel-line);
 }
 .sub-in {

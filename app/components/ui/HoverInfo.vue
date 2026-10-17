@@ -31,7 +31,7 @@ withDefaults(defineProps<{ title: string, align?: 'left' | 'center' | 'right', b
   max-width: 280px;
   padding: 10px 12px;
   translate: -50% 6px;
-  background: rgb(10 12 22 / 0.96);
+  background: color-mix(in srgb, var(--sunk) 96%, transparent);
   border: 1px solid var(--tip-line);
   border-radius: 8px;
   box-shadow: 0 10px 24px rgb(0 0 0 / 0.45);

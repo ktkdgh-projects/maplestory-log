@@ -189,7 +189,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   width: 260px;
   padding: 12px;
-  background: rgb(14 17 32 / 0.98);
+  background: color-mix(in srgb, var(--sunk) 98%, transparent);
   border: 1px solid var(--tip-line);
   border-radius: 12px;
   box-shadow: 0 16px 34px rgb(0 0 0 / 0.5);

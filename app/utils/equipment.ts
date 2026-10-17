@@ -1,8 +1,8 @@
 const POTENTIAL_GRADE_COLORS: Record<string, string> = {
-  '레어': '#5cb8ff',
-  '에픽': '#b46cff',
-  '유니크': '#ffcc33',
-  '레전드리': '#7ee05a',
+  '레어': 'var(--grade-rare)',
+  '에픽': 'var(--grade-epic)',
+  '유니크': 'var(--grade-unique)',
+  '레전드리': 'var(--grade-legendary)',
 }
 
 export function potentialGradeColor(grade: string | null | undefined): string | undefined {

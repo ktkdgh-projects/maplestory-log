@@ -20,7 +20,7 @@ const sizes = computed(() => {
 
 <template>
   <div class="road">
-    <span class="label">EXP ROAD · 칸 길이 = 그날 얻은 경험치</span>
+    <span class="label">경험치 길 · 칸 길이 = 그날 얻은 경험치</span>
     <div class="bar">
       <button
         v-for="(d, i) in days"

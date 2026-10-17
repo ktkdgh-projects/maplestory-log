@@ -177,7 +177,7 @@ const count = (n: number) => (data.value ? `${n.toLocaleString('ko-KR')}번` : '
   cursor: pointer;
 }
 .sorts button[aria-pressed="true"] {
-  background: rgb(242 193 78 / 0.14);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
   color: var(--gold);
 }
 .count b {

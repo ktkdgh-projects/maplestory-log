@@ -164,6 +164,16 @@ export interface MesoHistoryResponse {
   series: { date: string, balance: number }[]
 }
 
+export interface LedgerWeekDay {
+  hunt: number
+  minutes: number
+  fragments: number
+  traces: number
+  crystal: number
+  loot: number
+  clears: number
+}
+
 export interface LedgerResponse {
   month: string
   hunts: HuntEntry[]
@@ -172,8 +182,8 @@ export interface LedgerResponse {
   itemLines: ItemFlowLine[]
   sales: DropSale[]
   entries: MesoEntry[]
-  // 날짜별 먹은 조각. 그 달에 걸친 주(목~수)까지 담는다
-  fragmentsByDate: Record<string, number>
+  // 날짜별 사냥·보스 합계. 그 달에 걸친 주(목~수)까지 담아 주간 카드에 쓴다
+  weekDays: Record<string, LedgerWeekDay>
 }
 
 export interface BossBoardResponse {

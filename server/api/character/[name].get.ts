@@ -13,10 +13,15 @@ export default defineEventHandler(async (event): Promise<CharacterDetail> => {
 
   try {
     const load = (ocid: string) => Promise.all([getCharacterDetail(apiKey, ocid, fresh), recentCombatPowers(ocid)])
-    let [detail, recentPowers] = await load(await resolveOcid(apiKey, name))
+    let ocid = await resolveOcid(apiKey, name)
+    let [detail, recentPowers] = await load(ocid)
     // 이름을 바꾼 캐릭터면 캐시된 ocid가 다른 캐릭터를 가리키므로 새로 찾는다
-    if (detail.name !== name) [detail, recentPowers] = await load((await nexon.ocid(apiKey, name)).ocid)
-    return { ...detail, recentPowers }
+    if (detail.name !== name) {
+      ocid = (await nexon.ocid(apiKey, name)).ocid
+      ;[detail, recentPowers] = await load(ocid)
+    }
+    const levelUpDate = await recentLevelUpDate(ocid, { date: kstToday(), level: detail.level, exp: detail.exp, expRate: detail.expRate, combatPower: detail.combatPower })
+    return { ...detail, recentPowers, levelUpDate }
   }
   catch (error) {
     throw toHttpError(error)

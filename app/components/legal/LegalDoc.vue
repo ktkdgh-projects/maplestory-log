@@ -90,7 +90,7 @@ defineProps<{ title: string, date: string, summary: string[], sections: LegalSec
   display: grid;
   gap: 8px;
   padding: 14px 16px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
   scroll-margin-top: 16px;

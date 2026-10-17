@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { dayIncome, type LedgerDay } from '#shared/calc/ledger'
 
-const props = defineProps<{ month: string, days: Map<string, LedgerDay> }>()
+// weekStart: 위 주간 카드가 가리키는 주(목~수). 그 칸들에 옅은 띠를 깐다
+const props = defineProps<{ month: string, days: Map<string, LedgerDay>, weekStart?: string }>()
+const inWeek = (date: string) => !!props.weekStart && date >= props.weekStart && date <= addDays(props.weekStart, 6)
 const selected = defineModel<string>({ required: true })
 
 const LOOT_SHOWN = 3
@@ -24,7 +26,7 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
         v-else
         type="button"
         class="cell"
-        :class="{ on: date === selected, today: date === today, future: date > today, sun: i % 7 === 0, sat: i % 7 === 6 }"
+        :class="{ on: date === selected, today: date === today, future: date > today, sun: i % 7 === 0, sat: i % 7 === 6, week: inWeek(date) }"
         :style="{ '--heat': income / best }"
         :aria-pressed="date === selected"
         :aria-label="`${formatDay(date)} 선택`"
@@ -144,7 +146,7 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
 .cell.blank {
   background: transparent;
   border-style: dashed;
-  border-color: rgb(58 67 102 / 0.4);
+  border-color: color-mix(in srgb, var(--panel-line) 40%, transparent);
   cursor: default;
 }
 .cell:not(.blank):not(:disabled):hover {
@@ -154,6 +156,12 @@ const best = computed(() => Math.max(1, ...[...props.days.values()].map(dayIncom
 .cell.future {
   opacity: 0.4;
   cursor: default;
+}
+.cell.week {
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--panel-line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--gold) calc(var(--heat, 0) * 28%), transparent), transparent),
+    color-mix(in srgb, var(--gold) 8%, var(--panel));
 }
 .cell.today {
   border-color: var(--gold);

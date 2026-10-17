@@ -46,6 +46,6 @@ defineProps<{ to?: string, active?: boolean }>()
   background: var(--gold);
   border-color: var(--gold);
   color: var(--on-gold);
-  box-shadow: 0 4px 14px rgb(242 193 78 / 0.25);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--gold) 25%, transparent);
 }
 </style>

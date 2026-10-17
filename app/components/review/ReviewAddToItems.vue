@@ -28,7 +28,7 @@ async function add() {
   min-height: 36px;
   padding: 5px 12px;
   background: none;
-  border: 1px solid rgb(242 193 78 / 0.55);
+  border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent);
   border-radius: 8px;
   color: var(--gold);
   font: inherit;
@@ -41,7 +41,7 @@ async function add() {
   cursor: default;
 }
 .add.done {
-  border-color: rgb(127 217 154 / 0.55);
+  border-color: color-mix(in srgb, var(--gain) 55%, transparent);
   color: var(--gain);
 }
 .fail {

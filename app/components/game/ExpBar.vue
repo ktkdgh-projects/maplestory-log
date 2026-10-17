@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const props = defineProps<{ level: number, rate: number }>()
+const props = defineProps<{ level: number, rate: number, levelUpDate?: string | null }>()
 const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
 </script>
 
@@ -12,6 +12,7 @@ const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
     <div class="track">
       <div class="fill deco-after" :style="{ width }" />
     </div>
+    <span v-if="levelUpDate" class="eta">최근 7일 속도면 레벨업 {{ formatDay(levelUpDate) }}</span>
   </div>
 </template>
 
@@ -25,6 +26,11 @@ const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
   justify-content: space-between;
   font-family: var(--f-pixel);
   font-size: 11px;
+}
+.eta {
+  color: var(--sub);
+  font-size: 12px;
+  text-align: right;
 }
 .lv {
   color: var(--gold);
@@ -50,7 +56,7 @@ const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.55) 50%, transparent 70%);
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--tint) 55%, transparent) 50%, transparent 70%);
   animation: sweep 2.6s linear 1;
 }
 @keyframes sweep {

@@ -99,12 +99,12 @@ useHead({ title: '운영 · 메이플스토리로그' })
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  background: rgb(127 217 154 / 0.08);
+  background: color-mix(in srgb, var(--gain) 8%, transparent);
   border: 1px solid var(--gain);
   border-radius: 10px;
 }
 .pause.on {
-  background: rgb(255 138 122 / 0.08);
+  background: color-mix(in srgb, var(--loss) 8%, transparent);
   border-color: var(--loss);
 }
 .pause > div {
@@ -168,7 +168,7 @@ th {
 }
 td {
   padding: 5px 10px;
-  border-top: 1px solid rgb(58 67 102 / 0.6);
+  border-top: 1px solid color-mix(in srgb, var(--panel-line) 60%, transparent);
   white-space: nowrap;
 }
 .num {

@@ -34,14 +34,19 @@ watch(status, (value) => {
 })
 const loading = computed(() => switching.value && status.value === 'pending')
 
-// 조각은 고른 날이 든 주(목요일 초기화)와 그 달에 먹은 개수를 위에 둔다
+// 사냥·보스 카드는 고른 날이 든 주(목요일 초기화)가 메인이고, 이달 합계는 아래 작은 글씨로 둔다
 const weekStart = computed(() => bossPeriod('weekly', selectedDate.value))
-const weekFragments = computed(() => {
+const week = computed(() => {
   const end = addDays(weekStart.value, 6)
-  return Object.entries(data.value?.fragmentsByDate ?? {}).reduce((n, [d, c]) => (d >= weekStart.value && d <= end ? n + c : n), 0)
+  const sum = { hunt: 0, minutes: 0, fragments: 0, traces: 0, crystal: 0, loot: 0, clears: 0 }
+  for (const [d, v] of Object.entries(data.value?.weekDays ?? {})) {
+    if (d < weekStart.value || d > end) continue
+    for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += v[k]
+  }
+  return sum
 })
-const weekLabel = computed(() => (today >= weekStart.value && today <= addDays(weekStart.value, 6) ? '이번 주' : `${formatDay(weekStart.value)}~${formatDay(addDays(weekStart.value, 6))}`))
-const monthLabel = computed(() => (month.value === today.slice(0, 7) ? '이번 달' : formatMonth(month.value)))
+const weekPerHour = computed(() => mesoPerHour(week.value.hunt, week.value.minutes))
+const weekLabel = computed(() => (today >= weekStart.value && today <= addDays(weekStart.value, 6) ? '이번 주' : `${formatMonthDay(weekStart.value)}~${formatMonthDay(addDays(weekStart.value, 6))} 주`))
 
 async function refreshAll() {
   await Promise.all([refresh(), refreshSettings()])
@@ -60,10 +65,6 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
 
     <LedgerWallet :settings="settings ?? null" :add-button="false" @changed="refreshAll">
       <SourceBadge type="input" /> 직접 기록
-      <template #end>
-        <span class="frag-stat" :title="`${formatDay(weekStart)}(목)부터 한 주`"><img src="/icons/sol-erda-fragment.png" alt="">{{ weekLabel }} 먹은 조각 <b>{{ weekFragments.toLocaleString('ko-KR') }}개</b></span>
-        <span class="frag-stat"><img src="/icons/sol-erda-fragment.png" alt="">{{ monthLabel }} 먹은 조각 <b>{{ summary.total.fragments.toLocaleString('ko-KR') }}개</b></span>
-      </template>
     </LedgerWallet>
     <p class="load-error" :class="{ show: error }" role="alert">{{ error ? errorMessage(error) : ' ' }}</p>
 
@@ -77,17 +78,18 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
         </span>
       </div>
       <div class="tile" style="--tone: var(--api)">
-        <span class="tile-label">사냥 메소<template v-if="perHour"> · 시간당 {{ formatShortNumber(perHour) }}</template></span>
-        <span class="tile-value">{{ formatKoreanNumber(summary.total.huntMeso) }}</span>
+        <span class="tile-label">사냥 메소 · <b class="wk">{{ weekLabel }}</b><template v-if="weekPerHour"> · 시간당 {{ formatShortNumber(weekPerHour) }}</template></span>
+        <span class="tile-value">{{ formatKoreanNumber(week.hunt) }}</span>
         <span class="drop-list">
-          <span v-for="d in HUNT_DROPS" :key="d.key"><i :style="{ background: d.color }" />{{ d.short }} <b>{{ summary.total[d.key].toLocaleString('ko-KR') }}</b></span>
-          <span v-if="summary.total.saleMeso" class="sold">조각 판매 <b>+{{ formatShortNumber(summary.total.saleMeso) }}</b></span>
+          <span v-for="d in HUNT_DROPS" :key="d.key"><i :style="{ background: d.color }" />{{ d.short }} <b>{{ week[d.key].toLocaleString('ko-KR') }}</b></span>
         </span>
+        <span class="month-line">{{ Number(month.slice(5)) }}월 {{ formatShortNumber(summary.total.huntMeso) }}<template v-for="d in HUNT_DROPS" :key="d.key"> · {{ d.short }} {{ summary.total[d.key].toLocaleString('ko-KR') }}</template><template v-if="perHour"> · 시간당 {{ formatShortNumber(perHour) }}</template><template v-if="summary.total.saleMeso"> · <span class="sold">조각 판매 +{{ formatShortNumber(summary.total.saleMeso) }}</span></template></span>
       </div>
       <NuxtLink to="/ledger/bosses" class="tile link-tile" style="--tone: var(--calc)">
-        <span class="tile-label">보스 수입 · {{ summary.total.clears }}마리<template v-if="summary.total.monthlyClears"> (월간 {{ summary.total.monthlyClears }})</template> →</span>
-        <span class="tile-value">{{ formatKoreanNumber(summary.total.bossMeso) }}</span>
-        <span class="tile-label"><LedgerBossSplit :crystal="summary.total.bossMeso - summary.total.bossLoot" :loot="summary.total.bossLoot" short /></span>
+        <span class="tile-label">보스 수입 · <b class="wk">{{ weekLabel }}</b> · {{ week.clears }}마리 →</span>
+        <span class="tile-value">{{ formatKoreanNumber(week.crystal + week.loot) }}</span>
+        <span class="tile-label"><LedgerBossSplit :crystal="week.crystal" :loot="week.loot" short /></span>
+        <span class="month-line">{{ Number(month.slice(5)) }}월 {{ formatKoreanNumber(summary.total.bossMeso) }} · {{ summary.total.clears }}마리<template v-if="summary.total.monthlyClears"> (월간 {{ summary.total.monthlyClears }})</template></span>
       </NuxtLink>
       <NuxtLink to="/items" class="tile link-tile" style="--tone: var(--loss)">
         <span class="tile-label">장비 지출<template v-if="summary.total.itemEarned"> · 판매 +{{ formatShortNumber(summary.total.itemEarned) }}</template></span>
@@ -96,7 +98,7 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
       </NuxtLink>
     </div>
     <div class="split" :class="{ loading }">
-      <LedgerCalendar v-model="selectedDate" :month="month" :days="summary.days" />
+      <LedgerCalendar v-model="selectedDate" :month="month" :days="summary.days" :week-start="weekStart" />
       <div class="day-panel">
         <LedgerDayPanel
           :date="selectedDate"
@@ -116,29 +118,16 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
 </template>
 
 <style scoped>
-.frag-stat {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 12px;
-  background: color-mix(in srgb, var(--calc) 8%, var(--panel));
-  border: 1px solid color-mix(in srgb, var(--calc) 35%, var(--panel-line));
-  border-radius: 999px;
+.wk {
+  color: var(--text);
+  font-weight: 700;
+}
+.month-line {
+  overflow: hidden;
   color: var(--sub);
-  font-size: 13px;
   white-space: nowrap;
-}
-.frag-stat img {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-  image-rendering: pixelated;
-}
-.frag-stat b {
-  color: var(--calc);
-  font-family: var(--f-title);
-  font-weight: 400;
+  text-overflow: ellipsis;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .load-error {
@@ -187,6 +176,7 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
   border-radius: 2px;
   transform: rotate(45deg);
 }
+.sold,
 .sold b {
   color: var(--gain);
 }
@@ -204,7 +194,7 @@ useHead({ title: '일별 기록 · 메이플스토리로그' })
 .day-panel {
   min-height: 0;
   padding: 12px 14px;
-  background: rgb(10 12 22 / 0.5);
+  background: color-mix(in srgb, var(--sunk) 50%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
 }

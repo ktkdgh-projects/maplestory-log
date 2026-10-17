@@ -18,6 +18,9 @@ const { data: sessions, refresh: refreshSessions } = await useFetch<SessionInfo[
   immediate: !!me.value,
 })
 
+const { data: stats } = await useFetch<{ hunt: number, sale: number, boss: number, item: number, entry: number, memo: number, enhance: number }>('/api/me/stats', { immediate: !!me.value })
+const STAT_LABELS = [['hunt', '사냥'], ['sale', '조각 판매'], ['boss', '보스'], ['entry', '직접 등록'], ['item', '장비 줄'], ['enhance', '강화 기록'], ['memo', '메모']] as const
+
 const busy = ref(false)
 const message = ref('')
 const failure = ref('')
@@ -240,6 +243,10 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
           <div><dt>가입</dt><dd>{{ formatDateTime(me.createdAt) }}</dd></div>
           <div><dt>수집 동의</dt><dd>{{ formatDateTime(me.consentAt) }}</dd></div>
         </dl>
+        <div class="stats">
+          <span class="stats-title">내 기록</span>
+          <span v-for="[key, label] in STAT_LABELS" :key="key" class="stat">{{ label }} <b>{{ stats ? stats[key].toLocaleString('ko-KR') : '-' }}</b></span>
+        </div>
         <div class="export">
           <label for="export-key">내 기록 내려받기</label>
           <input id="export-key" v-model="exportKey" class="field-input" type="password" autocomplete="off" placeholder="지금 등록된 API 키를 입력해 주세요">
@@ -337,7 +344,7 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
 .mvp-chips button {
   height: 36px;
   padding: 0 6px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 999px;
   color: var(--sub);
@@ -490,5 +497,28 @@ useHead({ title: '내 정보 · 메이플스토리로그' })
     min-height: 0;
     max-height: none;
   }
+}
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.stats-title {
+  margin-right: 4px;
+  color: var(--sub);
+  font-size: 13px;
+}
+.stat {
+  padding: 2px 10px;
+  background: color-mix(in srgb, var(--tint) 4%, transparent);
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  color: var(--sub);
+  font-size: 12.5px;
+}
+.stat b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 </style>

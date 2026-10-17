@@ -157,7 +157,7 @@ const stateText = computed(() => {
   gap: 2px;
   width: 100%;
   padding: 9px 12px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
   border: 1px solid var(--panel-line);
   border-left: 3px solid transparent;
   border-radius: 8px;

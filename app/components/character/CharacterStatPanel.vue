@@ -74,7 +74,7 @@ dl div {
   justify-content: space-between;
   gap: 8px;
   padding: 3px 0;
-  border-bottom: 1px dashed rgb(58 67 102 / 0.6);
+  border-bottom: 1px dashed color-mix(in srgb, var(--panel-line) 60%, transparent);
   font-size: 14px;
 }
 dt {

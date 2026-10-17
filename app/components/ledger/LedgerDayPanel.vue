@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { BossClear, DropSale, HuntEntry, ItemFlow, ItemFlowLine, MesoEntry } from '#shared/types'
 import { ITEM_FLOW_LABELS } from '#shared/data/mesoEntries'
-import { bossOrder, type BossDifficulty } from '#shared/data/bosses'
-import { dayNet, mesoPerHour, summarizeLedger } from '#shared/calc/ledger'
+import { bossOrder } from '#shared/data/bosses'
+import { mesoPerHour } from '#shared/calc/ledger'
 import { dropSaleNet, mesoEntryDelta } from '#shared/calc/meso'
 import { clearMeso, lootMeso } from '#shared/calc/boss'
 
@@ -11,7 +11,6 @@ const emit = defineEmits<{ changed: [] }>()
 
 // 'new'·'sale'은 새로 적기, 그 밖에는 고치는 기록의 id
 const editing = ref<string | 'new' | 'sale' | null>(null)
-const summary = computed(() => summarizeLedger(props.hunts, props.clears, props.items, props.sales, props.entries).total)
 
 const entryOpen = ref(false)
 const editingEntry = ref<MesoEntry | null>(null)
@@ -19,8 +18,6 @@ function openEntry(entry: MesoEntry | null) {
   editingEntry.value = entry
   entryOpen.value = true
 }
-// 직접 등록은 종류(경매장 판매·기타 지출 등)별로 합쳐 보여 준다
-const entryParts = computed(() => [...Map.groupBy(props.entries, e => e.type)].map(([type, list]) => ({ type, label: mesoEntryLabel(type), amount: list.reduce((n, e) => n + mesoEntryDelta(e), 0) })).sort((a, b) => b.amount - a.amount))
 const entryDetail = (e: MesoEntry) => [e.item, e.cash && e.amount ? `1억당 ${Math.round(e.cash / (e.amount / 1e8)).toLocaleString('ko-KR')}원` : '', e.memo].filter(Boolean).join(' · ')
 
 // 보스가 많으면 길게 늘어지므로 캐릭터별 한 줄로 묶는다
@@ -37,21 +34,8 @@ const clearGroups = computed(() => {
   return [...groups.values()].sort((a, b) => b.meso - a.meso)
 })
 
-// 기록이 많아지면 한 종류만 골라 본다. 고른 종류는 날짜를 옮겨도 그대로 둔다
-const FILTERS = [
-  { key: 'all', label: '전체', c: 'var(--gold)' },
-  { key: 'hunt', label: '사냥', c: 'var(--exp)' },
-  { key: 'sale', label: '판매', c: 'var(--gain)' },
-  { key: 'boss', label: '보스', c: 'var(--api)' },
-  { key: 'item', label: '장비', c: 'var(--loss)' },
-  { key: 'entry', label: '직접', c: 'var(--calc)' },
-] as const
-type Filter = (typeof FILTERS)[number]['key']
+type Filter = 'all' | 'hunt' | 'sale' | 'boss' | 'item' | 'entry'
 const filter = ref<Filter>('all')
-const counts = computed<Record<Filter, number>>(() => {
-  const c = { hunt: props.hunts.length, sale: props.sales.length, boss: props.clears.length, item: props.itemLines.length, entry: props.entries.length }
-  return { all: c.hunt + c.sale + c.boss + c.item + c.entry, ...c }
-})
 const shows = (key: Filter) => filter.value === 'all' || filter.value === key
 // 전체에서는 빈 종류를 제목 줄만 남겨 자리를 아끼고, 한 종류만 볼 때는 빈 안내를 띄운다
 const emptyShown = (key: Filter) => filter.value === key
@@ -75,24 +59,7 @@ function onSaved() {
 
 <template>
   <div class="day">
-    <header class="head">
-      <b class="date">{{ formatDay(date) }}</b>
-      <span class="income" :class="{ loss: dayNet(summary) < 0 }">{{ formatSigned(dayNet(summary)) }}</span>
-    </header>
-    <div class="parts">
-      <span><i class="dot" style="--c: var(--exp)" />사냥 {{ formatKoreanNumber(summary.huntMeso) }}</span>
-      <span><i class="dot" style="--c: var(--api)" />보스 <LedgerBossSplit :crystal="summary.bossMeso - summary.bossLoot" :loot="summary.bossLoot" /></span>
-      <span v-if="summary.saleMeso"><i class="dot" style="--c: var(--gain)" />조각 판매 {{ formatKoreanNumber(summary.saleMeso) }}</span>
-      <span v-for="p in entryParts" :key="p.type"><i class="dot" style="--c: var(--calc)" />{{ p.label }} {{ formatSigned(p.amount) }}</span>
-      <NuxtLink v-if="summary.itemSpent || summary.itemEarned" to="/items" class="item-link">
-        <i class="dot" style="--c: var(--loss)" />장비<template v-if="summary.itemBought"> 구매 -{{ formatKoreanNumber(summary.itemBought) }}</template><template v-if="summary.itemEnhanced"> 강화 -{{ formatKoreanNumber(summary.itemEnhanced) }}</template><template v-if="summary.itemEarned"> 판매 +{{ formatKoreanNumber(summary.itemEarned) }}</template>
-      </NuxtLink>
-    </div>
-    <div class="tabs" role="tablist" aria-label="기록 종류">
-      <button v-for="f in FILTERS" :key="f.key" type="button" role="tab" :aria-selected="filter === f.key" :class="{ none: !counts[f.key] }" :style="{ '--c': f.c }" @click="filter = f.key">
-        {{ f.label }}<b>{{ counts[f.key] }}</b>
-      </button>
-    </div>
+    <LedgerDaySummary v-model:filter="filter" :date="date" :hunts="hunts" :clears="clears" :items="items" :item-lines="itemLines" :sales="sales" :entries="entries" />
 
     <div class="list">
     <section v-show="shows('hunt')" class="sec" style="--c: var(--exp)">
@@ -162,37 +129,7 @@ function onSaved() {
         <NuxtLink :to="{ path: '/ledger/bosses', query: { date } }" class="add">체크하기 →</NuxtLink>
       </header>
       <ul v-if="clears.length" class="rows">
-        <li v-for="g in clearGroups" :key="g.ocid" class="r-group" :class="{ open: openGroup === g.ocid }">
-          <button type="button" class="r r-btn" :aria-expanded="openGroup === g.ocid" @click="openGroup = openGroup === g.ocid ? null : g.ocid">
-            <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8Z" /></svg></span>
-            <span class="main">
-              <b class="ellipsis">{{ g.name }} <small>· {{ g.clears.length }}마리</small></b>
-              <span class="stack">
-                <span v-for="(c, k) in g.clears" :key="c.id" class="stack-item" :style="{ zIndex: k + 1 }" :title="bossLabel(c.bossId, c.difficulty)">
-                  <LedgerBossEmblem :boss-id="c.bossId" :size="22" />
-                </span>
-              </span>
-            </span>
-            <b class="amt gain">+{{ formatKoreanNumber(g.meso) }}</b>
-            <span class="acts">
-              <svg class="caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-            </span>
-          </button>
-          <!-- 높이를 0fr ↔ 1fr로 옮겨 메소 내역처럼 부드럽게 펼친다 -->
-          <div class="detail-wrap">
-            <ul class="detail" :inert="openGroup !== g.ocid">
-              <li v-for="c in g.clears" :key="c.id">
-                <i class="diff" :style="{ background: DIFFICULTY_COLORS[c.difficulty as BossDifficulty] }" />
-                <span class="boss ellipsis">{{ bossLabel(c.bossId, c.difficulty) }}<template v-if="c.party > 1"> · {{ c.party }}인</template></span>
-                <LedgerBossSplit v-if="c.loot.length" class="d-split" :crystal="c.meso" :loot="lootMeso(c)" short equals>
-                  <template #icons><LedgerLootIcon v-for="l in c.loot" :key="l.item" :item="l.item" :size="18" /></template>
-                </LedgerBossSplit>
-                <b class="d-amt">{{ formatKoreanNumber(clearMeso(c)) }}</b>
-                <LedgerAct kind="del" label="체크 취소" @click="remove(`/api/ledger/clears/${c.id}`, `${g.name} · ${bossLabel(c.bossId, c.difficulty)}`, clearMeso(c))" />
-              </li>
-            </ul>
-          </div>
-        </li>
+        <LedgerDayBossGroup v-for="g in clearGroups" :key="g.ocid" :group="g" :open="openGroup === g.ocid" @toggle="openGroup = openGroup === g.ocid ? null : g.ocid" @remove="remove" />
       </ul>
       <p v-else-if="emptyShown('boss')" class="empty">잡은 보스가 없어요</p>
     </section>
@@ -264,58 +201,6 @@ function onSaved() {
   height: 100%;
   min-height: 0;
 }
-.tabs {
-  display: grid;
-  flex: none;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  padding: 3px;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-radius: 9px;
-}
-.tabs button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-width: 0;
-  height: 30px;
-  padding: 0 4px;
-  background: none;
-  border: 0;
-  border-radius: 7px;
-  color: var(--sub);
-  font: 13px var(--f-title);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--fast) ease, color var(--fast) ease;
-}
-.tabs button b {
-  min-width: 18px;
-  padding: 0 5px;
-  background: color-mix(in srgb, var(--c) 18%, transparent);
-  border-radius: 999px;
-  color: var(--c);
-  font-size: 11.5px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  line-height: 17px;
-  text-align: center;
-}
-.tabs button.none b {
-  background: none;
-  color: var(--sub);
-  opacity: 0.6;
-}
-.tabs button:hover {
-  color: var(--text);
-}
-.tabs button[aria-selected="true"] {
-  background: color-mix(in srgb, var(--c) 16%, var(--bar));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent);
-  color: var(--text);
-}
-/* 날짜·합계·종류 고르기는 위에 두고 기록만 이 안에서 스크롤한다 */
 .list {
   display: flex;
   flex: 1;
@@ -328,36 +213,6 @@ function onSaved() {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
-.head,
-.parts {
-  flex: none;
-}
-.head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-.date,
-.income {
-  font-family: var(--f-title);
-  font-size: 24px;
-  font-weight: 400;
-}
-.income {
-  color: var(--gold);
-  white-space: nowrap;
-}
-.income.loss {
-  color: var(--loss);
-}
-.parts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  color: var(--sub);
-  font-size: 13px;
-}
 .dot {
   display: inline-block;
   flex: none;
@@ -367,14 +222,6 @@ function onSaved() {
   background: var(--c);
   border-radius: 50%;
 }
-.item-link {
-  color: var(--sub);
-  text-decoration: none;
-}
-.item-link:hover {
-  color: var(--text);
-}
-
 .sec {
   display: grid;
   flex: none;
@@ -441,16 +288,6 @@ h3 {
   border: 1px solid var(--panel-line);
   border-left: 3px solid var(--c);
   border-radius: 8px;
-}
-.r-btn {
-  width: 100%;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.r-btn:hover {
-  background: color-mix(in srgb, var(--c) 6%, var(--panel));
 }
 .ic {
   display: grid;
@@ -527,121 +364,18 @@ h3 {
   gap: 2px;
   min-width: 62px;
 }
-.caret {
-  width: 15px;
-  height: 15px;
-  margin: 0 8px;
-  fill: none;
-  stroke: var(--sub);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
-  transition: transform var(--normal) var(--ease-out);
-}
-.r-group.open .caret {
-  transform: rotate(180deg);
-}
 .empty {
   display: grid;
   place-items: center;
   min-height: 42px;
   margin: 0;
-  background: rgb(255 255 255 / 0.015);
+  background: color-mix(in srgb, var(--tint) 1.5%, transparent);
   border: 1px dashed var(--panel-line);
   border-radius: 8px;
   color: var(--sub);
   font-size: 12.5px;
 }
-
-.r-group {
-  overflow: hidden;
-  border-radius: 8px;
-}
-.r-group.open .r {
-  border-radius: 8px 8px 0 0;
-}
-/* 칸은 줄어들 수 있고 그림은 제 크기로 넘쳐 다음 그림 밑에 깔린다 */
-.stack {
-  display: flex;
-  min-width: 0;
-  padding: 2px 22px 0 0;
-}
-.stack-item {
-  position: relative;
-  flex: 0 1 24px;
-  min-width: 8px;
-  height: 22px;
-}
-.stack-item > * {
-  position: absolute;
-  top: 0;
-  left: 0;
-  box-shadow: -2px 0 6px rgb(0 0 0 / 0.55);
-}
-.detail-wrap {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--normal) var(--ease-out);
-}
-.r-group.open .detail-wrap {
-  grid-template-rows: 1fr;
-}
-.detail {
-  display: grid;
-  gap: 2px;
-  min-height: 0;
-  margin: 0;
-  padding: 0 4px 0 13px;
-  overflow: hidden;
-  background: rgb(10 12 22 / 0.4);
-  border: 0 solid var(--panel-line);
-  border-left: 3px solid var(--c);
-  border-radius: 0 0 8px 8px;
-  list-style: none;
-  opacity: 0;
-  transition: opacity var(--normal) ease, padding var(--normal) var(--ease-out);
-}
-.r-group.open .detail {
-  padding-block: 4px 6px;
-  border-width: 0 1px 1px 3px;
-  opacity: 1;
-}
-.detail li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  font-size: 13px;
-}
-.diff {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.boss {
-  flex: 1;
-  min-width: 0;
-}
-.d-split {
-  font-size: 12px;
-  font-weight: 400;
-}
-.d-amt {
-  color: var(--gain);
-  font-family: var(--f-title);
-  font-weight: 400;
-  white-space: nowrap;
-}
 @media (max-width: 520px) {
-  .date,
-  .income {
-    font-size: 21px;
-  }
-  .parts {
-    gap: 2px 12px;
-    font-size: 12.5px;
-  }
   /* 좁으면 이름 줄을 통째로 쓰고, 금액은 덧말 줄 오른쪽으로 내린다 */
   .r {
     grid-template-columns: 28px minmax(0, 1fr) auto auto;

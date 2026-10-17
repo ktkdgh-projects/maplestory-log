@@ -130,7 +130,7 @@ watch(selected, () => centerSelected('smooth'))
 }
 .platform[aria-pressed="true"] {
   background: linear-gradient(var(--exp) 0 5px, var(--dirt) 5px);
-  box-shadow: 0 0 14px rgb(232 212 77 / 0.6);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--exp) 60%, transparent);
 }
 .platform[aria-pressed="true"] span {
   color: var(--exp);
@@ -194,7 +194,7 @@ watch(selected, () => centerSelected('smooth'))
   min-width: 150px;
   padding: 8px 12px;
   transform: translateX(-50%);
-  background: rgb(14 17 28 / 0.92);
+  background: color-mix(in srgb, var(--sunk) 92%, transparent);
   border: 2px solid var(--tip-line);
   border-radius: 10px;
   box-shadow: 0 8px 20px rgb(0 0 0 / 0.3);

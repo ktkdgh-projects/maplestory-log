@@ -80,7 +80,7 @@ ul {
   padding: 7px 12px;
   background: none;
   border: 0;
-  border-bottom: 1px solid rgb(58 67 102 / 0.5);
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-line) 50%, transparent);
   color: var(--text);
   font: inherit;
   text-align: left;
@@ -88,7 +88,7 @@ ul {
   transition: background var(--fast) ease;
 }
 .row:hover {
-  background: rgb(255 255 255 / 0.03);
+  background: color-mix(in srgb, var(--tint) 3%, transparent);
 }
 .row.on {
   background: color-mix(in srgb, var(--side) 10%, transparent);

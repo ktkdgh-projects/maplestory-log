@@ -1,4 +1,6 @@
-:root {
+/* .game-dark: 게임 툴팁처럼 밝은 모드에서도 게임 화면 색을 지키는 칸은 어두운 값을 그대로 받는다 */
+:root,
+.game-dark {
   color-scheme: dark;
 
   --page: #141828;
@@ -25,6 +27,22 @@
   --lamp-off: #3a4366;
   --lamp-gold: #ffe7a3;
   --lamp-green: #c9f5d6;
+  --faint: #5d6688;
+  /* 바탕보다 한 단계 들어간 칸, 입력·막대 바탕, 흰 덧칠(밝은 모드에선 글자색 덧칠) */
+  --sunk: #0a0c16;
+  --field: #141a30;
+  --tint: #ffffff;
+  --on-accent: #10131f;
+  --slot-top: #2c3350;
+  --slot-bot: #1d2238;
+  --stage-top: #1b2a52;
+  --stage-bot: #101a36;
+  --stage-line: #3b5aa0;
+  /* 잠재 등급 색(게임과 같은 색). 밝은 모드에선 같은 색을 진하게 */
+  --grade-rare: #5cb8ff;
+  --grade-epic: #b46cff;
+  --grade-unique: #ffcc33;
+  --grade-legendary: #7ee05a;
 
   /* SourceBadge 색: API · 계산 · 입력 · 불가 */
   --api: #7fb2ff;
@@ -46,9 +64,56 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --fast: 0.18s;
   --normal: 0.35s;
-  --glow: 0 0 0 1px var(--gold), 0 0 14px rgb(242 193 78 / 0.35);
+  --glow: 0 0 0 1px var(--gold), 0 0 14px color-mix(in srgb, var(--gold) 35%, transparent);
 
   --f-title: "Do Hyeon", "Nanum Gothic", system-ui, sans-serif;
   --f-body: "Nanum Gothic", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --f-pixel: "Silkscreen", ui-monospace, "Consolas", monospace;
+}
+
+/* 밝은 모드. data-theme은 plugins/theme이 붙인다(쿠키 값, 없으면 컴퓨터 설정) */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --page: #eef0f5;
+  --bar: #ffffff;
+  --win: #ffffff;
+  --win-line: #d5dae5;
+  --title: #f4f6fa;
+  --panel: #f6f7fb;
+  --panel-line: #dfe3ec;
+  --tip-line: #aab2c5;
+  --text: #1c2232;
+  --sub: #5e6679;
+  --faint: #9aa1b2;
+  --gold: #b07a0c;
+  --on-gold: #ffffff;
+  --gain: #1c8a4b;
+  --loss: #cc3d35;
+  --exp: #977a0c;
+  --on-gain: #ffffff;
+  --gold-warm: #c2700f;
+  --gold-light: #8d6a12;
+  --orange: #d0681f;
+  --purple: #8650dc;
+  --lamp-off: #d4d9e3;
+  --lamp-gold: #f0cf73;
+  --lamp-green: #94dbad;
+  --api: #2f63cf;
+  --calc: #6b4fe0;
+  --input: #b07a0c;
+  --none: #8a93a8;
+  --sunk: #e7eaf1;
+  --field: #f1f3f8;
+  --tint: #1c2232;
+  --on-accent: #ffffff;
+  --slot-top: #f7f8fb;
+  --slot-bot: #e9edf4;
+  --stage-top: #e8eefb;
+  --stage-bot: #d6e0f5;
+  --stage-line: #9db3e0;
+  --grade-rare: #1f78c8;
+  --grade-epic: #8a3fe0;
+  --grade-unique: #b8860b;
+  --grade-legendary: #3c9a22;
+  --glow: 0 0 0 1px var(--gold), 0 0 10px rgb(176 122 12 / 0.25);
 }

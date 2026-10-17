@@ -104,6 +104,7 @@ const ticks = computed(() => {
         >
           <rect :x="p.x - 14" y="0" width="28" :height="HEIGHT" fill="transparent" />
           <circle :cx="p.x" :cy="p.y" :r="p.i === selected ? 6 : 3.5" />
+          <text v-if="p.day.levelUp" class="up" :x="p.x" :y="Math.max(p.y - 9, 10)">UP</text>
         </g>
         <text v-for="t in ticks" :key="`t${t.i}`" class="tick" :x="t.x" :y="HEIGHT - 4">{{ dayLabel(t.day) }}</text>
       </svg>
@@ -166,7 +167,7 @@ svg {
   display: block;
 }
 .grid {
-  stroke: rgb(58 67 102 / 0.5);
+  stroke: color-mix(in srgb, var(--panel-line) 50%, transparent);
   stroke-dasharray: 3 5;
 }
 .area {
@@ -209,13 +210,19 @@ svg {
   stroke: #fff;
   filter: drop-shadow(0 0 6px var(--gold));
 }
+.up {
+  fill: var(--gain);
+  font-family: var(--f-pixel);
+  font-size: 8px;
+  text-anchor: middle;
+  pointer-events: none;
+}
 .point.today circle {
   stroke-dasharray: 2 2;
 }
 .tick {
   fill: var(--sub);
-  font-family: var(--f-pixel);
-  font-size: 9px;
+  font-size: 11px;
   text-anchor: middle;
 }
 .bubble {
@@ -224,7 +231,7 @@ svg {
   justify-items: center;
   padding: 3px 8px;
   translate: -50% calc(-100% - 10px);
-  background: rgb(10 12 22 / 0.92);
+  background: color-mix(in srgb, var(--sunk) 92%, transparent);
   border: 1px solid var(--gold);
   border-radius: 6px;
   font-size: 11px;

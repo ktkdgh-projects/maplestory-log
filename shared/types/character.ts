@@ -79,6 +79,8 @@ export interface CharacterDetail {
   fetchedAt: string
   // 성장 기록에 남은 최근 날짜별 실제 전투력(최신순). 추산을 실제 값으로 맞춰 보는 데 쓴다
   recentPowers?: { date: string, value: number }[]
+  // 성장 기록 최근 7일 평균으로 잡은 레벨업 예상일. 기록이 모자라면 null
+  levelUpDate?: string | null
 }
 
 export interface UnionResponse {

@@ -44,7 +44,7 @@ const reason = computed(() => {
       <span class="cell avg">평균이면<b>{{ verdict ? amount(verdict.expected) : loading ? '…' : '-' }}</b></span>
       <span class="luck">
         <template v-if="verdict && verdict.rank !== null">
-          <span class="bar"><i :style="{ left: `${verdict.rank * 100}%` }" /></span>확률로 보면 상위 {{ Math.max(1, Math.round(verdict.rank * 100)) }}%
+          <span class="bar"><i :style="{ left: `${verdict.rank * 100}%` }" /></span>{{ luckText(verdict.rank) }}
         </template>
         <template v-else-if="!loading">{{ review?.mixed ? '도구를 섞어 비교 안 함' : review ? '비교할 결과 없음' : '확률 확인 전' }}</template>
       </span>
@@ -215,7 +215,7 @@ const reason = computed(() => {
 .src {
   margin-left: 4px;
   padding: 0 4px;
-  background: rgb(242 193 78 / 0.18);
+  background: color-mix(in srgb, var(--gold) 18%, transparent);
   border-radius: 4px;
   color: var(--gold);
   font-size: 10px;
@@ -231,7 +231,7 @@ const reason = computed(() => {
 .luck .bar {
   position: relative;
   height: 6px;
-  background: linear-gradient(90deg, rgb(127 217 154 / 0.7), rgb(165 174 203 / 0.25) 50%, rgb(255 138 122 / 0.7));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gain) 70%, transparent), color-mix(in srgb, var(--sub) 25%, transparent) 50%, color-mix(in srgb, var(--loss) 70%, transparent));
   border-radius: 3px;
 }
 .luck .bar i {
@@ -258,7 +258,7 @@ const reason = computed(() => {
   display: grid;
   gap: 1px;
   padding: 9px 12px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
   color: var(--sub);
@@ -313,7 +313,7 @@ const reason = computed(() => {
   align-items: baseline;
   gap: 8px;
   padding: 5px 10px;
-  background: rgb(255 255 255 / 0.03);
+  background: color-mix(in srgb, var(--tint) 3%, transparent);
   border-left: 3px solid var(--panel-line);
   border-radius: 4px;
   font-size: 12.5px;
@@ -358,7 +358,7 @@ const reason = computed(() => {
 .track {
   position: relative;
   height: 8px;
-  background: #11152a;
+  background: var(--field);
   border-radius: 4px;
 }
 .track i {
@@ -394,7 +394,7 @@ const reason = computed(() => {
   display: grid;
   gap: 6px;
   padding: 10px 12px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
   border: 1px dashed var(--panel-line);
   border-radius: 10px;
   color: var(--sub);
@@ -421,7 +421,7 @@ const reason = computed(() => {
   color: var(--text);
 }
 .act.calc {
-  border-color: rgb(183 156 255 / 0.55);
+  border-color: color-mix(in srgb, var(--calc) 55%, transparent);
   color: var(--calc);
 }
 @media (max-width: 760px) {

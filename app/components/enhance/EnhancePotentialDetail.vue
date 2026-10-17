@@ -58,7 +58,6 @@ const steps = computed(() => {
     return { from: g, to: next, tries: at >= 0 ? d!.tiers[at]!.tries : null, working, ceiling: ceilingOf(tools, g), mixed: (tools?.size ?? 0) > 1 }
   })
 })
-const reached = (g: string) => !!grade.value && POTENTIAL_GRADES.indexOf(g as PotentialGrade) <= POTENTIAL_GRADES.indexOf(grade.value as PotentialGrade)
 
 // 재설정은 기존 옵션을 고를 수 있어서 마지막으로 같은 옵션이 뜬 기록을 지금 옵션이 나온 때로 본다
 const sideOptions = (e: EnhanceEvent) => (props.additional ? e.addOptions : e.options)
@@ -81,7 +80,7 @@ const runLabel = computed(() => {
 // 날짜 머리의 횟수·등급 상승·메소도 고른 기록 종류만 센다
 const shownDays = computed(() => (detail.value?.days ?? [])
   .map((d) => {
-    const events = d.events.filter(e => tool.value === 'all' || e.kind === tool.value)
+    const events = d.events.filter(e => tool.value === 'all' || e.kind === tool.value).map(e => ({ ...e, opts: sideOptions(e), toolLabel: toolName(e) }))
     return { date: d.date, events, ups: events.filter(e => e.success).length, meso: events.reduce((n, e) => n + (e.meso ?? 0), 0) }
   })
   .filter(d => d.events.length))
@@ -142,19 +141,7 @@ const lineStyle = (g: string | null, text: string, index: number) => ({ '--line'
     </div>
     <div v-else-if="!detail" class="skeleton block" />
     <div v-else class="content" :class="{ busy: loading }">
-      <div class="flow">
-        <template v-for="(s, i) in steps" :key="s.from">
-          <span class="node" :class="{ dim: !reached(s.from) }" :style="gradeStyle(s.from)">{{ s.from }}</span>
-          <div class="edge">
-            <b v-if="s.tries !== null">{{ s.tries }}번</b>
-            <b v-else-if="s.working !== null" class="working">{{ s.working }}번째</b>
-            <b v-else class="none">-</b>
-            <div class="track"><i :style="{ width: `${s.ceiling && (s.tries ?? s.working) !== null ? Math.min(100, ((s.tries ?? s.working)! / s.ceiling) * 100) : 0}%` }" :class="{ working: s.working !== null }" /></div>
-            <small>{{ s.ceiling ? `천장 ${s.ceiling}` : s.mixed ? '도구 섞음' : '' }}</small>
-          </div>
-          <span v-if="i === steps.length - 1" class="node" :class="{ dim: !reached(s.to) }" :style="gradeStyle(s.to)">{{ s.to }}</span>
-        </template>
-      </div>
+      <EnhancePotentialFlow :steps="steps" :grade="grade" />
 
       <div class="optcard" :style="gradeStyle(grade)">
         <div class="lines">
@@ -174,31 +161,7 @@ const lineStyle = (g: string | null, text: string, index: number) => ({ '--line'
         <span class="muted small">날짜를 누르면 펼쳐져요</span>
       </div>
 
-      <ol class="days">
-        <li v-for="d in shownDays" :key="d.date" class="day" :class="{ open: open.has(d.date) }">
-          <button type="button" class="day-head" :aria-expanded="open.has(d.date)" @click="toggle(d.date)">
-            <span class="caret" aria-hidden="true">▸</span>
-            <b>{{ formatDayWeek(d.date) }}</b>
-            <span class="day-what">
-              {{ d.events.length }}번<template v-if="d.ups"> · <span class="up">등급 상승 {{ d.ups }}</span></template>
-            </span>
-            <span class="day-meso">{{ d.meso ? formatShortNumber(d.meso) : '' }}</span>
-          </button>
-          <ol v-if="open.has(d.date)" class="events">
-            <li v-for="(e, n) in d.events" :key="n" class="event" :class="{ up: e.success }" :style="gradeStyle(e.grade)">
-              <time>{{ kstTime(e.at) }}</time>
-              <span class="opts">
-                <span v-for="(o, i) in sideOptions(e)" :key="i" :style="lineStyle(e.grade, o, i)">{{ o }}</span>
-              </span>
-              <span class="cost">{{ e.meso ? formatShortNumber(e.meso) : '' }}</span>
-              <span class="result">
-                <small class="tool">{{ toolName(e) }}</small>
-                <span class="grade">{{ e.grade }}<small v-if="e.success" class="up-mark">▲</small></span>
-              </span>
-            </li>
-          </ol>
-        </li>
-      </ol>
+      <EnhancePotentialDays :days="shownDays" :open="open" :line-style="lineStyle" @toggle="toggle" />
       <p v-if="detail.truncated" class="muted note">기록이 많아 오래된 날은 잘렸어요. 기간을 줄이면 다 보여요.</p>
     </div>
   </section>
@@ -216,7 +179,7 @@ const lineStyle = (g: string | null, text: string, index: number) => ({ '--line'
   padding: 14px;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  background: rgb(10 12 22 / 0.5);
+  background: color-mix(in srgb, var(--sunk) 50%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
 }
@@ -257,8 +220,8 @@ h3 {
   flex: none;
   margin-left: auto;
   padding: 7px 12px;
-  background: rgb(183 156 255 / 0.12);
-  border: 1px solid rgb(183 156 255 / 0.55);
+  background: color-mix(in srgb, var(--calc) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--calc) 55%, transparent);
   border-radius: 8px;
   color: var(--calc);
   font-size: 13px;
@@ -267,7 +230,7 @@ h3 {
   white-space: nowrap;
 }
 .calc-link:hover {
-  background: rgb(183 156 255 / 0.22);
+  background: color-mix(in srgb, var(--calc) 22%, transparent);
 }
 /* 아이콘을 모르는 안 낀 장비는 같은 크기의 빈 칸 */
 .no-icon {
@@ -299,66 +262,6 @@ h3 {
 .note {
   margin: 0;
   font-size: 12px;
-}
-/* 막대는 공식 천장 대비 */
-.flow {
-  display: grid;
-  flex: none;
-  grid-template-columns: auto 1fr auto 1fr auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background: rgb(255 255 255 / 0.02);
-  border: 1px solid var(--panel-line);
-  border-radius: 10px;
-}
-.node {
-  padding: 4px 10px;
-  border: 1px solid color-mix(in srgb, var(--grade) 55%, transparent);
-  border-radius: 8px;
-  color: var(--grade);
-  font-family: var(--f-title);
-  font-size: 16px;
-  text-align: center;
-  white-space: nowrap;
-}
-.node.dim {
-  opacity: 0.35;
-}
-.edge {
-  display: grid;
-  gap: 4px;
-  color: var(--sub);
-  font-size: 12px;
-  text-align: center;
-}
-.edge b {
-  color: var(--text);
-  font-family: var(--f-title);
-  font-size: 15px;
-  font-weight: 400;
-}
-.edge b.working {
-  color: var(--gold);
-}
-.edge b.none {
-  color: var(--tip-line);
-}
-.track {
-  position: relative;
-  height: 6px;
-  overflow: hidden;
-  background: #11152a;
-  border-radius: 3px;
-}
-.track i {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--tip-line);
-  border-radius: 3px;
-}
-.track i.working {
-  background: var(--gold);
 }
 .optcard {
   display: grid;
@@ -406,7 +309,7 @@ h3 {
 }
 .chips button {
   padding: 3px 11px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 999px;
   color: var(--sub);
@@ -422,122 +325,6 @@ h3 {
 .small {
   margin-left: auto;
   font-size: 12px;
-}
-.days {
-  display: grid;
-  align-content: start;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.day {
-  background: rgb(255 255 255 / 0.02);
-  border: 1px solid var(--panel-line);
-  border-radius: 8px;
-}
-.day.open {
-  border-color: var(--tip-line);
-}
-.day-head {
-  display: grid;
-  grid-template-columns: 14px minmax(92px, max-content) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
-  background: none;
-  border: 0;
-  color: var(--text);
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.caret {
-  color: var(--sub);
-  transition: rotate var(--fast) ease;
-}
-.day.open .caret {
-  rotate: 90deg;
-}
-.day-head b {
-  font-family: var(--f-title);
-  font-size: 15px;
-  font-weight: 400;
-}
-.day-what {
-  color: var(--sub);
-}
-.up {
-  color: var(--gain);
-}
-.day-meso {
-  color: var(--gold);
-  font-variant-numeric: tabular-nums;
-}
-.events {
-  display: grid;
-  gap: 2px;
-  margin: 0 10px 8px;
-  padding: 0;
-  list-style: none;
-}
-/* 칸을 고정해 줄마다 위치가 같게 */
-.event {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 70px 200px;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: rgb(255 255 255 / 0.02);
-  border-left: 3px solid var(--grade);
-  border-radius: 4px;
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
-.event time {
-  color: var(--sub);
-}
-.opts {
-  display: grid;
-  min-width: 0;
-  line-height: 1.45;
-}
-.opts span {
-  overflow: hidden;
-  color: var(--line);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cost {
-  color: var(--tip-line);
-  text-align: right;
-}
-.result {
-  display: flex;
-  justify-content: flex-end;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-.tool {
-  overflow: hidden;
-  color: var(--tip-line);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.grade {
-  flex: none;
-  color: var(--grade);
-  font-family: var(--f-title);
-  font-size: 13px;
-}
-.up-mark {
-  margin-left: 2px;
-  color: var(--gain);
-  font-size: 10px;
 }
 .empty {
   margin: 0;
@@ -560,45 +347,8 @@ h3 {
     margin-left: 0;
     text-align: center;
   }
-  .flow {
-    grid-template-columns: 76px minmax(0, 1fr);
-    gap: 8px 12px;
-  }
-  .edge {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    text-align: left;
-  }
   .small {
     display: none;
-  }
-  .day-head {
-    grid-template-columns: 12px minmax(72px, max-content) minmax(0, 1fr) auto;
-    min-height: 40px;
-    gap: 6px;
-    font-size: 12px;
-  }
-  .events {
-    margin: 0 6px 6px;
-  }
-  .event {
-    grid-template-areas: "time cost result" "opts opts opts";
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 2px 10px;
-    padding: 6px 8px;
-  }
-  .event time {
-    grid-area: time;
-  }
-  .opts {
-    grid-area: opts;
-  }
-  .cost {
-    grid-area: cost;
-  }
-  .result {
-    grid-area: result;
   }
 }
 </style>

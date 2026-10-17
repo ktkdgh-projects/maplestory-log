@@ -70,8 +70,8 @@ function queue<T>(job: () => Promise<T>): Promise<T> {
   gap: 10px;
   align-content: start;
   padding: 14px;
-  background: linear-gradient(160deg, rgb(127 217 154 / 0.12), var(--panel) 60%);
-  border: 1px solid rgb(127 217 154 / 0.45);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--gain) 12%, transparent), var(--panel) 60%);
+  border: 1px solid color-mix(in srgb, var(--gain) 45%, transparent);
   border-radius: 12px;
 }
 h4 {
@@ -127,7 +127,7 @@ h4 small {
 .more {
   justify-self: start;
   padding: 6px 12px;
-  border: 1px solid rgb(127 217 154 / 0.55);
+  border: 1px solid color-mix(in srgb, var(--gain) 55%, transparent);
   border-radius: 8px;
   color: var(--gain);
   font-size: 13px;

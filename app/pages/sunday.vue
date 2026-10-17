@@ -77,7 +77,7 @@ const showLastWeek = ref(false)
 </script>
 
 <template>
-  <GameWindow title="썬데이 메이플" sub="넥슨 이벤트 공지에서 자동으로 가져와요" accent="green">
+  <GameWindow class="fit" title="썬데이 메이플" sub="넥슨 이벤트 공지에서 자동으로 가져와요" accent="green" fill>
     <div class="sunday">
       <div v-if="error && !data" class="form-error retry">
         <span>{{ errorMessage(error) }}</span>
@@ -101,9 +101,25 @@ const showLastWeek = ref(false)
           </div>
           <!-- 공지를 보고 강화한 결과를 바로 옆에서 본다 -->
           <div class="with-settle">
-            <img v-if="current.image" :src="current.image" :alt="`${current.title} 이벤트 내용`" class="poster">
-            <p v-else class="muted">공지에 이미지가 없어요. 원문에서 확인해 주세요.</p>
-            <ReviewSundaySettle :notice="current" live class="settle-side" />
+            <div class="poster-box">
+              <img v-if="current.image" :src="current.image" :alt="`${current.title} 이벤트 내용`" class="poster">
+              <p v-else class="muted">공지에 이미지가 없어요. 원문에서 확인해 주세요.</p>
+            </div>
+            <div class="side">
+              <ReviewSundaySettle :notice="current" live />
+              <section v-if="olderHistory.length" class="history">
+                <h4>지난 썬데이</h4>
+                <ul>
+                  <li v-for="n in olderHistory" :key="n.id">
+                    <a :href="n.url" target="_blank" rel="noopener" class="past">
+                      <img v-if="n.image" :src="n.image" alt="" loading="lazy">
+                      <span>{{ dayText(n.start) }}</span>
+                    </a>
+                  </li>
+                </ul>
+              </section>
+              <p v-if="!current" class="muted small note">처음 확인한 공지부터 모아요. {{ timeText(data.checkedAt) }} 확인</p>
+            </div>
           </div>
         </section>
 
@@ -136,7 +152,7 @@ const showLastWeek = ref(false)
           </div>
         </section>
 
-        <section v-if="olderHistory.length" class="history">
+        <section v-if="!current && olderHistory.length" class="history">
           <h4>지난 썬데이</h4>
           <ul>
             <li v-for="n in olderHistory" :key="n.id">
@@ -155,16 +171,22 @@ const showLastWeek = ref(false)
 
 <style scoped>
 .sunday {
-  display: grid;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   gap: 20px;
+  min-height: 0;
 }
 .hero-skel {
   height: 420px;
 }
 .current {
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
   gap: 14px;
+  min-height: 0;
 }
 .head {
   display: flex;
@@ -261,20 +283,43 @@ h3 {
 }
 .with-settle {
   display: grid;
+  flex: 1;
   grid-template-columns: minmax(0, 876px) 300px;
   justify-content: center;
   align-items: start;
   gap: 16px;
   width: 100%;
+  min-height: 0;
 }
-/* 공지 이미지가 길어서 결산 카드는 스크롤해도 옆에 붙어 있게 */
-.settle-side {
-  position: sticky;
-  top: 0;
+.side {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+.side .history ul {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .last-settle {
   width: 100%;
   max-width: 876px;
+}
+/* 넓은 화면은 한 화면에 맞추고, 긴 공지 그림과 오른쪽 열만 칸 안에서 스크롤한다 */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .sunday {
+    overflow-y: auto;
+  }
+  .sunday:has(.current) {
+    overflow: hidden;
+  }
+  .with-settle {
+    align-items: stretch;
+  }
+  .poster-box,
+  .side {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
 }
 @media (max-width: 1100px) {
   .with-settle {

@@ -22,6 +22,12 @@ function luckOf(s: StarforceStage) {
   const ratio = s.attempts / expected
   return { text: `${Math.round(expected)}번`, tone: ratio > 1.2 ? 'loss' : ratio < 0.8 ? 'gain' : '' }
 }
+// 성공한 구간만 모아 실제로 누른 수와 평균이면 누를 수를 견준다(아래 표의 "평균이면"을 더한 값)
+const pressTotals = computed(() => {
+  const done = stages.value.filter(s => s.success)
+  if (!done.length) return null
+  return { actual: done.reduce((n, s) => n + s.attempts, 0), expected: Math.round(done.reduce((n, s) => n + s.success / starRates(s.star).success, 0)) }
+})
 const maxMeso = computed(() => Math.max(0, ...stages.value.map(s => s.meso)))
 const firstStar = computed(() => stages.value[0]?.star ?? null)
 
@@ -53,6 +59,9 @@ const calcLink = computed(() => ({
           <template v-if="item.summary.starforce.destroy"> · <span class="loss">파괴 {{ item.summary.starforce.destroy }}번</span></template>
         </p>
       </div>
+      <p v-if="pressTotals" class="press" :class="pressTotals.actual > pressTotals.expected * 1.2 ? 'loss' : pressTotals.actual < pressTotals.expected * 0.8 ? 'gain' : ''">
+        {{ pressTotals.actual }}번 눌렀어요 · 평균이면 {{ pressTotals.expected }}번
+      </p>
       <NuxtLink v-if="canGoUp" :to="calcLink" class="calc-link">★{{ item.starforce }} → {{ item.starforce + 1 }} 기대값 보기 →</NuxtLink>
     </header>
 
@@ -128,7 +137,7 @@ const calcLink = computed(() => ({
   padding: 14px;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  background: rgb(10 12 22 / 0.5);
+  background: color-mix(in srgb, var(--sunk) 50%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
 }
@@ -159,12 +168,29 @@ h3 {
   color: var(--sub);
   font-size: 13px;
 }
+.press {
+  flex: none;
+  margin: 0 0 0 auto;
+  color: var(--sub);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.press.loss {
+  color: var(--loss);
+}
+.press.gain {
+  color: var(--gain);
+}
+.press + .calc-link {
+  margin-left: 0;
+}
 .calc-link {
   flex: none;
   margin-left: auto;
   padding: 7px 12px;
-  background: rgb(183 156 255 / 0.12);
-  border: 1px solid rgb(183 156 255 / 0.55);
+  background: color-mix(in srgb, var(--calc) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--calc) 55%, transparent);
   border-radius: 8px;
   color: var(--calc);
   font-size: 13px;
@@ -174,7 +200,7 @@ h3 {
   transition: background var(--fast) ease;
 }
 .calc-link:hover {
-  background: rgb(183 156 255 / 0.22);
+  background: color-mix(in srgb, var(--calc) 22%, transparent);
 }
 .star {
   color: var(--gold);
@@ -232,7 +258,7 @@ h3 {
 }
 .stages td {
   padding: 6px 8px;
-  border-bottom: 1px solid rgb(58 67 102 / 0.5);
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-line) 50%, transparent);
   text-align: right;
 }
 .stages th:first-child,
@@ -263,7 +289,7 @@ td.meso-col {
   position: relative;
 }
 tr.hot td {
-  background: rgb(242 193 78 / 0.09);
+  background: color-mix(in srgb, var(--gold) 9%, transparent);
 }
 tr.hot td:first-child {
   box-shadow: inset 3px 0 0 var(--gold);
@@ -292,7 +318,7 @@ td.small {
 .day {
   border: 1px solid var(--panel-line);
   border-radius: 8px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
 }
 .day.open {
   border-color: var(--tip-line);
@@ -359,15 +385,15 @@ td.small {
   font-size: 11px;
 }
 .tag.protect {
-  border-color: rgb(127 178 255 / 0.5);
+  border-color: color-mix(in srgb, var(--api) 50%, transparent);
   color: var(--api);
 }
 .tag.restore {
-  border-color: rgb(255 138 122 / 0.5);
+  border-color: color-mix(in srgb, var(--loss) 50%, transparent);
   color: var(--loss);
 }
 .tag.sale {
-  border-color: rgb(242 193 78 / 0.5);
+  border-color: color-mix(in srgb, var(--gold) 50%, transparent);
   color: var(--gold);
 }
 .cost {

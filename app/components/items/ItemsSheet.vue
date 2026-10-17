@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ItemIcon, ItemPurchase, ItemRow, ItemSheet, MeResponse } from '#shared/types'
-import { itemProfit, itemSellNet, itemTotals, rowInvest } from '#shared/calc/items'
+import { itemTotals } from '#shared/calc/items'
 import { hasMvpFee } from '#shared/calc/meso'
 import { AUCTION_FEES, DEFAULT_AUCTION_FEE, MVP_FEE } from '#shared/data/auction'
 
@@ -8,16 +8,6 @@ const props = defineProps<{ sheet: ItemSheet }>()
 const emit = defineEmits<{ changed: [], removed: [] }>()
 
 const busy = ref(false)
-const helpOpen = ref(false)
-// 머리글은 좁아서 설명을 못 붙이므로 모아서 모달로 보여 준다
-const columnHelp = computed(() => [
-  { name: '스타포스', text: '직접 적은 값이 가계부에 들어가요. 연결한 캐릭터의 강화 기록으로 센 값은 칸 아래에 참고로 보여 드려요.' },
-  { name: '잠재', text: '메소 잠재 재설정 비용이에요. 강화 기록으로 센 값은 공식 비용표 기준이라 그대로 써도 돼요.' },
-  ...(feeColumn.value ? [{ name: '수수료', text: '경매장 판매 수수료예요. 대금을 받을 때 MVP 실버 이상이거나 프리미엄 PC방이면 3%예요.' }] : []),
-  { name: '받은 메소', text: '판매가에서 수수료를 뺀 금액이에요.' },
-  { name: '손익', text: '받은 메소에서 들인 메소를 뺀 값이에요. 판매가를 적은 장비만 계산해요.' },
-  { name: '합계', text: '제외한 장비는 합계·손익과 가계부에서 빠져요.' },
-])
 const failure = ref('')
 const notice = ref('')
 const newName = ref('')
@@ -195,37 +185,19 @@ async function removeSheet() {
 
 <template>
   <section class="sheet">
-    <header class="head">
-      <form v-if="renaming" class="rename" @submit.prevent="rename" novalidate>
-        <input v-model="title" class="field-input" maxlength="40" aria-label="시트 이름">
-        <button class="btn compact" :disabled="busy">저장</button>
-        <button type="button" class="btn ghost compact" @click="renaming = false">취소</button>
-      </form>
-      <template v-else>
-        <h3 class="ellipsis">{{ sheet.title }}</h3>
-        <span v-if="sheet.characterName" class="link-tag">{{ sheet.characterName }} 연결</span>
-        <button type="button" class="text-btn" @click="renaming = true">이름 바꾸기</button>
-      </template>
-      <div class="head-actions">
-        <button type="button" class="exclude" :class="{ on: sheet.excluded }" :aria-pressed="sheet.excluded" :disabled="busy" :title="sheet.excluded ? '누르면 이 시트의 구매·강화·판매 금액을 가계부에 넣어요' : '누르면 이 시트의 금액을 가계부에서 모두 빼요'" @click="toggleExcluded">
-          {{ sheet.excluded ? '가계부 미반영' : '가계부 반영' }}
-        </button>
-        <button v-if="sheet.ocid" type="button" class="btn ghost compact" :disabled="busy" @click="importEquipment">현재 장비 불러오기</button>
-        <button type="button" class="btn ghost compact" :disabled="busy" @click="removeSheet">시트 삭제</button>
-      </div>
-    </header>
-    <!-- 저장 실패·불러오기 결과는 늘 자리를 잡아 둔 한 줄에 보여서 표가 밀리지 않는다 -->
-    <div class="status-line">
-      <p class="status" :class="{ bad: failure }" role="status">
-        {{ failure || notice || '금액은 억 단위 · 칸을 눌러 만 단위로 적어요' }}
-      </p>
-      <button type="button" class="col-help" @click="helpOpen = true">ⓘ 열 설명</button>
-    </div>
-    <AppModal v-model="helpOpen" title="열 설명" :width="440">
-      <dl class="col-list">
-        <div v-for="c in columnHelp" :key="c.name"><dt>{{ c.name }}</dt><dd>{{ c.text }}</dd></div>
-      </dl>
-    </AppModal>
+    <ItemsSheetHead
+      v-model:renaming="renaming"
+      v-model:title="title"
+      :sheet="sheet"
+      :busy="busy"
+      :failure="failure"
+      :notice="notice"
+      :fee-column="feeColumn"
+      @rename="rename"
+      @toggle-excluded="toggleExcluded"
+      @import="importEquipment"
+      @remove-sheet="removeSheet"
+    />
 
     <div class="table-wrap">
       <table :class="{ mvp: !feeColumn }">
@@ -264,46 +236,29 @@ async function removeSheet() {
           </tr>
         </thead>
         <tbody>
-          <tr
+          <ItemsSheetRow
             v-for="(row, i) in rows"
             :key="row.id"
-            :class="{ dragging: dragId === row.id, pending: isPending(row) }"
-            @dragover.prevent="dragOver(i)"
-            @drop.prevent="dropRow"
-          >
-            <td class="handle" draggable="true" title="끌어서 순서 바꾸기" @dragstart="dragStart(row.id, $event)" @dragend="dragEnd">⠿</td>
-            <td class="center sub">{{ i + 1 }}</td>
-            <td class="sub ellipsis">{{ row.part || '-' }}</td>
-            <td class="name-cell">
-              <div class="name">
-                <img v-if="row.icon" :src="row.icon" alt="">
-                <span class="name-text">{{ row.name }}</span>
-              </div>
-            </td>
-            <td class="num cell">
-              <ItemsEntriesCell v-if="isMultiPurchase(row)" label="구매" :name="row.name" :entries="row.purchases" intro="살 때마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." @save="savePurchases(row, $event)" />
-              <ItemsMoneyCell v-else :value="row.buy" :date="row.buyDate" label="구매" @save="saveField(row, 'buy', $event)" @date="saveDate(row, 'buy', $event)" />
-            </td>
-            <td class="num cell"><ItemsEntriesCell label="스타포스" intro="강화한 날마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." :name="row.name" :entries="row.starforceEntries" :reference="row.reference.starforce" :reference-days="row.reference.starforceDays" :shared="row.reference.shared" :ocid="sheet.ocid" estimated @save="saveEntries(row, 'starforce', $event)" /></td>
-            <td class="num cell"><ItemsEntriesCell label="잠재" intro="강화한 날마다 한 건씩 적어요. 가계부에는 건마다 그 날짜로 들어가요." :name="row.name" :entries="row.potentialEntries" :reference="row.reference.potential" :reference-days="row.reference.potentialDays" :shared="row.reference.shared" :ocid="sheet.ocid" @save="saveEntries(row, 'potential', $event)" /></td>
-            <td class="num cell"><ItemsMoneyCell :value="row.sell" :date="row.sellDate" label="판매" @save="saveField(row, 'sell', $event)" @date="saveDate(row, 'sell', $event)" /></td>
-            <td v-if="feeColumn" class="center">
-              <button type="button" class="fee" :class="{ mvp: row.sellFee < DEFAULT_AUCTION_FEE, idle: !row.sell }" :disabled="busy || (mvpFee && !row.sell)" :title="row.sellFee < DEFAULT_AUCTION_FEE ? 'PC방 3% → 누르면 5%' : '5% → PC방이면 눌러서 3%'" @click="toggleFee(row)">
-                {{ Math.round(row.sellFee * 100) }}%
-              </button>
-            </td>
-            <td class="num sell" :title="row.sell ? `${formatKoreanNumber(row.sell)} - 수수료 ${Math.round(row.sellFee * 100)}% = ${formatKoreanNumber(itemSellNet(row))}` : undefined">
-              {{ row.sell ? formatEok(itemSellNet(row)) : '-' }}
-            </td>
-            <td class="num invest">{{ rowInvest(row) ? formatEok(rowInvest(row)) : '-' }}</td>
-            <td class="num" :class="profitTone(itemProfit(row))">{{ itemProfit(row) === null ? '-' : formatEok(itemProfit(row)!) }}</td>
-            <td class="center">
-              <button type="button" class="exclude row-exclude" :class="{ on: row.excluded }" :aria-pressed="row.excluded" :title="row.excluded ? '누르면 합계·손익·가계부에 다시 넣어요' : '누르면 이 장비를 합계·손익·가계부에서 빼요'" @click="patchRow(row, { excluded: !row.excluded })">
-                {{ row.excluded ? '제외' : '포함' }}
-              </button>
-            </td>
-            <td class="center"><button type="button" class="icon-btn" :aria-label="`${row.name} 지우기`" :disabled="busy" @click="removeRow(row)">×</button></td>
-          </tr>
+            :row="row"
+            :index="i"
+            :ocid="sheet.ocid"
+            :fee-column="feeColumn"
+            :mvp-fee="mvpFee"
+            :busy="busy"
+            :dragging="dragId === row.id"
+            :pending="isPending(row)"
+            @dragover="dragOver(i)"
+            @drop="dropRow"
+            @dragstart="dragStart(row.id, $event)"
+            @dragend="dragEnd"
+            @save-purchases="savePurchases(row, $event)"
+            @save-field="(field, meso) => saveField(row, field, meso)"
+            @save-date="(field, date) => saveDate(row, field, date)"
+            @save-entries="(kind, entries) => saveEntries(row, kind, entries)"
+            @toggle-fee="toggleFee(row)"
+            @toggle-excluded="patchRow(row, { excluded: !row.excluded })"
+            @remove="removeRow(row)"
+          />
           <tr v-if="!rows.length">
             <td :colspan="feeColumn ? 14 : 13" class="muted empty-row">{{ sheet.ocid ? '"현재 장비 불러오기"로 장비를 채우거나 아래에서 직접 추가해 주세요.' : '아래에서 장비를 추가해 주세요.' }}</td>
           </tr>
@@ -341,105 +296,6 @@ async function removeSheet() {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-}
-.head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-}
-h3 {
-  min-width: 0;
-  margin: 0;
-  color: var(--gold);
-  font-family: var(--f-title);
-  font-size: 22px;
-  font-weight: 400;
-}
-.link-tag {
-  padding: 1px 8px;
-  border: 1px solid var(--api);
-  border-radius: 999px;
-  color: var(--api);
-  font-size: 12px;
-}
-.text-btn {
-  padding: 0;
-  background: none;
-  border: 0;
-  color: var(--sub);
-  font: inherit;
-  font-size: 13px;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.rename {
-  display: flex;
-  gap: 6px;
-}
-.rename .field-input {
-  min-height: 36px;
-}
-.head-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-.status-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.status {
-  flex: 1;
-  min-width: 0;
-  height: 20px;
-  margin: 0;
-  overflow: hidden;
-  color: var(--sub);
-  font-size: 12.5px;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.status.bad {
-  color: var(--loss);
-}
-.col-help {
-  flex: none;
-  padding: 2px 8px;
-  background: none;
-  border: 1px solid var(--panel-line);
-  border-radius: 999px;
-  color: var(--sub);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.col-help:hover {
-  color: var(--text);
-  border-color: var(--sub);
-}
-.col-list {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-}
-.col-list div {
-  display: grid;
-  gap: 2px;
-}
-.col-list dt {
-  color: var(--gold);
-  font-weight: 700;
-}
-.col-list dd {
-  margin: 0;
-  color: var(--sub);
-  font-size: 13.5px;
-  line-height: 1.5;
 }
 .table-wrap {
   flex: 1;
@@ -487,13 +343,13 @@ th {
 }
 td {
   height: 38px;
-  border-top: 1px solid rgb(58 67 102 / 0.6);
+  border-top: 1px solid color-mix(in srgb, var(--panel-line) 60%, transparent);
 }
 tbody tr {
   transition: background var(--fast) ease, opacity var(--fast) ease;
 }
 tbody tr:hover {
-  background: rgb(255 255 255 / 0.03);
+  background: color-mix(in srgb, var(--tint) 3%, transparent);
 }
 /* 서버 id를 받기 전엔 고칠 수 없어 흐리게 둔다 */
 tbody tr.pending {
@@ -511,86 +367,11 @@ tbody tr.dragging {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-/* 금액 칸은 안의 버튼이 같은 여백을 갖고 있어 칸 여백을 비운다 */
-td.cell {
-  padding: 0;
-}
-.sub {
-  color: var(--sub);
-}
-.handle {
-  padding: 0;
-  color: var(--panel-line);
-  font-size: 15px;
-  text-align: center;
-  cursor: grab;
-  user-select: none;
-}
-.handle:hover {
-  color: var(--gold);
-}
-.name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.name img {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-  image-rendering: pixelated;
-}
 .sell {
   color: var(--gain);
 }
 .invest {
   color: var(--gold);
-}
-.fee {
-  min-width: 44px;
-  padding: 2px 8px;
-  background: var(--bar);
-  border: 1px solid var(--panel-line);
-  border-radius: 999px;
-  color: var(--sub);
-  font-family: var(--f-title);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background var(--fast) ease, border-color var(--fast) ease, color var(--fast) ease;
-}
-.fee:hover:not(:disabled) {
-  border-color: var(--gold);
-}
-.fee.mvp {
-  background: color-mix(in srgb, var(--gold) 15%, transparent);
-  border-color: var(--gold);
-  color: var(--gold);
-}
-/* 아직 안 판 줄은 수수료가 의미 없어 흐리게만 둔다 */
-.fee.idle {
-  opacity: 0.45;
-}
-.exclude {
-  min-height: 30px;
-  padding: 2px 12px;
-  background: color-mix(in srgb, var(--gain) 12%, transparent);
-  border: 1px solid var(--gain);
-  border-radius: 999px;
-  color: var(--gain);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background var(--fast) ease, border-color var(--fast) ease, color var(--fast) ease;
-}
-.row-exclude {
-  min-height: 0;
-  padding: 2px 10px;
-}
-.exclude.on {
-  background: var(--bar);
-  border-color: var(--panel-line);
-  color: var(--sub);
 }
 .empty-row {
   height: 80px;
@@ -600,6 +381,7 @@ tfoot td {
   position: sticky;
   bottom: 0;
   height: 40px;
+  font-weight: 700;
   background: var(--title);
   border-top: 2px solid var(--win-line);
   font-family: var(--f-title);
@@ -608,20 +390,6 @@ tfoot td {
 .sum-label {
   color: var(--sub);
   text-align: right;
-}
-.icon-btn {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--sub);
-  cursor: pointer;
-}
-.icon-btn:hover:not(:disabled) {
-  border-color: var(--loss);
-  color: var(--loss);
 }
 /* 엑셀처럼 시트 탭이 표 바로 아래에 붙도록 시트 사이 간격만큼 끌어올린다 */
 .bottom {
@@ -641,15 +409,6 @@ tfoot td {
 }
 .add .name-input {
   width: 300px;
-}
-/* 긴 이름은 잘라 숨기지 않고 두 줄까지 보여 준다 */
-.name-text {
-  display: -webkit-box;
-  overflow: hidden;
-  line-height: 1.3;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 /* 표는 옆으로 밀어 보고 장비 이름 칸은 왼쪽에 붙어 따라온다 */
 @media (max-width: 640px) {
@@ -681,24 +440,12 @@ tfoot td {
   td {
     padding: 0 6px;
   }
-  thead th:nth-child(4),
-  .name-cell {
+  thead th:nth-child(4) {
     position: sticky;
     left: 0;
-    z-index: 2;
-    background: var(--win);
-    box-shadow: 1px 0 0 var(--panel-line);
-  }
-  thead th:nth-child(4) {
     z-index: 3;
     background: var(--title);
-  }
-  .name-text {
-    font-size: 13px;
-  }
-  .name img {
-    width: 22px;
-    height: 22px;
+    box-shadow: 1px 0 0 var(--panel-line);
   }
   .add {
     flex: 1;
@@ -706,9 +453,6 @@ tfoot td {
   }
   .add .name-input {
     width: 100%;
-  }
-  .head-actions {
-    margin-left: 0;
   }
 }
 </style>

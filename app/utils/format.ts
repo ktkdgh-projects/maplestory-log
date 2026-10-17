@@ -34,3 +34,8 @@ export function dayLabel(day: { date: string, isToday: boolean }): string {
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'medium', timeStyle: 'short' })
 }
+
+// rank는 이보다 적게 든 경우의 비율(0~1). 높을수록 운이 나빴다는 뜻이라 방향을 글자로 붙인다
+export function luckText(rank: number): string {
+  return rank <= 0.5 ? `운 좋은 쪽 · 상위 ${Math.max(1, Math.round(rank * 100))}%` : `운 나쁜 쪽 · 하위 ${Math.max(1, Math.round((1 - rank) * 100))}%`
+}

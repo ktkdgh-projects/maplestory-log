@@ -108,6 +108,8 @@ function commitStack(event: Event) {
 }
 
 const count = (n: number) => `${Math.round(n).toLocaleString('ko-KR')}번`
+// 분포 그래프 안에서의 위치(0~1). 오른쪽 끝에 가까운 표시는 글자를 왼쪽에 붙인다
+const histAt = (tries: number) => Math.min(1, tries / (plan.value?.histogram.max || 1))
 const withMeso = (tries: number, meso: number | null) => (meso === null ? count(tries) : `${count(tries)} · ${formatShortNumber(meso)}`)
 const gradeStyle = (i: number) => ({ '--grade': potentialGradeColor(POTENTIAL_GRADES[i]!) ?? 'var(--tip-line)' })
 const goalLabelText = computed(() => {
@@ -234,6 +236,16 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
               <div :style="{ flex: plan.optionTries, ...gradeStyle(to) }">옵션 맞추기 {{ count(plan.optionTries) }}</div>
             </div>
           </div>
+          <div class="hist-wrap">
+            <span class="calc-caption">2만 번 해 보면 끝날 때까지 누르는 횟수</span>
+            <div class="hist">
+              <i v-for="(b, i) in plan.histogram.bins" :key="i" :class="{ over: (i + 0.5) / plan.histogram.bins.length * plan.histogram.max > plan.p90.tries }" :style="{ height: `${(b / Math.max(...plan.histogram.bins)) * 100}%` }" />
+              <span class="marker" :class="{ flip: histAt(plan.p50.tries) > 0.7 }" :style="{ left: `${histAt(plan.p50.tries) * 100}%` }"><span>절반 {{ count(plan.p50.tries) }}</span></span>
+              <span class="marker m90" :class="{ flip: histAt(plan.p90.tries) > 0.7 }" :style="{ left: `${histAt(plan.p90.tries) * 100}%` }"><span>10% {{ count(plan.p90.tries) }}</span></span>
+            </div>
+            <div class="axis"><span>1번</span><span>{{ count(Math.round(plan.histogram.max / 2)) }}</span><span>{{ count(plan.histogram.max) }}+</span></div>
+          </div>
+
           <div class="calc-nums">
             <div v-if="plan.chance !== null" class="calc-num"><small>한 번에 목표 옵션이 뜰 확률</small><b>{{ (plan.chance * 100).toFixed(plan.chance < 0.01 ? 3 : 2) }}%</b><small>{{ Math.round(1 / plan.chance).toLocaleString('ko-KR') }}번에 한 번</small></div>
             <div class="calc-num"><small>1번 비용 ({{ POTENTIAL_GRADES[to] }})</small><b>{{ plan.costPerTry ? formatShortNumber(plan.costPerTry) : '큐브 1개' }}</b><small>{{ method.meso ? '공식 비용표' : '큐브는 메소로 못 사요' }}</small></div>
@@ -327,7 +339,7 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
   overflow: hidden;
   height: 28px;
   border-radius: 8px;
-  color: #10131f;
+  color: var(--on-accent);
   font-size: 12px;
   font-weight: 800;
 }
@@ -338,5 +350,58 @@ const goalText = computed(() => `${POTENTIAL_GRADES[from.value]}${to.value > fro
   overflow: hidden;
   background: var(--grade);
   white-space: nowrap;
+}
+.hist-wrap {
+  display: grid;
+  gap: 6px;
+}
+.hist {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 96px;
+  margin-top: 18px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--tip-line);
+}
+.hist i {
+  flex: 1;
+  background: color-mix(in srgb, var(--calc) 55%, transparent);
+  border-radius: 3px 3px 0 0;
+}
+.hist i.over {
+  background: color-mix(in srgb, var(--loss) 45%, transparent);
+}
+.marker {
+  position: absolute;
+  top: -6px;
+  bottom: 0;
+  border-left: 2px dashed var(--gold);
+}
+.marker span {
+  position: absolute;
+  top: -16px;
+  left: 4px;
+  color: var(--gold);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.marker.flip span {
+  right: 4px;
+  left: auto;
+}
+.marker.m90 {
+  border-color: var(--loss);
+}
+.marker.m90 span {
+  color: var(--loss);
+}
+.axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--tip-line);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 </style>

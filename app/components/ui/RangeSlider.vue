@@ -47,7 +47,7 @@ function setTo(event: Event) {
   bottom: 0;
   left: 0;
   width: var(--floor);
-  background: repeating-linear-gradient(135deg, rgb(242 193 78 / 0.55) 0 4px, rgb(242 193 78 / 0.3) 4px 8px);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--gold) 55%, transparent) 0 4px, color-mix(in srgb, var(--gold) 30%, transparent) 4px 8px);
   border-radius: 4px;
 }
 .selected {
@@ -58,7 +58,7 @@ function setTo(event: Event) {
   right: calc(100% - var(--to));
   background: linear-gradient(90deg, #8f74e6, var(--calc));
   border-radius: 4px;
-  box-shadow: 0 0 10px rgb(183 156 255 / 0.5);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--calc) 50%, transparent);
 }
 /* 두 입력을 겹쳐 놓고 손잡이만 눌리게 해서 양쪽 손잡이 슬라이더를 만든다 */
 input {

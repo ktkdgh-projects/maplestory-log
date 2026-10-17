@@ -130,7 +130,7 @@ function commit() {
   right: 0;
   z-index: 3;
   padding: 3px 8px;
-  background: rgb(10 12 22 / 0.96);
+  background: color-mix(in srgb, var(--sunk) 96%, transparent);
   border: 1px solid var(--tip-line);
   border-radius: 6px;
   color: var(--gold);

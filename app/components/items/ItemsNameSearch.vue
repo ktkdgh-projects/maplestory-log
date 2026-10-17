@@ -105,7 +105,7 @@ onBeforeUnmount(() => clearTimeout(timer))
   display: flex;
   align-items: center;
   height: 40px;
-  background: rgb(255 255 255 / 0.04);
+  background: color-mix(in srgb, var(--tint) 4%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 999px;
   transition: border-color var(--fast) ease, background var(--fast) ease;

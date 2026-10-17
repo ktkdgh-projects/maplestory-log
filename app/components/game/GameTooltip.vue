@@ -16,7 +16,7 @@ const parts = (option: ItemOption) => [
 </script>
 
 <template>
-  <div class="tip" :style="{ '--frame': gradeColor ?? 'var(--tip-line)' }">
+  <div class="tip game-dark" :style="{ '--frame': gradeColor ?? 'var(--tip-line)' }">
     <div v-if="item.starforce" class="stars">★ {{ item.starforce }}성</div>
     <div class="name">
       {{ item.name }}<span v-if="item.scrollUpgrade" class="upgrade"> (+{{ item.scrollUpgrade }})</span>
@@ -77,10 +77,11 @@ const parts = (option: ItemOption) => [
 <style scoped>
 .tip {
   display: grid;
+  color: var(--text);
   gap: 4px;
   width: 300px;
   padding: 12px 14px;
-  background: rgb(10 12 22 / 0.96);
+  background: color-mix(in srgb, var(--sunk) 96%, transparent);
   border: 2px solid var(--frame);
   border-radius: 8px;
   box-shadow: 0 0 0 1px #000, 0 10px 30px rgb(0 0 0 / 0.5), 0 0 18px color-mix(in srgb, var(--frame) 30%, transparent);
@@ -110,7 +111,7 @@ hr {
   width: 100%;
   margin: 4px 0;
   border: 0;
-  border-top: 1px dashed #3a4366;
+  border-top: 1px dashed var(--panel-line);
 }
 .meta {
   display: flex;

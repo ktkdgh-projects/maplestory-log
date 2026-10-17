@@ -15,7 +15,7 @@ const tab = ref<typeof TABS[number]>('헥사')
       </MenuButton>
     </div>
 
-    <div class="tab-body" role="tabpanel" :aria-label="tab">
+    <div class="tab-body scroll-fade" role="tabpanel" :aria-label="tab">
       <Transition name="fade" mode="out-in">
         <CharacterHexaPanel v-if="tab === '헥사'" :cores="character.hexaCores" />
         <CharacterSymbolPanel v-else-if="tab === '심볼'" :symbols="character.symbols" />

@@ -202,7 +202,7 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
           <div class="tile" style="--tone: var(--exp)">
             <span class="tile-label">기간 경험치</span>
             <span class="tile-value">{{ formatSignedPercent(summary.totalPercent) }}</span>
-            <span class="tile-label">{{ formatSigned(summary.totalExp) }} · 레벨업 {{ summary.levelUpDays.length }}번</span>
+            <span class="tile-label">{{ formatSigned(summary.totalExp) }} · 레벨업 {{ summary.levelUpDays.length }}번 · 하루 평균 {{ summary.averagePercent.toFixed(2) }}%</span>
           </div>
           <template #info>
             <span>하루 평균 {{ summary.averagePercent.toFixed(2) }}%</span>
@@ -214,7 +214,7 @@ useHead({ title: '성장 기록 · 메이플스토리로그' })
           <div class="tile" style="--tone: var(--api)">
             <span class="tile-label">다음 레벨업 예상</span>
             <span class="tile-value">{{ summary.levelUpDate ? formatDay(summary.levelUpDate) : '-' }}</span>
-            <span class="tile-label">최근 7일 평균 기준</span>
+            <span class="tile-label">최근 7일 하루 평균 {{ summary.averageExp ? formatKoreanNumber(summary.averageExp) : '-' }} 기준</span>
           </div>
           <template #info>
             <span>남은 경험치 {{ summary.remainingPercent.toFixed(2) }}%<template v-if="summary.remainingExp !== null"> ({{ formatKoreanNumber(summary.remainingExp) }})</template></span>

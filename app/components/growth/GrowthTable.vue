@@ -74,7 +74,7 @@ th {
 }
 td {
   padding: 7px 12px;
-  border-top: 1px solid rgb(58 67 102 / 0.6);
+  border-top: 1px solid color-mix(in srgb, var(--panel-line) 60%, transparent);
   white-space: nowrap;
 }
 tbody tr {

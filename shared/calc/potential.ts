@@ -182,7 +182,11 @@ export interface PotentialPlan {
   // 천장 기준 등급 올리기 최대 횟수
   worstTier: number
   costPerTry: number | null
+  // 모의 실험에서 끝날 때까지 누른 횟수의 분포(비율). 꼬리가 길어 99% 지점까지만 나눈다
+  histogram: { bins: number[], max: number }
 }
+
+const HISTOGRAM_BINS = 24
 
 const SIMULATIONS = 20_000
 
@@ -228,6 +232,9 @@ export function planPotential(method: ResetMethod, level: number, from: number, 
   meso.sort((a, b) => a - b)
   const at = (list: number[], q: number) => list[Math.min(list.length - 1, Math.floor(list.length * q))]!
   const hasCost = method.meso
+  const maxTries = at(tries, 0.99) || 1
+  const bins = Array.from({ length: HISTOGRAM_BINS }, () => 0)
+  for (const t of tries) bins[Math.min(HISTOGRAM_BINS - 1, Math.floor((t / maxTries) * HISTOGRAM_BINS))]!++
   return {
     tierTries: tierSum / SIMULATIONS,
     optionTries: optionSum / SIMULATIONS,
@@ -237,5 +244,6 @@ export function planPotential(method: ResetMethod, level: number, from: number, 
     p90: { tries: at(tries, 0.9), meso: hasCost ? at(meso, 0.9) : null },
     worstTier: stages.reduce((n, s) => n + s.ceiling, 0),
     costPerTry: finalCost,
+    histogram: { bins: bins.map(n => n / SIMULATIONS), max: maxTries },
   }
 }

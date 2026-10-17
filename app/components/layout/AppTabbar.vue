@@ -35,7 +35,7 @@ const sundayBadge = useSundayBadge()
   display: none;
   grid-template-columns: repeat(5, 1fr);
   padding: 6px 0 calc(8px + env(safe-area-inset-bottom, 0px));
-  background: rgb(14 17 28 / 0.98);
+  background: color-mix(in srgb, var(--sunk) 98%, transparent);
   border-top: 1px solid var(--win-line);
 }
 .tab {

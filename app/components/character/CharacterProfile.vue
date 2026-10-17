@@ -64,7 +64,7 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
     </div>
     <div class="tile power" style="--tone: var(--gold)">
       <span class="tile-label">
-        전투력
+        {{ upgrade ? '가장 센 조합 전투력' : '전투력 · 지금 착용' }}
         <HoverInfo v-if="recorded" title="실제 기록" align="left">
           <span class="badge-mini record">{{ formatDay(recorded.date) }} 기록</span>
           <template #info>
@@ -84,7 +84,7 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
       <div v-if="upgrade" class="combo up">
         <p class="sentence">
           <b>▲ 장비 프리셋 {{ upgrade.equipPreset }} · 어빌리티 {{ upgrade.abilityPreset }}</b>으로 바꾸면<br>
-          지금 <em>{{ formatKoreanNumber(character.combatPower!) }}</em>보다 <strong>약 {{ gain }}% 올라요!</strong>
+          지금 착용 <em>{{ formatKoreanNumber(character.combatPower!) }}</em>보다 <strong>약 {{ gain }}% 올라요!</strong>
         </p>
       </div>
       <div v-else-if="best" class="combo">
@@ -93,7 +93,7 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
       </div>
       <div v-else class="combo muted">이 직업은 프리셋 조합을 비교할 수 없어요</div>
     </div>
-    <ExpBar :level="character.level" :rate="character.expRate" />
+    <ExpBar :level="character.level" :rate="character.expRate" :level-up-date="character.levelUpDate ?? null" />
   </GameWindow>
 </template>
 
@@ -154,9 +154,7 @@ const estimate = computed(() => formatKoreanNumber(Math.round((upgrade.value?.va
 }
 .name {
   margin: 0;
-  background: linear-gradient(90deg, #fff, var(--lamp-gold));
-  background-clip: text;
-  color: transparent;
+  color: var(--text);
   font-family: var(--f-title);
   font-size: 34px;
   font-weight: 400;

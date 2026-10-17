@@ -52,7 +52,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   align-items: center;
   width: 210px;
   height: 36px;
-  background: rgb(255 255 255 / 0.04);
+  background: color-mix(in srgb, var(--tint) 4%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 999px;
   transition: width var(--normal) var(--ease-out), border-color var(--fast) ease, background var(--fast) ease;
@@ -100,7 +100,7 @@ kbd {
   width: 34px;
   height: 34px;
   padding: 0;
-  background: rgb(255 255 255 / 0.04);
+  background: color-mix(in srgb, var(--tint) 4%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 50%;
   color: var(--sub);

@@ -33,7 +33,7 @@ const frame = computed(() => potentialGradeColor(props.grade) ?? 'var(--panel-li
   width: 100%;
   padding: 0;
   overflow: hidden;
-  background: linear-gradient(180deg, #2c3350, #1d2238);
+  background: linear-gradient(180deg, var(--slot-top), var(--slot-bot));
   border: 2px solid var(--frame);
   border-radius: 6px;
   color: var(--sub);
@@ -45,11 +45,11 @@ const frame = computed(() => potentialGradeColor(props.grade) ?? 'var(--panel-li
   filter: brightness(1.18);
 }
 .slot[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--text), 0 0 14px rgb(255 255 255 / 0.35);
+  box-shadow: 0 0 0 2px var(--text), 0 0 14px color-mix(in srgb, var(--tint) 35%, transparent);
 }
 .slot.empty {
   cursor: default;
-  background: #1a1f33;
+  background: var(--panel);
   border: 1px solid var(--panel-line);
 }
 .slot img {
@@ -74,7 +74,7 @@ const frame = computed(() => potentialGradeColor(props.grade) ?? 'var(--panel-li
   text-shadow: 0 1px 0 #000, 1px 0 0 #000;
 }
 .label {
-  color: #5d6688;
+  color: var(--faint);
   font-family: var(--f-pixel);
   font-size: 9px;
   line-height: 1;

@@ -203,7 +203,7 @@ const NOTES = [
   justify-items: start;
   gap: 4px;
   padding: 8px 14px 12px;
-  background: rgb(255 255 255 / 0.02);
+  background: color-mix(in srgb, var(--tint) 2%, transparent);
   border: 1px solid var(--panel-line);
   border-radius: 10px;
 }

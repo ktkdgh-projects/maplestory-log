@@ -1,6 +1,7 @@
 import type { ObjectId } from 'mongodb'
 import type { SnapshotPoint, SnapshotsResponse } from '#shared/types'
 import type { JobDoc, SnapshotDoc } from './mongo'
+import { summarizeGrowth, toGrowthDays } from '#shared/calc/growth'
 
 const MINUTE_MS = 60 * 1000
 const STALE_LOCK_MS = 5 * MINUTE_MS
@@ -193,6 +194,18 @@ export async function recentCombatPowers(ocid: string): Promise<{ date: string, 
     .sort({ date: -1 })
     .toArray()
   return rows.map(row => ({ date: row.date, value: row.combatPower! }))
+}
+
+// 성장 기록 페이지와 같은 계산(최근 7일 평균)으로 레벨업 예상일을 낸다
+// today: 지금 받은 캐릭터 값. 오늘 이미 레벨업했어도 지금 레벨 기준으로 남은 날을 센다
+export async function recentLevelUpDate(ocid: string, today: SnapshotPoint): Promise<string | null> {
+  const { snapshots } = await useCollections()
+  const rows = await snapshots
+    .find({ ocid, date: { $gte: addDays(today.date, -8), $lt: today.date }, empty: false }, { projection: { date: 1, level: 1, exp: 1, expRate: 1, combatPower: 1 } })
+    .sort({ date: 1 })
+    .toArray()
+  const points = rows.map(r => ({ date: r.date, level: r.level, exp: r.exp, expRate: r.expRate, combatPower: r.combatPower }))
+  return summarizeGrowth(toGrowthDays(points, today))?.levelUpDate ?? null
 }
 
 export async function countPendingJobs(ocid: string) {

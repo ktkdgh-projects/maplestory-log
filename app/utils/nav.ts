@@ -10,7 +10,8 @@ export interface NavGroup {
   key: 'character' | 'ledger' | 'enhance' | 'calc' | 'sunday'
   label: string
   items: NavItem[]
-  isNew?: boolean
+  // 이 날짜(KST)까지 NEW 배지를 단다
+  newUntil?: string
 }
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -36,7 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     key: 'enhance',
     label: '강화',
-    isNew: true,
+    newUntil: '2026-10-24',
     items: [
       { to: '/starforce', label: '스타포스', hint: '구간별 시도·파괴·메소' },
       { to: '/potential', label: '잠재능력', hint: '윗잠·에디 등급 흐름' },
@@ -46,7 +47,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     key: 'calc',
     label: '공략',
-    isNew: true,
+    newUntil: '2026-10-24',
     items: [
       { to: '/calc/starforce', label: '스타포스', hint: '목표 ★까지 드는 메소 기대값' },
       { to: '/calc/potential', label: '잠재', hint: '목표 등급·옵션까지 기대값' },

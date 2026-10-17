@@ -79,7 +79,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <GameWindow title="EQUIPMENT" accent="blue" fill>
+  <GameWindow title="장비" accent="blue" fill>
     <template #sub>장비 · PRESET {{ preset }}</template>
     <div :key="preset" class="inventory" @mouseleave="hide">
       <div class="portrait">
@@ -105,7 +105,7 @@ onBeforeUnmount(() => {
       />
     </div>
     <div class="presets" role="group" aria-label="프리셋">
-      <span>PRESETS</span>
+      <span>프리셋</span>
       <MenuButton
         v-for="no in 3"
         :key="no"
@@ -147,8 +147,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 58%, color-mix(in srgb, var(--api) 40%, transparent), transparent 60%),
-    linear-gradient(180deg, #1b2a52, #101a36);
-  border: 2px solid #3b5aa0;
+    linear-gradient(180deg, var(--stage-top), var(--stage-bot));
+  border: 2px solid var(--stage-line);
   border-radius: 8px;
   box-shadow: inset 0 0 24px color-mix(in srgb, var(--api) 25%, transparent);
 }
@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
   left: 50%;
   translate: -50% 0;
   padding: 1px 10px;
-  background: rgb(14 17 28 / 0.85);
+  background: color-mix(in srgb, var(--sunk) 85%, transparent);
   border: 1px solid var(--api);
   border-radius: 6px;
   font-family: var(--f-title);
