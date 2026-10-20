@@ -10,21 +10,23 @@ const open = computed({
 </script>
 
 <template>
-  <AppModal v-model="open" :title="current?.title ?? ''" :width="420" fit>
+  <AppModal v-model="open" :title="current?.title ?? ''" :width="400">
     <div v-if="current" class="confirm">
       <div class="target">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
+        </span>
         <span class="name">
           <b>{{ current.name }}</b>
-          <small v-if="current.detail" class="muted">{{ current.detail }}</small>
+          <small v-if="current.detail" class="muted ellipsis">{{ current.detail }}</small>
         </span>
         <b v-if="current.amount" class="amount" :class="current.amount < 0 ? 'loss' : 'gain'">{{ formatSigned(current.amount) }}</b>
       </div>
-      <p class="note">{{ current.note ?? '지우면 되돌릴 수 없어요.' }}</p>
-      <!-- 실패 안내 줄은 늘 자리를 잡아 둔다 -->
-      <p v-if="current.run" class="hint" :class="{ show: failure }" role="alert">{{ failure || ' ' }}</p>
+      <!-- 실패하면 안내 글자 자리에 이유를 보여 줘서 칸이 늘지 않는다 -->
+      <p class="note" :class="{ failed: failure }" :role="failure ? 'alert' : undefined">{{ failure || (current.note ?? '지우면 되돌릴 수 없어요.') }}</p>
       <div class="actions">
-        <button type="button" class="btn ghost compact" :disabled="busy" @click="settle(false)">취소</button>
-        <button type="button" class="btn compact danger-fill" :disabled="busy" @click="confirm">{{ busy ? '처리하는 중…' : current.action ?? '지우기' }}</button>
+        <button type="button" class="btn ghost" :disabled="busy" @click="settle(false)">취소</button>
+        <button type="button" class="btn danger-fill" :disabled="busy" @click="confirm">{{ busy ? '처리하는 중…' : current.action ?? '지우기' }}</button>
       </div>
     </div>
   </AppModal>
@@ -33,30 +35,49 @@ const open = computed({
 <style scoped>
 .confirm {
   display: grid;
-  gap: 12px;
-  min-width: min(300px, 100%);
+  gap: 14px;
+  padding: 4px 2px 2px;
 }
 .target {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--panel);
   border: 1px solid var(--panel-line);
-  border-left: 3px solid var(--loss);
-  border-radius: 8px;
+  border-radius: 10px;
+}
+.mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  background: color-mix(in srgb, var(--loss) 14%, transparent);
+  border-radius: 50%;
+  color: var(--loss);
+}
+.mark svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 .name {
   display: grid;
-  gap: 2px;
+  flex: 1;
+  gap: 3px;
   min-width: 0;
 }
 .name b {
+  font-size: 15px;
   overflow-wrap: anywhere;
 }
 .name small {
-  font-size: 12px;
+  font-size: 12.5px;
 }
 .amount {
   flex: none;
@@ -67,32 +88,25 @@ const open = computed({
 }
 .note {
   margin: 0;
+  padding: 0 2px;
   color: var(--sub);
   font-size: 13px;
+  line-height: 1.5;
 }
-.hint {
-  contain: inline-size;
-  height: 18px;
-  margin: -6px 0 0;
-  overflow: hidden;
+.note.failed {
   color: var(--loss);
-  font-size: 12.5px;
-  line-height: 18px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  opacity: 0;
-}
-.hint.show {
-  opacity: 1;
 }
 .actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+.actions .btn {
+  min-height: 40px;
 }
 .danger-fill {
   background: var(--loss);
   border-color: var(--loss);
-  color: color-mix(in srgb, var(--loss) 15%, black);
+  color: var(--on-accent);
 }
 </style>

@@ -9,6 +9,8 @@ const open = defineModel<boolean>({ required: true })
 
 const self = Symbol('modal')
 let returnFocus: HTMLElement | null = null
+// 확인 창처럼 먼저 붙어 있던 모달도 나중에 열리면 앞에 오게 한다
+const layer = ref(100)
 function onKey(event: KeyboardEvent) {
   if (event.key === 'Escape' && stack.at(-1) === self) open.value = false
 }
@@ -18,6 +20,7 @@ function lockScroll() {
 function enter() {
   if (stack.includes(self)) return
   stack.push(self)
+  layer.value = 100 + stack.length
   lockScroll()
   offset.value = { x: 0, y: 0 }
   returnFocus = document.activeElement as HTMLElement | null
@@ -75,7 +78,7 @@ const sizeStyle = computed(() => (props.fit ? { width: 'fit-content', maxWidth: 
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="open" class="backdrop" @click.self="backdropClick">
+      <div v-if="open" class="backdrop" :class="{ stacked: layer > 101 }" :style="{ zIndex: layer }" @click.self="backdropClick">
         <section ref="box" class="modal" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" :style="{ ...sizeStyle, translate: `${offset.x}px ${offset.y}px` }">
           <header class="head" title="끌어서 옮기기" @pointerdown="startDrag" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag">
             <span class="dot" aria-hidden="true" />
@@ -101,6 +104,11 @@ const sizeStyle = computed(() => (props.fit ? { width: 'fit-content', maxWidth: 
   padding: 16px;
   background: color-mix(in srgb, var(--sunk) 65%, transparent);
   backdrop-filter: blur(3px);
+}
+/* 모달 위에 뜬 모달은 막을 한 번 더 어둡게 덮지 않아 뒤 창이 보이게 둔다 */
+.backdrop.stacked {
+  background: color-mix(in srgb, var(--sunk) 30%, transparent);
+  backdrop-filter: none;
 }
 .modal {
   max-height: calc(100dvh - 32px);
