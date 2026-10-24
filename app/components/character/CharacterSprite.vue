@@ -35,7 +35,7 @@ img {
   max-width: none;
   translate: -50% 0;
   image-rendering: pixelated;
-  animation: bob 2.4s steps(4, jump-none) 2;
+  animation: bob 2s steps(4, jump-none) 1;
   transition: scale var(--fast) ease;
 }
 img.flip {
@@ -49,9 +49,9 @@ img.flip {
   height: calc(6px * var(--scale));
   translate: -50% 0;
   border-radius: 50%;
-  background: rgb(0 0 0 / 0.25);
-  filter: blur(2px);
-  animation: shadow 2.4s ease-in-out 2;
+  /* 흐림 필터 대신 가장자리가 옅어지는 색으로 그려서 움직일 때마다 다시 흐리게 계산하지 않는다 */
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.18) 55%, transparent);
+  animation: shadow 2s ease-in-out 1;
 }
 @keyframes shadow {
   50% { scale: 0.85; opacity: 0.7; }

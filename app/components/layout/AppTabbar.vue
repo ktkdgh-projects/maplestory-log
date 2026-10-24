@@ -79,7 +79,7 @@ const sundayBadge = useSundayBadge()
   box-shadow: 0 0 6px var(--gold);
 }
 .dot.new {
-  animation: blink 1.6s ease-in-out 2;
+  animation: blink 1.6s ease-in-out 1;
 }
 .flag {
   position: absolute;

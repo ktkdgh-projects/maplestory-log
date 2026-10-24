@@ -25,7 +25,7 @@ withDefaults(defineProps<{ tone?: string }>(), { tone: 'var(--gold)' })
   background: var(--bar);
   border: 2px solid var(--tip-line);
   border-radius: 10px;
-  animation: bob 2.4s ease-in-out 2;
+  animation: bob 2s ease-in-out 1;
 }
 .say {
   position: relative;

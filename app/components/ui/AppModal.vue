@@ -102,13 +102,11 @@ const sizeStyle = computed(() => (props.fit ? { width: 'fit-content', maxWidth: 
   display: grid;
   place-items: center;
   padding: 16px;
-  background: color-mix(in srgb, var(--sunk) 65%, transparent);
-  backdrop-filter: blur(3px);
+  background: color-mix(in srgb, var(--sunk) 72%, transparent);
 }
 /* 모달 위에 뜬 모달은 막을 한 번 더 어둡게 덮지 않아 뒤 창이 보이게 둔다 */
 .backdrop.stacked {
   background: color-mix(in srgb, var(--sunk) 30%, transparent);
-  backdrop-filter: none;
 }
 .modal {
   max-height: calc(100dvh - 32px);

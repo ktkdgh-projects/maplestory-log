@@ -165,7 +165,7 @@ async function logout() {
 .logo img {
   transform-origin: 50% 90%;
   transition: transform var(--normal) var(--ease-spring);
-  animation: sway 4s ease-in-out 1;
+  animation: sway 1.6s ease-in-out 1;
 }
 .logo:hover img {
   transform: rotate(-18deg) scale(1.15);
@@ -261,7 +261,7 @@ async function logout() {
   box-shadow: 0 0 8px var(--gain);
 }
 .lamp.blink {
-  animation: blink 1.6s ease-in-out 2;
+  animation: blink 1.6s ease-in-out 1;
 }
 @keyframes blink {
   50% { opacity: 0.4; }

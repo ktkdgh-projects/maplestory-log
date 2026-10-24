@@ -57,7 +57,7 @@ const width = computed(() => `${Math.min(Math.max(props.rate, 0), 100)}%`)
   position: absolute;
   inset: 0;
   background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--tint) 55%, transparent) 50%, transparent 70%);
-  animation: sweep 2.6s linear 1;
+  animation: sweep 1.4s linear 1;
 }
 @keyframes sweep {
   from { transform: translateX(-100%); }

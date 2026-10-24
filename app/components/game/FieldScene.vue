@@ -11,8 +11,8 @@ const fieldStyle = computed(() => ({
 // 떨어지는 잎마다 위치·속도·지연을 달리해서 같은 움직임이 반복돼 보이지 않게 한다
 const leafStyle = (i: number) => ({
   left: `${(i * 37) % 100}%`,
-  animationDuration: `${5 + (i % 4)}s`,
-  animationDelay: `${-(i % 3)}s`,
+  animationDuration: `${2.4 + (i % 4) * 0.3}s`,
+  animationDelay: `${-(i % 3) * 0.8}s`,
   width: `${12 + (i % 3) * 4}px`,
 })
 </script>

@@ -9,7 +9,15 @@ const rows = computed(() => props.days.map((day, i) => ({ day, i })).reverse())
 
 <template>
   <div class="table-wrap">
+    <!-- 칸 너비를 고정해 캐릭터를 바꿔도 숫자 길이에 따라 열이 움직이지 않는다 -->
     <table>
+      <colgroup>
+        <col style="width: 14%">
+        <col style="width: 16%">
+        <col style="width: 24%">
+        <col style="width: 24%">
+        <col style="width: 22%">
+      </colgroup>
       <thead>
         <tr>
           <th>날짜</th>
@@ -57,6 +65,8 @@ const rows = computed(() => props.days.map((day, i) => ({ day, i })).reverse())
 }
 table {
   width: 100%;
+  min-width: 640px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 14px;
   font-variant-numeric: tabular-nums;
@@ -73,9 +83,11 @@ th {
   text-align: left;
 }
 td {
+  overflow: hidden;
   padding: 7px 12px;
   border-top: 1px solid color-mix(in srgb, var(--panel-line) 60%, transparent);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 tbody tr {
   cursor: pointer;

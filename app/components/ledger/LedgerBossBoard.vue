@@ -323,7 +323,7 @@ function addCharacter(ocid: string) {
   text-align: center;
 }
 .empty img {
-  animation: bob 2.4s ease-in-out 2;
+  animation: bob 2s ease-in-out 1;
 }
 .hint-line {
   height: 18px;
