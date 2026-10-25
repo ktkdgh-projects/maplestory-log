@@ -215,6 +215,15 @@ export interface BossRosterDoc {
   updatedAt: Date
 }
 
+// 명단을 고친 주마다 그 주 끝 명단을 남겨, 지난 주를 그때 세팅으로 보여 준다. week가 BASE_ROSTER_WEEK면 처음 고치기 전 명단
+export interface BossRosterWeekDoc {
+  _id: ObjectId
+  userId: ObjectId
+  week: string
+  characters: BossRosterCharacter[]
+  updatedAt: Date
+}
+
 export interface BossClearDoc {
   _id: ObjectId
   userId: ObjectId

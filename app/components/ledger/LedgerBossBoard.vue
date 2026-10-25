@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { BossClear, BossPick, BossRosterCharacter, CharacterBrief } from '#shared/types'
-import { MAX_BOSS_CHARACTERS, bossOrder, bossPeriod, crystalPrice, findBoss } from '#shared/data/bosses'
+import type { BossClear, BossPick, BossRosterCharacter, CharacterBrief, LedgerSettings } from '#shared/types'
+import { MAX_BOSS_CHARACTERS, bossOrder, bossPeriod, bossPriceDate, crystalPrice, findBoss } from '#shared/data/bosses'
+import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
 import { clearMeso, lootMeso } from '#shared/calc/boss'
 
-const props = defineProps<{ week: string, roster: BossRosterCharacter[], clears: BossClear[], feeRate: number }>()
+const props = defineProps<{ week: string, roster: BossRosterCharacter[], clears: BossClear[], settings: LedgerSettings | null, editable: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const today = kstToday()
@@ -40,12 +41,22 @@ watch(() => props.roster, (value) => {
   if (!pendingOps) roster.value = [...value]
 })
 
-function periodOf(bossId: string) {
-  return findBoss(bossId)?.cycle === 'monthly' ? bossPeriod('monthly', clearDate.value) : props.week
-}
-function clearOf(ocid: string, bossId: string) {
+const isMonthly = (bossId: string) => findBoss(bossId)?.cycle === 'monthly'
+const periodOf = (bossId: string) => (isMonthly(bossId) ? bossPeriod('monthly', clearDate.value) : props.week)
+const inWeek = (date: string) => date >= props.week && date <= addDays(props.week, 6)
+const periodClear = (ocid: string, bossId: string) => {
   const period = periodOf(bossId)
   return clears.value.find(c => c.ocid === ocid && c.bossId === bossId && c.period === period)
+}
+// 월간 보스는 이 주에 잡았을 때만 이 주 칸에 체크로 보인다
+function clearOf(ocid: string, bossId: string) {
+  const clear = periodClear(ocid, bossId)
+  return clear && (!isMonthly(bossId) || inWeek(clear.date)) ? clear : undefined
+}
+// 이번 달 다른 주에 이미 잡았으면 그날. 이 주엔 다시 잡을 수 없고 결정석도 세지 않는다
+function takenOn(ocid: string, bossId: string) {
+  const clear = isMonthly(bossId) ? periodClear(ocid, bossId) : undefined
+  return clear && !inWeek(clear.date) ? clear.date : undefined
 }
 const keyOf = (ocid: string, bossId: string) => `${ocid}:${bossId}`
 const pendingClear = (c: BossRosterCharacter, pick: BossPick): BossClear => ({ bossId: pick.bossId, difficulty: pick.difficulty, party: pick.party, id: `pending-${keyOf(c.ocid, pick.bossId)}`, ocid: c.ocid, name: c.name, period: periodOf(pick.bossId), date: clearDate.value, meso: crystalPrice(pick.bossId, pick.difficulty, pick.party, clearDate.value) ?? 0, loot: [] })
@@ -91,30 +102,33 @@ function moveBy(ocid: string, delta: number, event: Event) {
 
 type Cycle = 'weekly' | 'monthly'
 // 예상 금액과 견주는 건 결정석뿐이고, 물욕템을 판 금액은 따로 센다
-const sumCrystal = (list: { boss: { cycle: Cycle }, clear?: BossClear }[], cycle: Cycle) => list.filter(b => b.boss.cycle === cycle).reduce((sum, b) => sum + b.clear!.meso, 0)
+const sumMeso = (list: BossClear[]) => list.reduce((sum, c) => sum + c.meso, 0)
 const sumPrice = (list: (BossPick & { boss: { cycle: Cycle } })[], cycle: Cycle) => list.filter(b => b.boss.cycle === cycle).reduce((sum, b) => sum + (crystalPrice(b.bossId, b.difficulty, b.party) ?? 0), 0)
 
 const rows = computed(() => ordered.value.map((character) => {
   const bosses = [...character.bosses]
     .sort((a, b) => bossOrder(a.bossId) - bossOrder(b.bossId))
-    .map(pick => ({ ...pick, boss: findBoss(pick.bossId)!, clear: clearOf(character.ocid, pick.bossId) }))
-  const done = bosses.filter(b => b.clear)
+    .map(pick => ({ ...pick, boss: findBoss(pick.bossId)!, clear: clearOf(character.ocid, pick.bossId), takenOn: takenOn(character.ocid, pick.bossId) }))
   const weekly = bosses.filter(b => b.boss.cycle === 'weekly')
-  const weeklyDone = done.filter(b => b.boss.cycle === 'weekly').length
+  const weeklyClears = weekly.flatMap(b => b.clear ?? [])
+  // 월간 결정석은 잡은 날이 이 주인 것만 센다. 주가 두 달에 걸치면 칸이 이번 달로 넘어간 지난달 기록도 센다
+  const monthlyClears = clears.value.filter(c => c.ocid === character.ocid && isMonthly(c.bossId) && inWeek(c.date) && bosses.some(b => b.bossId === c.bossId))
+  const counted = [...weeklyClears, ...monthlyClears]
   return {
     character,
     bosses,
-    weeklyDone,
+    weeklyDone: weeklyClears.length,
     weeklyTotal: weekly.length,
     // 월간 보스는 매주 잡는 게 아니라 주간 세팅을 다 잡았는지만 본다
-    complete: weekly.length > 0 && weeklyDone === weekly.length,
-    crystal: done.reduce((sum, b) => sum + b.clear!.meso, 0),
-    loot: done.reduce((sum, b) => sum + lootMeso(b.clear!), 0),
+    complete: weekly.length > 0 && weeklyClears.length === weekly.length,
+    crystal: sumMeso(counted),
+    loot: counted.reduce((sum, c) => sum + lootMeso(c), 0),
     // 주간은 매주, 월간은 한 달에 한 번이라 합계를 따로 낸다
-    weeklyEarned: sumCrystal(done, 'weekly'),
-    monthlyEarned: sumCrystal(done, 'monthly'),
+    weeklyEarned: sumMeso(weeklyClears),
+    monthlyEarned: sumMeso(monthlyClears),
     weeklyExpected: sumPrice(bosses, 'weekly'),
-    monthlyExpected: sumPrice(bosses, 'monthly'),
+    monthlyExpected: sumPrice(bosses.filter(b => !b.takenOn), 'monthly'),
+    monthly: bosses.filter(b => b.boss.cycle === 'monthly'),
   }
 }))
 const sumRows = (key: 'weeklyEarned' | 'weeklyExpected' | 'monthlyEarned' | 'monthlyExpected' | 'loot') => rows.value.reduce((s, r) => s + r[key], 0)
@@ -123,6 +137,8 @@ const totals = computed(() => ({
   weeklyExpected: sumRows('weeklyExpected'),
   monthlyEarned: sumRows('monthlyEarned'),
   monthlyExpected: sumRows('monthlyExpected'),
+  // 세팅한 월간 보스를 이번 달에 전부 잡았는지(이 주든 다른 주든)
+  monthlyDone: rows.value.some(r => r.monthly.length) && rows.value.every(r => r.monthly.every(b => b.clear || b.takenOn)),
   loot: sumRows('loot'),
   complete: rows.value.length > 0 && rows.value.every(r => r.complete),
   completeCount: rows.value.filter(r => r.complete).length,
@@ -163,7 +179,7 @@ function openLoot(clear: BossClear) {
 
 async function toggle(character: BossRosterCharacter, pick: BossPick) {
   const key = keyOf(character.ocid, pick.bossId)
-  if (inflight.value.has(key)) return
+  if (inflight.value.has(key) || takenOn(character.ocid, pick.bossId)) return
   failure.value = ''
   const clear = clearOf(character.ocid, pick.bossId)
   if (clear) {
@@ -181,6 +197,10 @@ async function toggle(character: BossRosterCharacter, pick: BossPick) {
 }
 
 const openOcid = ref<string | null>(null)
+// 지난 주로 넘어가면 열어 둔 세팅을 닫는다(닫히면서 고친 게 이번 주 명단으로 저장된다)
+watch(() => props.editable, (value) => {
+  if (!value) openOcid.value = null
+})
 const toggleSetup = (ocid: string) => {
   openOcid.value = openOcid.value === ocid ? null : ocid
 }
@@ -226,17 +246,26 @@ function addCharacter(ocid: string) {
 
 <template>
   <div class="board">
-    <LedgerBossTotals :week="week" :clear-date="clearDate" :characters="roster.length" :totals="totals" @clear-all="clearAll(roster)" />
+    <LedgerWallet :settings="settings" @changed="emit('changed')">
+      <SourceBadge type="calc" /> 결정석 {{ formatDay(bossPriceDate(clearDate)) }} 기준
+      <LedgerBossSum :week="week" :sum="totals.weeklyEarned + totals.monthlyEarned + totals.loot" />
+    </LedgerWallet>
+    <slot />
+    <LedgerBossTotals :characters="roster.length" :totals="totals" @clear-all="clearAll(roster)" />
     <p class="hint-line" :class="{ show: failure }" role="alert">{{ failure || ' ' }}</p>
 
     <div v-if="!roster.length" class="empty">
       <img src="/favicon.svg" alt="" width="44" height="44" class="deco">
-      <p class="muted">주간 보스를 도는 캐릭터를 추가하고, 캐릭터를 눌러 보스를 골라 주세요.</p>
-      <button type="button" class="btn" @click="openPicker">+ 캐릭터 추가</button>
+      <p class="muted">{{ editable ? '주간 보스를 도는 캐릭터를 추가하고, 캐릭터를 눌러 보스를 골라 주세요.' : '이 주에는 보스 세팅도 잡은 기록도 없어요.' }}</p>
+      <button type="button" class="btn" :class="{ off: !editable }" :tabindex="editable ? 0 : -1" @click="openPicker">+ 캐릭터 추가</button>
     </div>
 
     <ul v-else class="rows stagger">
-      <li v-if="roster.length < MAX_BOSS_CHARACTERS" class="add-row">
+      <!-- 같은 높이로 바꿔 끼워 주를 넘겨도 아래 줄이 움직이지 않는다 -->
+      <li v-if="!editable" class="add-row">
+        <p class="past">지난 주는 그 주 세팅과 잡은 기록대로 보여요. 세팅은 이번 주에서 바꿀 수 있어요.</p>
+      </li>
+      <li v-else-if="roster.length < MAX_BOSS_CHARACTERS" class="add-row">
         <button type="button" class="add" @click="openPicker">+ 캐릭터 추가 ({{ roster.length }}/{{ MAX_BOSS_CHARACTERS }})</button>
       </li>
       <LedgerBossRow
@@ -244,6 +273,7 @@ function addCharacter(ocid: string) {
         :key="r.character.ocid"
         :row="r"
         :characters="roster.length"
+        :editable="editable"
         :first="order.indexOf(r.character.ocid) === 0"
         :last="order.indexOf(r.character.ocid) === order.length - 1"
         :open="openOcid === r.character.ocid"
@@ -266,7 +296,7 @@ function addCharacter(ocid: string) {
         @close="openOcid = null"
       />
     </ul>
-    <LedgerLootModal v-model="lootOpen" :clear="lootClear" :fee-rate="feeRate" @saved="emit('changed')" />
+    <LedgerLootModal v-model="lootOpen" :clear="lootClear" :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" @saved="emit('changed')" />
     <AppModal v-model="pickerOpen" title="보스 도는 캐릭터 추가">
       <p v-if="!candidates" class="muted">캐릭터 목록을 불러오는 중이에요…</p>
       <CharacterPicker v-else :characters="candidates.filter(c => !roster.some(r => r.ocid === c.ocid))" :busy="false" @pick="addCharacter" />
@@ -312,6 +342,17 @@ function addCharacter(ocid: string) {
   border-color: var(--gold);
   color: var(--gold);
 }
+.past {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  margin: 0;
+  border: 1px dashed var(--panel-line);
+  border-radius: 10px;
+  color: var(--sub);
+  font-size: 13px;
+  text-align: center;
+}
 .empty {
   display: grid;
   justify-items: center;
@@ -324,6 +365,9 @@ function addCharacter(ocid: string) {
 }
 .empty img {
   animation: bob 2s ease-in-out 1;
+}
+.off {
+  visibility: hidden;
 }
 .hint-line {
   height: 18px;

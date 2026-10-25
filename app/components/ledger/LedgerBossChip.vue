@@ -2,18 +2,19 @@
 import type { BossClear, BossPick } from '#shared/types'
 import { crystalPrice, type BossDifficulty } from '#shared/data/bosses'
 
-defineProps<{ pick: BossPick & { boss: { cycle: 'weekly' | 'monthly' }, clear?: BossClear }, busy: boolean }>()
+defineProps<{ pick: BossPick & { boss: { cycle: 'weekly' | 'monthly' }, clear?: BossClear, takenOn?: string }, busy: boolean }>()
 const emit = defineEmits<{ toggle: [], loot: [clear: BossClear] }>()
 </script>
 
 <template>
-  <div class="chip" :class="{ done: pick.clear }" :style="{ '--diff': DIFFICULTY_COLORS[pick.difficulty as BossDifficulty] }">
+  <div class="chip" :class="{ done: pick.clear, taken: pick.takenOn }" :style="{ '--diff': DIFFICULTY_COLORS[pick.difficulty as BossDifficulty] }">
     <button
       type="button"
       class="toggle"
       :aria-pressed="!!pick.clear"
       :aria-busy="busy"
-      :title="`${bossLabel(pick.bossId, pick.difficulty)} · ${pick.party}인 · ${formatKoreanNumber(crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0)}`"
+      :disabled="!!pick.takenOn"
+      :title="pick.takenOn ? `이번 달은 ${formatDay(pick.takenOn)}에 잡았어요 · 그 주에서 풀 수 있어요` : `${bossLabel(pick.bossId, pick.difficulty)} · ${pick.party}인 · ${formatKoreanNumber(crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0)}`"
       @click="emit('toggle')"
     >
       <span class="mark">
@@ -21,7 +22,8 @@ const emit = defineEmits<{ toggle: [], loot: [clear: BossClear] }>()
         <span class="check" aria-hidden="true">{{ pick.clear ? '✓' : '' }}</span>
       </span>
       <span class="name">{{ bossLabel(pick.bossId, pick.difficulty) }}</span>
-      <small class="price">{{ formatShortNumber(crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0) }}<template v-if="pick.party > 1"> · {{ pick.party }}인</template><template v-if="pick.boss.cycle === 'monthly'"> · 월간</template></small>
+      <small v-if="pick.takenOn" class="price">{{ formatDay(pick.takenOn) }} 잡음 · 월간</small>
+      <small v-else class="price">{{ formatShortNumber(crystalPrice(pick.bossId, pick.difficulty, pick.party) ?? 0) }}<template v-if="pick.party > 1"> · {{ pick.party }}인</template><template v-if="pick.boss.cycle === 'monthly'"> · 월간</template></small>
     </button>
     <!-- 안 잡은 칸도 자리를 비워 두어야 체크할 때 칸 너비가 바뀌지 않는다 -->
     <button
@@ -85,6 +87,17 @@ const emit = defineEmits<{ toggle: [], loot: [clear: BossClear] }>()
 }
 .toggle[aria-busy="true"] {
   cursor: progress;
+}
+/* 이번 달 다른 주에 잡은 월간 보스는 이 주엔 누를 수 없다 */
+.chip.taken {
+  border-style: dashed;
+  border-left-style: solid;
+}
+.chip.taken:hover {
+  transform: none;
+}
+.toggle:disabled {
+  cursor: default;
 }
 .loot {
   padding: 0 8px;

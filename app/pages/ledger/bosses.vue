@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { BossBoardResponse, LedgerSettings } from '#shared/types'
-import { bossPeriod, bossPriceDate } from '#shared/data/bosses'
-import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
+import { bossPeriod } from '#shared/data/bosses'
 
 const { me } = await useMe()
 const route = useRoute()
@@ -33,11 +32,9 @@ useHead({ title: '보스 수입 · 메이플스토리로그' })
       </LedgerPager>
     </template>
 
-    <LedgerWallet :settings="settings ?? null" @changed="refreshAll">
-      <SourceBadge type="calc" /> 결정석 {{ formatDay(bossPriceDate(today)) }} 기준
-    </LedgerWallet>
-    <p class="load-error" :class="{ show: error }" role="alert">{{ error ? errorMessage(error) : ' ' }}</p>
-    <LedgerBossBoard :fee-rate="settings?.feeRate ?? DEFAULT_AUCTION_FEE" :week="week" :roster="board?.roster ?? []" :clears="board?.clears ?? []" @changed="refreshAll" />
+    <LedgerBossBoard :settings="settings ?? null" :week="week" :editable="board?.editable ?? true" :roster="board?.roster ?? []" :clears="board?.clears ?? []" @changed="refreshAll">
+      <p class="load-error" :class="{ show: error }" role="alert">{{ error ? errorMessage(error) : ' ' }}</p>
+    </LedgerBossBoard>
   </GameWindow>
 </template>
 

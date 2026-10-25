@@ -1,7 +1,7 @@
 import { ObjectId, type Collection, type Filter } from 'mongodb'
 import type { BossClear, BossLoot, BossPick, BossRosterCharacter, DropSale, DropSaleInput, HuntEntry, HuntInput, MesoEntry, MesoEntryInput } from '#shared/types'
 import { findMesoEntryType } from '#shared/data/mesoEntries'
-import { MAX_BOSS_CHARACTERS, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, findBoss } from '#shared/data/bosses'
+import { MAX_BOSS_CHARACTERS, MAX_PARTY, WEEKLY_BOSS_LIMIT, bossOrder, bossPeriod, findBoss } from '#shared/data/bosses'
 import { dropSaleNet, effectiveFee, mesoEntryDelta } from '#shared/calc/meso'
 import { clearMeso } from '#shared/calc/boss'
 import { DEFAULT_AUCTION_FEE } from '#shared/data/auction'
@@ -226,4 +226,25 @@ export async function parseRoster(userId: ObjectId, value: unknown): Promise<Bos
     roster.push({ ...character, imageUrl, bosses: parsePicks(raw?.bosses) })
   }
   return roster
+}
+
+// 처음 명단을 고치기 전 명단을 남겨 두는 자리. 어느 주보다 앞이라 그보다 오래된 주는 이 명단으로 본다
+const BASE_ROSTER_WEEK = '0000-01-01'
+
+// 이번 주 명단을 고치면 그 주 명단으로도 남긴다. 처음 고칠 땐 고치기 전 명단을 기준 명단으로 함께 남긴다
+export async function saveRosterWeek(userId: ObjectId, before: BossRosterCharacter[] | undefined, characters: BossRosterCharacter[]) {
+  const { bossRosterWeeks } = await useCollections()
+  const now = new Date()
+  if (before) await bossRosterWeeks.updateOne({ userId, week: BASE_ROSTER_WEEK }, { $setOnInsert: { _id: new ObjectId(), characters: before, updatedAt: now } }, { upsert: true })
+  await bossRosterWeeks.updateOne({ userId, week: bossPeriod('weekly', kstToday()) }, { $set: { characters, updatedAt: now }, $setOnInsert: { _id: new ObjectId() } }, { upsert: true })
+}
+
+// 지난 주는 그 주가 끝날 때의 명단으로 보여 주고 체크한다. 그 뒤로 고친 적 없으면 지금 명단과 같다
+export async function rosterForWeek(userId: ObjectId, week: string): Promise<{ characters: BossRosterCharacter[], editable: boolean }> {
+  const { bossRosters, bossRosterWeeks } = await useCollections()
+  const editable = week >= bossPeriod('weekly', kstToday())
+  const past = editable ? null : await bossRosterWeeks.findOne({ userId, week: { $lte: week } }, { sort: { week: -1 } })
+  if (past) return { characters: past.characters, editable }
+  const roster = await bossRosters.findOne({ userId })
+  return { characters: roster?.characters ?? [], editable }
 }

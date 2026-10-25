@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
   const characters = await parseRoster(user._id, body?.characters)
 
   const { bossRosters } = await useCollections()
-  await bossRosters.updateOne({ userId: user._id }, { $set: { characters, updatedAt: new Date() } }, { upsert: true })
+  const before = await bossRosters.findOneAndUpdate({ userId: user._id }, { $set: { characters, updatedAt: new Date() } }, { upsert: true, returnDocument: 'before' })
+  await saveRosterWeek(user._id, before?.characters, characters)
   return characters
 })

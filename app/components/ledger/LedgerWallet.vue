@@ -99,6 +99,7 @@ const balance = computed(() => props.settings?.balance ?? null)
 }
 .sources {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   color: var(--sub);

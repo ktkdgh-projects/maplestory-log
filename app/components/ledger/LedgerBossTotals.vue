@@ -1,27 +1,10 @@
 <script setup lang="ts">
-import { bossPeriod } from '#shared/data/bosses'
-
 const props = defineProps<{
-  week: string
-  clearDate: string
   characters: number
-  totals: { weeklyEarned: number, weeklyExpected: number, monthlyEarned: number, monthlyExpected: number, loot: number, complete: boolean, completeCount: number }
+  totals: { weeklyEarned: number, weeklyExpected: number, monthlyEarned: number, monthlyExpected: number, monthlyDone: boolean, loot: number, complete: boolean, completeCount: number }
 }>()
 const emit = defineEmits<{ clearAll: [] }>()
 
-// 이번 주를 볼 때만 다음 목요일 0시(KST) 초기화까지 남은 시간을 보여 준다. 화면에 붙은 뒤에만 재서 서버 렌더와 어긋나지 않게 한다
-const now = ref<number | null>(null)
-let clock: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
-  now.value = Date.now()
-  clock = setInterval(() => (now.value = Date.now()), 60_000)
-})
-onBeforeUnmount(() => clearInterval(clock))
-const resetLeft = computed(() => {
-  if (now.value === null || props.week !== bossPeriod('weekly', kstToday())) return null
-  const hours = (kstDayStart(addDays(props.week, 7)).getTime() - now.value) / 3_600_000
-  return hours >= 24 ? `${Math.floor(hours / 24)}일 ${Math.floor(hours % 24)}시간` : `${Math.max(0, Math.floor(hours))}시간 ${Math.max(0, Math.floor((hours % 1) * 60))}분`
-})
 const progress = computed(() => (props.totals.weeklyExpected ? Math.min(100, (props.totals.weeklyEarned / props.totals.weeklyExpected) * 100) : 0))
 </script>
 
@@ -29,15 +12,15 @@ const progress = computed(() => (props.totals.weeklyExpected ? Math.min(100, (pr
   <div class="totals">
     <span>이번 주 주간 결정석 <b class="earned">{{ formatKoreanNumber(totals.weeklyEarned) }}</b></span>
     <span class="muted">/ 다 잡으면 {{ formatKoreanNumber(totals.weeklyExpected) }}</span>
-    <span class="monthly-tag" :class="{ off: !totals.monthlyExpected }" title="월간 보스는 한 달에 한 번이라 주간과 따로 세요">
-      {{ Number(clearDate.slice(5, 7)) }}월 월간 <b>{{ formatKoreanNumber(totals.monthlyEarned) }}</b> / {{ formatKoreanNumber(totals.monthlyExpected) }}
+    <span class="monthly-tag" :class="{ off: !totals.monthlyExpected && !totals.monthlyEarned && !totals.monthlyDone }" title="월간 보스는 한 달에 한 번이라 잡은 주에만 따로 세요">
+      <template v-if="!totals.monthlyEarned && totals.monthlyDone">이번 달 월간 다 잡았어요 ✓</template>
+      <template v-else>이번 주 월간 <b>{{ formatKoreanNumber(totals.monthlyEarned) }}</b> / {{ formatKoreanNumber(totals.monthlyExpected) }}</template>
     </span>
     <span class="loot-tag" :class="{ off: !totals.loot }" title="물욕템을 경매장에 팔고 받은 메소(수수료 뗀 값)">물욕 판매 <b>{{ formatKoreanNumber(totals.loot) }}</b></span>
-    <span class="reset-tag" :class="{ off: !resetLeft }">초기화까지 <b>{{ resetLeft ?? '-' }}</b></span>
     <span v-if="characters" class="progress-tag" :class="{ all: totals.complete }">
       {{ totals.complete ? '이번 주 전부 잡았어요 ✓' : `다 잡은 캐릭터 ${totals.completeCount}/${characters}` }}
     </span>
-    <!-- 다 잡아도 자리는 남겨 옆 글자가 밀리지 않게 한다 -->
+    <!-- 다 잡으면 넓은 화면에선 버튼을 빼 완료 표시를 오른쪽 끝에 붙이고, 버튼이 한 줄을 차지하는 좁은 화면에선 자리를 남긴다 -->
     <button v-if="characters > 1" type="button" class="btn compact all-all" :class="{ off: totals.complete }" :tabindex="totals.complete ? -1 : 0" @click="emit('clearAll')">모든 캐릭터 전부 잡음</button>
     <div class="bar"><span :style="{ width: `${progress}%` }" /></div>
   </div>
@@ -95,13 +78,6 @@ const progress = computed(() => (props.totals.weeklyExpected ? Math.min(100, (pr
   background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 70%, var(--loss)), var(--gold));
   transition: width var(--normal) var(--ease-out);
 }
-.reset-tag {
-  color: var(--sub);
-  font-size: 13px;
-}
-.reset-tag b {
-  color: var(--text);
-}
 .progress-tag {
   margin-left: auto;
   padding: 2px 10px;
@@ -118,6 +94,9 @@ const progress = computed(() => (props.totals.weeklyExpected ? Math.min(100, (pr
 .off {
   visibility: hidden;
 }
+.all-all.off {
+  display: none;
+}
 @media (max-width: 700px) {
   .totals {
     font-size: 14px;
@@ -127,6 +106,9 @@ const progress = computed(() => (props.totals.weeklyExpected ? Math.min(100, (pr
   }
   .progress-tag {
     margin-left: 0;
+  }
+  .all-all.off {
+    display: inline-flex;
   }
   .all-all {
     width: 100%;

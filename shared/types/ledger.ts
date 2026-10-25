@@ -188,6 +188,8 @@ export interface LedgerResponse {
 
 export interface BossBoardResponse {
   week: string
+  // 이번 주만 명단·세팅을 고칠 수 있다. 지난 주는 그 주 세팅으로 보여 준다
+  editable: boolean
   roster: BossRosterCharacter[]
   clears: BossClear[]
 }

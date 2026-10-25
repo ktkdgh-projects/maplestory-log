@@ -9,9 +9,10 @@ export default defineEventHandler(async (event) => {
   const date = parseDate(body?.date)
   const period = bossPeriod('weekly', date)
 
-  const { bossRosters, bossClears } = await useCollections()
-  const roster = await bossRosters.findOne({ userId: user._id })
-  const characters = (roster?.characters ?? []).filter(c => body?.ocid === undefined || c.ocid === body.ocid)
+  const { bossClears } = await useCollections()
+  // 지난 주를 체크하면 그 주 세팅대로 잡는다
+  const roster = await rosterForWeek(user._id, period)
+  const characters = roster.characters.filter(c => body?.ocid === undefined || c.ocid === body.ocid)
   if (!characters.length) throw createError({ statusCode: 400, message: '보스 세팅에 없는 캐릭터예요.' })
 
   const now = new Date()

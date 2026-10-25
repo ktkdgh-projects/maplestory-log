@@ -5,7 +5,7 @@ import { WEEKLY_BOSS_LIMIT } from '#shared/data/bosses'
 defineProps<{
   row: {
     character: BossRosterCharacter
-    bosses: (BossPick & { boss: { cycle: 'weekly' | 'monthly' }, clear?: BossClear })[]
+    bosses: (BossPick & { boss: { cycle: 'weekly' | 'monthly' }, clear?: BossClear, takenOn?: string })[]
     weeklyDone: number
     weeklyTotal: number
     complete: boolean
@@ -13,6 +13,8 @@ defineProps<{
     loot: number
   }
   characters: number
+  // 지난 주는 그 주 세팅을 보여 주기만 하고 명단·세팅은 못 고친다
+  editable: boolean
   first: boolean
   last: boolean
   open: boolean
@@ -50,7 +52,9 @@ const emit = defineEmits<{
         v-if="characters > 1"
         type="button"
         class="grip"
-        draggable="true"
+        :class="{ off: !editable }"
+        :draggable="editable"
+        :tabindex="editable ? 0 : -1"
         title="끌어서 순서 바꾸기 · 위아래 화살표로도 옮겨요"
         :aria-label="`${row.character.name} 순서 바꾸기 (위아래 화살표)`"
         @dragstart="emit('dragStart', $event)"
@@ -59,7 +63,7 @@ const emit = defineEmits<{
         @keydown.down.prevent="emit('move', 1, $event)"
       >⠿</button>
       <!-- 터치 화면은 끌기가 안 되므로 위아래 버튼으로 옮긴다 -->
-      <span v-if="characters > 1" class="nudge">
+      <span v-if="characters > 1" class="nudge" :class="{ off: !editable }">
         <button type="button" :aria-label="`${row.character.name} 위로`" :disabled="first" @click="emit('move', -1, $event)">▲</button>
         <button type="button" :aria-label="`${row.character.name} 아래로`" :disabled="last" @click="emit('move', 1, $event)">▼</button>
       </span>
@@ -67,13 +71,14 @@ const emit = defineEmits<{
         type="button"
         class="who-main"
         :aria-expanded="open"
-        :title="`${row.character.name}의 보스 세팅 ${open ? '접기' : '열기'}`"
+        :disabled="!editable"
+        :title="editable ? `${row.character.name}의 보스 세팅 ${open ? '접기' : '열기'}` : '지난 주 세팅이에요 · 세팅은 이번 주에서 바꿔요'"
         @click="emit('toggleSetup')"
       >
         <CharacterThumb v-if="row.character.imageUrl" :src="row.character.imageUrl" :height="56" crop="head" class="face" />
         <span class="who-text">
-          <b class="ellipsis">{{ row.character.name }} <span class="caret" aria-hidden="true">▾</span></b>
-          <small class="ellipsis">{{ row.character.job }} · LV.{{ row.character.level }}</small>
+          <b class="ellipsis">{{ row.character.name }} <span class="caret" :class="{ off: !editable }" aria-hidden="true">▾</span></b>
+          <small class="ellipsis">{{ row.character.level ? `${row.character.job} · LV.${row.character.level}` : '보스 표에서 뺀 캐릭터' }}</small>
           <small><span :class="{ full: row.weeklyDone >= WEEKLY_BOSS_LIMIT }">{{ row.weeklyDone }}/{{ row.weeklyTotal }}</span> 잡음</small>
           <small>결정석 {{ formatShortNumber(row.crystal) }}</small>
           <small class="gold" :class="{ off: !row.loot }">물욕 {{ formatShortNumber(row.loot) }}</small>
@@ -82,7 +87,7 @@ const emit = defineEmits<{
       </button>
       <!-- 잡음·취소를 캐릭터 칸에 세로로 쌓아 보스 칸 너비를 줄이지 않는다 -->
       <div class="acts">
-        <button type="button" class="out-btn" :title="`${row.character.name}을(를) 보스 표에서 빼기`" @click="emit('remove')">빼기</button>
+        <button type="button" class="out-btn" :class="{ off: !editable }" :tabindex="editable ? 0 : -1" :title="`${row.character.name}을(를) 보스 표에서 빼기`" @click="emit('remove')">빼기</button>
         <!-- 세 칸 모두 늘 자리를 잡아 두고, 쓸 수 없을 땐 숨기기만 한다 -->
         <span v-if="row.weeklyTotal && row.complete" class="done-stamp">다 잡음</span>
         <button v-else type="button" class="all-btn" :class="{ off: !row.weeklyTotal }" :tabindex="row.weeklyTotal ? 0 : -1" :title="`${row.character.name}의 남은 주간 보스 ${row.weeklyTotal - row.weeklyDone}개를 한 번에 체크`" @click="emit('clearAll')">
@@ -109,7 +114,7 @@ const emit = defineEmits<{
         @toggle="emit('toggle', b)"
         @loot="emit('loot', $event)"
       />
-      <button v-if="!row.bosses.length && !open" type="button" class="hint" @click="emit('toggleSetup')">보스를 아직 안 골랐어요 · 눌러서 고르기</button>
+      <button v-if="!row.bosses.length && !open && editable" type="button" class="hint" @click="emit('toggleSetup')">보스를 아직 안 골랐어요 · 눌러서 고르기</button>
     </div>
     <LedgerBossSetup
       v-if="open"
@@ -179,7 +184,10 @@ const emit = defineEmits<{
   cursor: pointer;
   transition: background var(--fast) ease;
 }
-.who-main:hover,
+.who-main:disabled {
+  cursor: default;
+}
+.who-main:hover:not(:disabled),
 .row.open .who-main {
   background: color-mix(in srgb, var(--gold) 8%, transparent);
 }
@@ -189,7 +197,7 @@ const emit = defineEmits<{
   font-size: 12px;
   transition: transform var(--fast) var(--ease-out), color var(--fast) ease;
 }
-.who-main:hover .caret {
+.who-main:hover:not(:disabled) .caret {
   color: var(--gold);
 }
 .row.open .caret {

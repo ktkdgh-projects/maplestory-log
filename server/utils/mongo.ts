@@ -1,6 +1,6 @@
 import { MongoClient, type Db } from 'mongodb'
 import { ENHANCE_HISTORY_DAYS } from '#shared/data/enhance'
-import type { UserDoc, SessionDoc, CharacterDoc, UserCharacterDoc, SnapshotDoc, MemoDoc, ItemSheetDoc, ItemRowDoc, LegacyItemLogDoc, EnhanceEventDoc, HistorySyncDoc, AppSettingsDoc, GuideSettingsDoc, LedgerSettingsDoc, HuntDoc, DropSaleDoc, MesoEntryDoc, BossRosterDoc, BossClearDoc, JobDoc, JobLogDoc, ItemIconDoc, CacheDoc, RateLimitDoc, SundayDoc } from './mongoDocs'
+import type { UserDoc, SessionDoc, CharacterDoc, UserCharacterDoc, SnapshotDoc, MemoDoc, ItemSheetDoc, ItemRowDoc, LegacyItemLogDoc, EnhanceEventDoc, HistorySyncDoc, AppSettingsDoc, GuideSettingsDoc, LedgerSettingsDoc, HuntDoc, DropSaleDoc, MesoEntryDoc, BossRosterDoc, BossRosterWeekDoc, BossClearDoc, JobDoc, JobLogDoc, ItemIconDoc, CacheDoc, RateLimitDoc, SundayDoc } from './mongoDocs'
 
 export type * from './mongoDocs'
 
@@ -87,6 +87,9 @@ async function ensureIndexes(db: Db) {
     db.collection('bossRosters').createIndexes([
       { key: { userId: 1 }, unique: true },
     ]),
+    db.collection('bossRosterWeeks').createIndexes([
+      { key: { userId: 1, week: -1 }, unique: true },
+    ]),
     db.collection('bossClears').createIndexes([
       { key: { userId: 1, ocid: 1, period: 1, bossId: 1 }, unique: true },
       { key: { userId: 1, date: 1 } },
@@ -133,6 +136,7 @@ export async function useCollections() {
     dropSales: db.collection<DropSaleDoc>('dropSales'),
     mesoEntries: db.collection<MesoEntryDoc>('mesoEntries'),
     bossRosters: db.collection<BossRosterDoc>('bossRosters'),
+    bossRosterWeeks: db.collection<BossRosterWeekDoc>('bossRosterWeeks'),
     bossClears: db.collection<BossClearDoc>('bossClears'),
     itemIcons: db.collection<ItemIconDoc>('itemIcons'),
     cache: db.collection<CacheDoc>('cache'),
