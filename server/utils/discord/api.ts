@@ -1,8 +1,8 @@
 const DISCORD_API = 'https://discord.com/api/v10'
 
 async function discordApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const { discordBotToken, discordApiBase } = useRuntimeConfig()
-  const res = await fetch((discordApiBase || DISCORD_API) + path, { ...init, headers: { 'Authorization': `Bot ${discordBotToken}`, 'Content-Type': 'application/json' } })
+  const { discordBotToken } = useRuntimeConfig()
+  const res = await fetch(DISCORD_API + path, { ...init, headers: { 'Authorization': `Bot ${discordBotToken}`, 'Content-Type': 'application/json' } })
   if (!res.ok) throw new Error(`discord ${res.status} ${path}`)
   return (res.status === 204 ? undefined : await res.json()) as T
 }

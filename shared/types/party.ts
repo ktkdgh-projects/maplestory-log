@@ -2,11 +2,14 @@ export type PartyWeekStep = 'announce' | 'remindSubmit' | 'startVote' | 'askConf
 // 시간 모으기 → 투표 → 투표 마감(파티장 확정 기다림) → 확정
 export type PartyWeekPhase = 'collect' | 'vote' | 'decide' | 'confirmed'
 
-// 파티장 화면에서 누르는 동작: 단계를 지금 돌리기, 보스 시간 확정
+// 파티장 화면에서 누르는 동작: 단계를 지금 돌리기, 보스 시간 확정, 이번 주만 다른 일정으로 다시 시작
 export interface PartyLeadAction {
-  action: 'run' | 'pick'
+  action: 'run' | 'pick' | 'custom'
   step?: PartyWeekStep
   slot?: number
+  // custom: 시간 적기 마감 시각(ISO)과 받을 첫 요일(목=0)
+  deadline?: string
+  fromDay?: number
 }
 
 export interface PartyLeadResponse {
@@ -21,6 +24,8 @@ export interface PartyLeadResponse {
   confirmed: { slot: number, label: string } | null
   steps: { key: PartyWeekStep, label: string, at: string | null, done: boolean }[]
   changeOpen: boolean
+  // 이번 주만 다르게 잡은 일정이면 받는 첫 요일(목=0), 아니면 null
+  customFromDay: number | null
 }
 
 export interface PartySplitInfo {
@@ -42,6 +47,8 @@ export interface PartySplitRequest {
 
 export interface PartyTimeResponse {
   week: string
+  // 이 요일(목=0)부터만 적을 수 있다
+  fromDay: number
   partyName: string
   slots: number[]
   saved: boolean

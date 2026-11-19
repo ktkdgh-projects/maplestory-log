@@ -2,7 +2,7 @@ import type { Db, ObjectId } from 'mongodb'
 import type { PartyWeekPhase, PartyWeekStep } from '#shared/types'
 import { getMongoClient } from '../mongo'
 
-// 레다봇 데이터는 메이플로그 DB와 섞이지 않게 같은 클러스터의 다른 데이터베이스에 둔다. 테스트 봇은 이름을 바꿔 따로 쓴다
+// 레다봇 데이터는 메이플로그 DB와 섞이지 않게 같은 클러스터의 다른 데이터베이스에 둔다
 const BOT_DB_NAME = 'leda'
 
 export interface PartyMember {
@@ -57,6 +57,8 @@ export interface WeekDoc {
   voteMessageId: string | null
   confirmed: number | null
   done: Partial<Record<WeekStep, Date>>
+  // 그 주만 다르게 잡은 일정: 단계 시각을 바꾸고, fromDay(목=0)부터의 요일만 받는다
+  custom: { steps: Partial<Record<WeekStep, Date>>, fromDay: number } | null
   change: WeekChange | null
   updatedAt: Date
 }
@@ -100,7 +102,7 @@ async function ensureIndexes(db: Db) {
 }
 
 export async function useBotCollections() {
-  const db = (await getMongoClient()).db(useRuntimeConfig().discordDbName || BOT_DB_NAME)
+  const db = (await getMongoClient()).db(BOT_DB_NAME)
   globalForBot.__botIndexes ??= ensureIndexes(db).catch((error) => {
     globalForBot.__botIndexes = undefined
     console.error('[leda] 인덱스 확인 실패', String(error?.message ?? error))

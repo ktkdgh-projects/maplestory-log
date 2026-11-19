@@ -45,7 +45,7 @@ export function botSiteUrl(event?: H3Event): string {
 export const botPageUrl = (page: 'time' | 'lead' | 'split', partyId: ObjectId, event?: H3Event) => `${botSiteUrl(event)}/party/${page}?p=${partyId.toHexString()}`
 
 // 화면과 API를 부른 사람의 디스코드 id. 로그인하지 않았으면 401
-export function requireBotUser(event: H3Event): string {
+function requireBotUser(event: H3Event): string {
   const session = unseal<{ userId: string }>('session', getCookie(event, SESSION_COOKIE))
   if (!session) throw createError({ statusCode: 401, message: '디스코드 로그인이 필요해요.' })
   if (session.exp - Date.now() < SESSION_MS - SESSION_REFRESH_MS) setCookie(event, SESSION_COOKIE, seal('session', { userId: session.userId }, SESSION_MS), cookieOptions(SESSION_MS))
@@ -87,15 +87,14 @@ export async function finishBotLogin(event: H3Event): Promise<string> {
   deleteCookie(event, STATE_COOKIE, { path: '/' })
   if (typeof code !== 'string' || !state || !nonce || state.nonce !== nonce) throw failed()
 
-  const { discordAppId, discordClientSecret, discordApiBase } = useRuntimeConfig()
-  const base = discordApiBase || DISCORD_API
-  const token = await fetch(`${base}/oauth2/token`, {
+  const { discordAppId, discordClientSecret } = useRuntimeConfig()
+  const token = await fetch(`${DISCORD_API}/oauth2/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: discordAppId, client_secret: discordClientSecret, grant_type: 'authorization_code', code, redirect_uri: `${botSiteUrl(event)}/api/discord/callback` }),
   }).then(res => (res.ok ? res.json() as Promise<{ access_token?: string }> : null), () => null)
   if (!token?.access_token) throw failed()
-  const me = await fetch(`${base}/users/@me`, { headers: { Authorization: `Bearer ${token.access_token}` } }).then(res => (res.ok ? res.json() as Promise<{ id?: string }> : null), () => null)
+  const me = await fetch(`${DISCORD_API}/users/@me`, { headers: { Authorization: `Bearer ${token.access_token}` } }).then(res => (res.ok ? res.json() as Promise<{ id?: string }> : null), () => null)
   if (!me?.id) throw failed()
 
   setCookie(event, SESSION_COOKIE, seal('session', { userId: me.id }, SESSION_MS), cookieOptions(SESSION_MS))

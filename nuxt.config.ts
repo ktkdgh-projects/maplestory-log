@@ -69,11 +69,8 @@ export default defineNuxtConfig({
     discordClientSecret: '',
     // 채널 메시지의 화면 링크에 넣을 사이트 주소(예: https://maplestory-log.vercel.app)
     discordSiteUrl: '',
-    discordDbName: '',
     // 정해진 시각 알림을 돌리는 /api/discord/tick 을 부를 때 쓰는 비밀값
     discordTickSecret: '',
-    // 테스트에서 디스코드 대신 가짜 서버로 보낼 때만 쓴다
-    discordApiBase: '',
     public: {},
   },
 
@@ -86,11 +83,6 @@ export default defineNuxtConfig({
 
   typescript: {
     tsConfig: { compilerOptions: { noUnusedLocals: true, noUnusedParameters: true } },
-  },
-
-  // 레다봇 테스트(npm run dev:bot)는 터널 주소로 들어오므로 그 주소도 받아 준다
-  $development: {
-    vite: { server: { allowedHosts: ['.trycloudflare.com'] } },
   },
 
   // dev 서버는 HMR에 eval·websocket이 필요해서 운영에만 건다

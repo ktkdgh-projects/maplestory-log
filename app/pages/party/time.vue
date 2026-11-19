@@ -31,7 +31,7 @@ const cell = (day: number, s: number) => day * PARTY_SLOTS_PER_DAY + s
 const days = computed(() => Array.from({ length: 7 }, (_, d) => {
   const date = addDays(data.value!.week, d)
   const weekday = kstWeekday(date)
-  return { d, label: WEEKDAYS[weekday]!, date: Number(date.slice(8)), weekend: weekday === 0 || weekday === 6 }
+  return { d, label: WEEKDAYS[weekday]!, date: Number(date.slice(8)), weekend: weekday === 0 || weekday === 6, off: d < data.value!.fromDay }
 }))
 const slots = computed(() => picked.value.flatMap((on, i) => (on ? [i] : [])))
 const dirty = computed(() => slots.value.join() !== savedSlots.value.join())
@@ -47,9 +47,11 @@ const status = computed(() => {
 
 // 처음 누른 칸의 반대 상태로, 끌고 지나간 칸을 모두 칠한다
 let painting: boolean | null = null
+// 이번 주만 일부 요일을 받는 때가 있어서, 받는 요일의 칸인지 본다
+const open = (i: number) => i >= data.value!.fromDay * PARTY_SLOTS_PER_DAY
 function cellAt(e: PointerEvent): number | null {
   const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-i]')
-  return el ? Number(el.dataset.i) : null
+  return el && open(Number(el.dataset.i)) ? Number(el.dataset.i) : null
 }
 function startPaint(e: PointerEvent) {
   const i = cellAt(e)
@@ -73,16 +75,20 @@ function toggleByKey(e: MouseEvent, i: number) {
 
 // 여러 칸을 한 번에 칠하고, 이미 다 칠해져 있으면 지운다
 function toggleCells(cells: number[]) {
-  const fill = !cells.every(i => picked.value[i])
-  for (const i of cells) picked.value[i] = fill
+  const targets = cells.filter(open)
+  const fill = !targets.every(i => picked.value[i])
+  for (const i of targets) picked.value[i] = fill
 }
 const dayCells = (d: number) => ROWS.map(row => cell(d, row.s))
 const timeCells = (s: number) => days.value.map(day => cell(day.d, s))
 const presetCells = (preset: typeof PRESETS[number]) => preset.days.flatMap(d => ROWS.filter(row => row.s >= preset.from && row.s < preset.to).map(row => cell(d, row.s)))
-const presetOn = (preset: typeof PRESETS[number]) => presetCells(preset).every(i => picked.value[i])
+const presetOn = (preset: typeof PRESETS[number]) => {
+  const targets = presetCells(preset).filter(open)
+  return targets.length > 0 && targets.every(i => picked.value[i])
+}
 
 function loadLastWeek() {
-  picked.value = toPicked(data.value!.lastWeekSlots)
+  picked.value = toPicked(data.value!.lastWeekSlots.filter(open))
 }
 
 async function submit() {
@@ -124,7 +130,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnsaved))
           <h1>보스 되는 시간을 칠해 주세요</h1>
           <NuxtLink v-if="data.leader" class="btn ghost compact" :to="{ path: '/party/lead', query: { p: partyId } }">파티장 화면</NuxtLink>
         </div>
-        <p class="sub">{{ formatDayWeek(data.week) }} ~ {{ formatDayWeek(addDays(data.week, 6)) }}</p>
+        <p class="sub">{{ formatDayWeek(addDays(data.week, data.fromDay)) }} ~ {{ formatDayWeek(addDays(data.week, 6)) }}</p>
       </header>
 
       <section class="card">
@@ -135,7 +141,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnsaved))
 
         <div class="grid" @pointerdown="startPaint" @pointermove="movePaint" @pointerup="endPaint" @pointercancel="endPaint">
           <span />
-          <button v-for="day in days" :key="day.d" type="button" class="day" :class="{ weekend: day.weekend }" :aria-label="`${day.label}요일 하루 종일`" @click="toggleCells(dayCells(day.d))">
+          <button v-for="day in days" :key="day.d" type="button" class="day" :class="{ weekend: day.weekend, off: day.off }" :disabled="day.off" :aria-label="`${day.label}요일 하루 종일`" @click="toggleCells(dayCells(day.d))">
             <b>{{ day.label }}</b>{{ day.date }}
           </button>
           <template v-for="row in ROWS" :key="row.s">
@@ -153,7 +159,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnsaved))
                 down: row.s < PARTY_SLOTS_PER_DAY - 1 && picked[cell(day.d, row.s + 1)],
                 band: row.band,
                 weekend: day.weekend,
+                off: day.off,
               }"
+              :disabled="day.off"
               :data-i="cell(day.d, row.s)"
               :aria-pressed="picked[cell(day.d, row.s)]"
               :aria-label="`${day.label}요일 ${row.hour}시부터 2시간`"
@@ -315,6 +323,11 @@ h2 {
   border: 0;
   border-top: 1px solid var(--panel-line);
   cursor: pointer;
+}
+.day.off,
+.cell.off {
+  cursor: default;
+  opacity: 0.3;
 }
 .cell.weekend {
   background: color-mix(in srgb, var(--gold) 7%, var(--field));

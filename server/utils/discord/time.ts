@@ -3,7 +3,7 @@ import type { PartyDoc } from './db'
 import { useBotCollections } from './db'
 
 // 다른 파티원은 냈는지만 알려 주고, 언제 되는지는 본인 것만 돌려준다
-export async function partyTime(party: PartyDoc, userId: string, week: string): Promise<PartyTimeResponse> {
+export async function partyTime(party: PartyDoc, userId: string, week: string, fromDay: number): Promise<PartyTimeResponse> {
   const { availability, weeks } = await useBotCollections()
   const [docs, last, weekDoc] = await Promise.all([
     availability.find({ userId: { $in: party.members.map(m => m.userId) }, week }).toArray(),
@@ -13,6 +13,7 @@ export async function partyTime(party: PartyDoc, userId: string, week: string): 
   const byUser = new Map(docs.map(d => [d.userId, d]))
   return {
     week,
+    fromDay,
     partyName: party.name,
     slots: byUser.get(userId)?.slots ?? [],
     saved: byUser.has(userId),

@@ -16,6 +16,22 @@ const busy = ref(false)
 const message = ref('')
 const failed = ref(false)
 const picked = ref<number | null>(null)
+// 이번 주만 다르게: 받을 첫 요일(목=0)과 마감. 누르면 전원에게 알림이 가므로 두 번 눌러야 시작한다
+const customFromDay = ref(0)
+const customDeadline = ref('')
+const customArmed = ref(false)
+const weekDays = computed(() => Array.from({ length: 7 }, (_, d) => ({ d, label: formatDayWeek(addDays(data.value!.week, d)) })))
+async function startCustom() {
+  if (!customArmed.value) {
+    customArmed.value = true
+    return
+  }
+  customArmed.value = false
+  await act({ action: 'custom', fromDay: customFromDay.value, deadline: new Date(customDeadline.value).toISOString() })
+}
+watch([customFromDay, customDeadline], () => {
+  customArmed.value = false
+})
 
 async function act(action: PartyLeadAction) {
   busy.value = true
@@ -163,6 +179,23 @@ const autos = (keys: PartyWeekStep[]) => keys.map(stepTime)
         </ul>
       </section>
 
+      <section class="card">
+        <h2>이번 주만 다르게 잡기</h2>
+        <p class="sub">이번 주 진행을 처음으로 되돌리고, 고른 요일과 마감으로 지금 알림을 올려요. 마감 3시간 전 미제출 태그, 마감에 투표 시작, 3시간 뒤 투표 마감, 6시간 뒤 공지예요.<template v-if="data.customFromDay !== null"> 지금은 따로 잡은 일정으로 진행 중이에요.</template></p>
+        <div class="field">
+          <span>이 요일부터 받기</span>
+          <div class="chips">
+            <button v-for="day in weekDays" :key="day.d" type="button" class="pick" :class="{ on: customFromDay === day.d }" :aria-pressed="customFromDay === day.d" @click="customFromDay = day.d">{{ day.label }}</button>
+          </div>
+        </div>
+        <label class="field" for="lead-deadline">
+          <span>시간 적기 마감</span>
+          <input id="lead-deadline" v-model="customDeadline" type="datetime-local">
+        </label>
+        <div class="actions">
+          <button type="button" class="btn compact" :class="{ ghost: !customArmed }" :disabled="busy || !customDeadline" @click="startCustom">{{ customArmed ? '한 번 더 누르면 전원에게 알림이 가요' : '이 일정으로 다시 시작' }}</button>
+        </div>
+      </section>
     </template>
   </main>
 </template>
@@ -384,6 +417,38 @@ h2 {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+.field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 14px;
+}
+.field input {
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--field);
+  border: 1px solid var(--panel-line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+}
+.pick {
+  min-height: 34px;
+  padding: 0 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pick.on {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--on-gold);
 }
 .actions .btn:disabled {
   cursor: default;

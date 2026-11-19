@@ -32,7 +32,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
 const kstTime = (date: string, hh: number, mm = 0) => new Date(`${date}T${pad(hh)}:${pad(mm)}:00+09:00`)
 
 // 시간을 모으는 주: 다음 목요일부터 일주일
-export function partyTargetWeek(): string {
+function partyTargetWeek(): string {
   return addDays(bossPeriod('weekly', kstToday()), 7)
 }
 
@@ -46,7 +46,17 @@ export const slotStart = (week: string, slot: number) => kstTime(addDays(week, s
 // 한 칸이 2시간이라 "토 11/28 20~22시"처럼 범위로 적는다
 export const slotLabel = (week: string, slot: number) => `${weekDayLabel(week, slotDay(slot))} ${slotHour(slot)}~${slotHour(slot) + 2}시`
 
+// 시간표에 적을 주: 이번 주기가 아직 시간을 모으는 중이면 그 주, 아니면 다음 목요일부터
+export async function partyEntryWeek(party: PartyDoc): Promise<{ week: string, fromDay: number }> {
+  const { weeks } = await useBotCollections()
+  const cycle = await weeks.findOne({ partyId: party._id, week: partyCycleWeek() })
+  const open = cycle?.phase === 'collect' && weekStepTime(cycle, 'startVote')!.getTime() > Date.now()
+  return open ? { week: cycle.week, fromDay: cycle.custom?.fromDay ?? 0 } : { week: partyTargetWeek(), fromDay: 0 }
+}
+
 export function weekStepTime(doc: WeekDoc, step: WeekStep): Date | null {
+  const custom = doc.custom?.steps[step]
+  if (custom) return custom
   if (step === 'remindBoss') return doc.confirmed === null ? null : new Date(slotStart(doc.week, doc.confirmed).getTime() - BOSS_REMIND_MS)
   const [days, hh, mm] = STEP_AT[step]
   return kstTime(addDays(doc.week, days), hh, mm)
@@ -56,7 +66,7 @@ export async function partyWeek(partyId: ObjectId, week: string): Promise<WeekDo
   const { weeks } = await useBotCollections()
   const doc = await weeks.findOneAndUpdate(
     { partyId, week },
-    { $setOnInsert: { phase: 'collect', candidates: [], votes: {}, voteMessageId: null, confirmed: null, done: {}, change: null, updatedAt: new Date() } },
+    { $setOnInsert: { phase: 'collect', candidates: [], votes: {}, voteMessageId: null, confirmed: null, done: {}, custom: null, change: null, updatedAt: new Date() } },
     { upsert: true, returnDocument: 'after' },
   )
   return doc!
@@ -74,7 +84,7 @@ export async function patchWeek(doc: WeekDoc, set: Record<string, unknown>, unse
 }
 
 // 제출한 사람 모두가 되는 시간에서 후보를 뽑는다. 금·토 → 앞뒤로 길게 되는 시간 → 20시에 가까운 순
-async function weekCandidates(party: PartyDoc, week: string): Promise<WeekCandidate[]> {
+async function weekCandidates(party: PartyDoc, week: string, fromDay: number): Promise<WeekCandidate[]> {
   const { availability } = await useBotCollections()
   const docs = await availability.find({ userId: { $in: party.members.map(m => m.userId) }, week }).toArray()
   const submitted = docs.length
@@ -83,7 +93,7 @@ async function weekCandidates(party: PartyDoc, week: string): Promise<WeekCandid
   for (const doc of docs) for (const slot of doc.slots) counts[slot]!++
 
   const now = Date.now()
-  const upcoming = counts.map((_, slot) => slot).filter(slot => slotStart(week, slot).getTime() > now)
+  const upcoming = counts.map((_, slot) => slot).filter(slot => slotDay(slot) >= fromDay && slotStart(week, slot).getTime() > now)
   let pool: WeekCandidate[] = upcoming.filter(slot => counts[slot] === submitted).map(slot => ({ slot, missing: 0 }))
   // 모두 되는 시간이 없으면 한 명만 빠지는 시간이라도 보여 준다
   if (!pool.length && submitted >= 3) pool = upcoming.filter(slot => counts[slot] === submitted - 1).map(slot => ({ slot, missing: 1 }))
@@ -187,7 +197,7 @@ export async function confirmWeek(party: PartyDoc, doc: WeekDoc, slot: number): 
 export async function runWeekStep(party: PartyDoc, doc: WeekDoc, step: WeekStep): Promise<WeekDoc> {
   const send = (body: object) => sendDiscordMessage(party.channelId, body)
   const ids = party.members.map(m => m.userId)
-  const range = `${weekDayLabel(doc.week, 0)} ~ ${weekDayLabel(doc.week, 6)}`
+  const range = `${weekDayLabel(doc.week, doc.custom?.fromDay ?? 0)} ~ ${weekDayLabel(doc.week, 6)}`
 
   if (step === 'announce') {
     await send(partyCard('🗓️ 보스 시간을 적어 주세요', `**${range}** 중 되는 시간을 적어 주세요.\n마감 ${stamp(weekStepTime(doc, 'startVote')!, 'f')}`, ids, timeButtons(party)))
@@ -199,7 +209,7 @@ export async function runWeekStep(party: PartyDoc, doc: WeekDoc, step: WeekStep)
     if (missing.length) await send(partyCard('⏰ 아직 보스 시간을 안 적었어요', `**${range}** · 마감 ${stamp(weekStepTime(doc, 'startVote')!, 'R')}`, missing, timeButtons(party)))
   }
   else if (step === 'startVote' && doc.phase === 'collect') {
-    const candidates = await weekCandidates(party, doc.week)
+    const candidates = await weekCandidates(party, doc.week, doc.custom?.fromDay ?? 0)
     if (!candidates.length) {
       await send(partyCard('😵 모두 되는 시간이 없어요', '파티원과 시간을 다시 맞춰 주세요.', [party.leaderId]))
     }
