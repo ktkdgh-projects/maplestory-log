@@ -8,8 +8,10 @@ const DAY_MS = 24 * HOUR_MS
 const REMEMBER_MS = 90 * DAY_MS
 const SHORT_SESSION_MS = 12 * HOUR_MS
 const ROTATE_AFTER_MS = 7 * DAY_MS
-// 토큰 교체 직후 같은 페이지에서 동시에 나간 요청이 옛 토큰으로 끊기지 않게 잠시 허용
+// 토큰 교체 직후 같은 페이지에서 동시에 나간 요청은 옛 토큰으로 그냥 통과시킨다
 const ROTATE_GRACE_MS = 60 * 1000
+// 교체한 응답이 중간에 끊겨 새 쿠키를 못 받으면 옛 토큰이 남으므로, 다음 교체 때까지는 옛 토큰도 받아 준다
+const PREV_TOKEN_MS = ROTATE_AFTER_MS
 const TOUCH_INTERVAL_MS = HOUR_MS
 
 declare module 'h3' {
@@ -90,14 +92,17 @@ export async function loadSession(event: H3Event) {
     return
   }
 
-  if (session.tokenHash === tokenHash && session.remember && now.getTime() - session.rotatedAt.getTime() > ROTATE_AFTER_MS) {
+  const sinceRotate = now.getTime() - session.rotatedAt.getTime()
+  const usedPrev = session.tokenHash !== tokenHash
+  // 옛 토큰이 교체 직후 잠깐이 지나서도 오면 새 쿠키를 못 받은 것이라 다시 바꿔 준다
+  if (session.remember && (usedPrev ? sinceRotate > ROTATE_GRACE_MS : sinceRotate > ROTATE_AFTER_MS)) {
     const nextToken = randomToken()
-    // 동시에 들어온 요청이 먼저 바꿨으면 그쪽 토큰이 쿠키로 가므로, 여기선 바꾸지 않고 옛 토큰(잠시 허용)으로 이어 간다
-    const { modifiedCount } = await sessions.updateOne({ _id: session._id, tokenHash }, {
+    // 동시에 들어온 요청이 먼저 바꿨으면 그쪽 토큰이 쿠키로 가므로, 여기선 바꾸지 않고 지금 토큰으로 이어 간다
+    const { modifiedCount } = await sessions.updateOne({ _id: session._id, tokenHash: session.tokenHash }, {
       $set: {
         tokenHash: sha256(nextToken),
         prevTokenHash: tokenHash,
-        prevValidUntil: new Date(now.getTime() + ROTATE_GRACE_MS),
+        prevValidUntil: new Date(now.getTime() + PREV_TOKEN_MS),
         rotatedAt: now,
         lastUsedAt: now,
         expiresAt: new Date(now.getTime() + REMEMBER_MS),
@@ -115,6 +120,8 @@ export async function loadSession(event: H3Event) {
       }),
       users.updateOne({ _id: user._id }, { $set: { lastSeenAt: now } }),
     ])
+    // 쿠키 만료도 마지막 사용 기준으로 다시 늘린다
+    if (session.remember && !usedPrev) setSessionCookie(event, token, true)
   }
 
   event.context.session = session
