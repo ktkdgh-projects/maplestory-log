@@ -3,6 +3,8 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 export default defineEventHandler(async (event) => {
   // 정적 파일은 건너뛰되, API는 경로가 .xxx로 끝나도 Origin 검사와 세션을 거치게 한다
   if (event.path.startsWith('/_nuxt/') || (!event.path.startsWith('/api/') && /\.\w+$/.test(event.path.split('?')[0]!))) return
+  // 레다봇 요청은 디스코드 서명으로만 확인하고 메이플로그 로그인 쿠키는 읽지 않는다
+  if (event.path.startsWith('/api/discord/')) return
 
   // SameSite=Lax 쿠키에 더해, 쓰기 요청은 다른 사이트에서 온 것을 막는다
   if (event.path.startsWith('/api/') && UNSAFE_METHODS.has(event.method)) {

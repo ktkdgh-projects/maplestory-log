@@ -61,6 +61,10 @@ export default defineNuxtConfig({
     keyHashSecret: '',
     // 관리자 넥슨 계정 id. 여러 명이면 쉼표로 구분 (NUXT_ADMIN_ACCOUNT_IDS)
     adminAccountIds: '',
+    // 레다봇(디스코드). 메이플로그 로그인과 따로 쓴다
+    discordAppId: '',
+    discordPublicKey: '',
+    discordBotToken: '',
     public: {},
   },
 

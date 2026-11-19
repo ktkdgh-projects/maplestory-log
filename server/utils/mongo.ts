@@ -10,7 +10,7 @@ const globalForMongo = globalThis as typeof globalThis & {
   __mongoIndexes?: Promise<void>
 }
 
-function getClient(): Promise<MongoClient> {
+export function getMongoClient(): Promise<MongoClient> {
   if (!globalForMongo.__mongoClient) {
     const { mongoUri } = useRuntimeConfig()
     if (!mongoUri) throw new Error('NUXT_MONGO_URI가 설정되지 않았습니다')
@@ -105,7 +105,7 @@ async function ensureIndexes(db: Db) {
 
 // DB 이름은 연결 문자열 경로(…mongodb.net/<db>)에서 가져온다
 async function useDb(): Promise<Db> {
-  const db = (await getClient()).db()
+  const db = (await getMongoClient()).db()
   // 인덱스는 이미 있어서 확인만 하는 일이라, 서버가 깨어난 첫 요청이 기다리지 않게 뒤에서 돌린다
   globalForMongo.__mongoIndexes ??= ensureIndexes(db).catch((error) => {
     globalForMongo.__mongoIndexes = undefined
