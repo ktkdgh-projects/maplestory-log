@@ -15,6 +15,15 @@ export async function deleteDiscordReply(interaction: { application_id?: string,
   await discordApi(`/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`, { method: 'DELETE' }).catch(error => console.error('[leda] 개인 메시지 지우기 실패', String(error?.message ?? error)))
 }
 
+// 명령에 답으로 올린 메시지의 id. 답을 보낸 뒤에야 받을 수 있다
+export async function originalReplyId(interaction: { application_id?: string, token?: string }): Promise<string> {
+  await new Promise(resolve => setTimeout(resolve, 400))
+  return (await discordApi<{ id: string }>(`/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`)).id
+}
+// 고정하려면 채널에서 봇에게 "메시지 고정" 권한이 있어야 한다
+export const pinDiscordMessage = (channelId: string, messageId: string) => discordApi(`/channels/${channelId}/messages/pins/${messageId}`, { method: 'PUT' })
+export const unpinDiscordMessage = (channelId: string, messageId: string) => discordApi(`/channels/${channelId}/messages/pins/${messageId}`, { method: 'DELETE' })
+export const deleteDiscordMessage = (channelId: string, messageId: string) => discordApi(`/channels/${channelId}/messages/${messageId}`, { method: 'DELETE' })
 export const editDiscordMessage = (channelId: string, messageId: string, body: object) => discordApi<{ id: string }>(`/channels/${channelId}/messages/${messageId}`, { method: 'PATCH', body: JSON.stringify(body) })
 
 interface Overwrite { id: string, type: 0 | 1, allow: string, deny: string }

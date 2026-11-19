@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { PartyDoc, PartyMember } from './db'
 import { useBotCollections } from './db'
-import { channelViewers } from './api'
+import { channelViewers, originalReplyId, pinDiscordMessage, unpinDiscordMessage } from './api'
 import { botPageUrl } from './webAuth'
 
 // 디스코드 응답·컴포넌트 번호 (https://discord.com/developers/docs/interactions/receiving-and-responding)
@@ -90,6 +90,20 @@ async function syncedMembers(guildId: string, channelId: string, current: PartyM
   return viewers.map(v => current.find(m => m.userId === v.userId) ?? { userId: v.userId, character: v.displayName.slice(0, CHARACTER_MAX), joinedAt: now })
 }
 
+// 명단 메시지를 채널에 고정한다. 예전에 고정한 명단이 따로 있으면 고정을 푼다(메시지는 남긴다)
+async function pinRoster(party: PartyDoc, messageId: string) {
+  if (party.rosterMessageId === messageId) return
+  try {
+    await pinDiscordMessage(party.channelId, messageId)
+    if (party.rosterMessageId) await unpinDiscordMessage(party.channelId, party.rosterMessageId).catch(() => {})
+    const { parties } = await useBotCollections()
+    await parties.updateOne({ _id: party._id }, { $set: { rosterMessageId: messageId } })
+  }
+  catch (error) {
+    console.error('[leda] 명단 고정 실패(채널에서 봇에게 메시지 고정 권한이 있는지 확인)', String((error as Error)?.message ?? error))
+  }
+}
+
 // 파티를 연결한 사람이 파티장이 된다
 export async function connectParty(interaction: DiscordInteraction, event: H3Event) {
   const name = interaction.data?.options?.[0]?.options?.find(o => o.name === '이름')?.value?.trim()
@@ -108,6 +122,8 @@ export async function connectParty(interaction: DiscordInteraction, event: H3Eve
     },
     { upsert: true, returnDocument: 'after' },
   )
+  // 답으로 올린 명단 메시지는 보낸 뒤에야 id를 알 수 있어서 뒤에서 고정한다
+  event.waitUntil(originalReplyId(interaction).then(id => pinRoster(party!, id)).catch(() => {}))
   return { type: RESPONSE.message, data: rosterMessage(party!, event) }
 }
 
@@ -118,6 +134,8 @@ export async function refreshParty(interaction: DiscordInteraction, event: H3Eve
   if (!party) return partyNotice('이 채널은 아직 파티로 연결되지 않았어요.')
   const members = await syncedMembers(interaction.guild_id, interaction.channel_id, party.members)
   const updated = await parties.findOneAndUpdate({ _id: party._id }, { $set: { members, updatedAt: new Date() } }, { returnDocument: 'after' })
+  // 예전에 올린 명단도 새로고침하면 고정된다
+  if (interaction.message) event.waitUntil(pinRoster(updated!, interaction.message.id))
   return { type: RESPONSE.updateMessage, data: rosterMessage(updated!, event) }
 }
 

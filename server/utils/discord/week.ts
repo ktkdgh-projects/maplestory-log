@@ -1,9 +1,9 @@
 import type { ObjectId } from 'mongodb'
 import { bossPeriod } from '#shared/data/bosses'
 import { PARTY_SLOTS_PER_DAY, PARTY_SLOT_COUNT } from '#shared/data/party'
-import type { PartyDoc, WeekCandidate, WeekDoc, WeekStep } from './db'
+import type { PartyDoc, WeekCandidate, WeekDoc, WeekPostKind, WeekStep } from './db'
 import { useBotCollections } from './db'
-import { editDiscordMessage, sendDiscordMessage } from './api'
+import { deleteDiscordMessage, editDiscordMessage, sendDiscordMessage } from './api'
 import { botPageUrl, botSiteUrl } from './webAuth'
 import { PARTY_COLOR, PARTY_NOT_MEMBER, RESPONSE, partyNotice, partyOfInteraction, partyTag, type DiscordInteraction } from './party'
 
@@ -66,7 +66,7 @@ export async function partyWeek(partyId: ObjectId, week: string): Promise<WeekDo
   const { weeks } = await useBotCollections()
   const doc = await weeks.findOneAndUpdate(
     { partyId, week },
-    { $setOnInsert: { phase: 'collect', candidates: [], votes: {}, voteMessageId: null, confirmed: null, done: {}, custom: null, change: null, updatedAt: new Date() } },
+    { $setOnInsert: { phase: 'collect', candidates: [], votes: {}, voteMessageId: null, confirmed: null, done: {}, custom: null, change: null, posts: [], updatedAt: new Date() } },
     { upsert: true, returnDocument: 'after' },
   )
   return doc!
@@ -187,43 +187,72 @@ export function noticeMessage(party: PartyDoc, doc: WeekDoc, changed = false) {
   )
 }
 
+// 그 주에 올린 메시지 중 고른 종류를 채널에서 지운다. 봇이 올린 메시지라 따로 권한이 없어도 되고, 이미 누가 지웠으면 넘어간다
+export async function clearPosts(party: PartyDoc, doc: WeekDoc, kinds: WeekPostKind[] | 'all'): Promise<WeekDoc> {
+  const targets = (doc.posts ?? []).filter(p => kinds === 'all' || kinds.includes(p.kind))
+  if (!targets.length) return doc
+  for (const post of targets) await deleteDiscordMessage(party.channelId, post.id).catch(() => {})
+  const ids = targets.map(p => p.id)
+  const { weeks } = await useBotCollections()
+  const updated = await weeks.findOneAndUpdate(
+    { _id: doc._id },
+    { $pull: { posts: { id: { $in: ids } } }, $set: { updatedAt: new Date(), ...(doc.voteMessageId && ids.includes(doc.voteMessageId) && { voteMessageId: null }) } },
+    { returnDocument: 'after' },
+  )
+  return updated!
+}
+
+// 같은 종류의 예전 메시지와 끝난 단계의 메시지를 지우고 새로 올린다. 채널에는 지금 단계 메시지만 남는다
+export async function postWeek(party: PartyDoc, doc: WeekDoc, kind: WeekPostKind, body: object, clear: WeekPostKind[] = []): Promise<{ doc: WeekDoc, id: string }> {
+  const cleared = await clearPosts(party, doc, [kind, ...clear])
+  const message = await sendDiscordMessage(party.channelId, body)
+  const { weeks } = await useBotCollections()
+  const updated = await weeks.findOneAndUpdate({ _id: cleared._id }, { $push: { posts: { id: message.id, kind } }, $set: { updatedAt: new Date() } }, { returnDocument: 'after' })
+  return { doc: updated!, id: message.id }
+}
+
 export async function confirmWeek(party: PartyDoc, doc: WeekDoc, slot: number): Promise<WeekDoc> {
   const confirmed = await patchWeek(doc, { 'phase': 'confirmed', 'confirmed': slot, 'done.autoConfirm': new Date() }, ['done.remindBoss'])
   await refreshVoteMessage(party, confirmed)
-  return confirmed
+  return clearPosts(party, confirmed, ['askConfirm'])
 }
 
 // 한 단계를 돌리고 했다고 표시한다. 정해진 시각에도, 파티장이 손으로 눌러도 여기로 온다
 export async function runWeekStep(party: PartyDoc, doc: WeekDoc, step: WeekStep): Promise<WeekDoc> {
-  const send = (body: object) => sendDiscordMessage(party.channelId, body)
+  const post = async (kind: WeekPostKind, body: object, clear: WeekPostKind[] = []) => {
+    const result = await postWeek(party, doc, kind, body, clear)
+    doc = result.doc
+    return result.id
+  }
   const ids = party.members.map(m => m.userId)
   const range = `${weekDayLabel(doc.week, doc.custom?.fromDay ?? 0)} ~ ${weekDayLabel(doc.week, 6)}`
 
   if (step === 'announce') {
-    await send(partyCard('🗓️ 보스 시간을 적어 주세요', `**${range}** 중 되는 시간을 적어 주세요.\n마감 ${stamp(weekStepTime(doc, 'startVote')!, 'f')}`, ids, timeButtons(party)))
+    await post('announce', partyCard('🗓️ 보스 시간을 적어 주세요', `**${range}** 중 되는 시간을 적어 주세요.\n마감 ${stamp(weekStepTime(doc, 'startVote')!, 'f')}`, ids, timeButtons(party)))
   }
   else if (step === 'remindSubmit' && doc.phase === 'collect') {
     const { availability } = await useBotCollections()
     const submitted = new Set((await availability.find({ userId: { $in: ids }, week: doc.week }, { projection: { userId: 1 } }).toArray()).map(d => d.userId))
     const missing = ids.filter(id => !submitted.has(id))
-    if (missing.length) await send(partyCard('⏰ 아직 보스 시간을 안 적었어요', `**${range}** · 마감 ${stamp(weekStepTime(doc, 'startVote')!, 'R')}`, missing, timeButtons(party)))
+    if (missing.length) await post('remindSubmit', partyCard('⏰ 아직 보스 시간을 안 적었어요', `**${range}** · 마감 ${stamp(weekStepTime(doc, 'startVote')!, 'R')}`, missing, timeButtons(party)))
   }
   else if (step === 'startVote' && doc.phase === 'collect') {
     const candidates = await weekCandidates(party, doc.week, doc.custom?.fromDay ?? 0)
     if (!candidates.length) {
-      await send(partyCard('😵 모두 되는 시간이 없어요', '파티원과 시간을 다시 맞춰 주세요.', [party.leaderId]))
+      await post('empty', partyCard('😵 모두 되는 시간이 없어요', '파티원과 시간을 다시 맞춰 주세요.', [party.leaderId]))
     }
     else {
       doc = await patchWeek(doc, { phase: 'vote', candidates, votes: {} })
-      const message = await send(voteMessage(party, doc))
-      doc = await patchWeek(doc, { voteMessageId: message.id })
+      // 투표가 열리면 시간 적기 알림과 태그는 할 일이 끝났으니 지운다
+      const id = await post('vote', voteMessage(party, doc), ['announce', 'remindSubmit', 'empty'])
+      doc = await patchWeek(doc, { voteMessageId: id })
     }
   }
   else if (step === 'askConfirm' && doc.phase === 'vote') {
     // 따로 알리지 않고 투표를 닫고, 파티장에게 확정을 맡긴다
     doc = await patchWeek(doc, { phase: 'decide' })
     await refreshVoteMessage(party, doc)
-    await send(partyCard('👑 보스 시간을 확정해 주세요', '투표가 끝났어요. 파티장이 결과를 보고 확정해요.', [party.leaderId], [{ type: 1, components: [{ type: 2, style: 1, label: '결과 보고 확정', custom_id: `lead:confirm:${doc.week}` }] }]))
+    await post('askConfirm', partyCard('👑 보스 시간을 확정해 주세요', '투표가 끝났어요. 파티장이 결과를 보고 확정해요.', [party.leaderId], [{ type: 1, components: [{ type: 2, style: 1, label: '결과 보고 확정', custom_id: `lead:confirm:${doc.week}` }] }]))
   }
   else if (step === 'autoConfirm' && (doc.phase === 'vote' || doc.phase === 'decide')) {
     // 파티장이 확정하지 않았으면 순위가 가장 높은 후보로 정한다
@@ -232,10 +261,11 @@ export async function runWeekStep(party: PartyDoc, doc: WeekDoc, step: WeekStep)
     if (best) doc = await confirmWeek(party, doc, best.slot)
   }
   else if (step === 'notice' && doc.confirmed !== null) {
-    await send(noticeMessage(party, doc))
+    // 공지가 올라가면 투표와 확정 요청은 지운다
+    await post('notice', noticeMessage(party, doc), ['vote', 'askConfirm'])
   }
   else if (step === 'remindBoss' && doc.confirmed !== null) {
-    await send(partyCard('⚔️ 30분 뒤 보스예요', `## ${slotLabel(doc.week, doc.confirmed)}`, ids))
+    await post('remindBoss', partyCard('⚔️ 30분 뒤 보스예요', `## ${slotLabel(doc.week, doc.confirmed)}`, ids))
   }
   return patchWeek(doc, { [`done.${step}`]: new Date() })
 }
@@ -253,7 +283,12 @@ export async function tickParties(now = new Date()): Promise<number> {
   for (const party of await parties.find().toArray()) {
     try {
       await partyWeek(party._id, partyCycleWeek(now))
-      for (let doc of await weeks.find({ partyId: party._id, week: { $gte: addDays(kstDateOf(now), -7) } }).toArray()) {
+      for (let doc of await weeks.find({ partyId: party._id, week: { $gte: addDays(kstDateOf(now), -14) } }).toArray()) {
+        // 보스 주가 끝나면(다음 목요일) 그 주에 올린 메시지를 모두 지운다
+        if (addDays(doc.week, 7) <= kstDateOf(now)) {
+          if (doc.posts?.length) await clearPosts(party, doc, 'all')
+          continue
+        }
         for (const step of WEEK_STEPS) {
           const at = weekStepTime(doc, step)
           if (!at || at > now || doc.done[step]) continue

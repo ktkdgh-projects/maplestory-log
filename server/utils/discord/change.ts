@@ -1,9 +1,9 @@
 import type { H3Event } from 'h3'
 import type { PartyDoc, WeekDoc } from './db'
 import { useBotCollections } from './db'
-import { deleteDiscordReply, sendDiscordMessage } from './api'
+import { deleteDiscordReply } from './api'
 import { PARTY_COLOR, PARTY_NOT_MEMBER, RESPONSE, partyCharacter, partyModalText, partyNotice, partyOfInteraction, partyTag, type DiscordInteraction } from './party'
-import { noticeMessage, patchWeek, slotLabel, slotStart, weekConflicts } from './week'
+import { clearPosts, noticeMessage, patchWeek, postWeek, slotLabel, slotStart, weekConflicts } from './week'
 
 // 버튼·모달 id: chg:open:<주>, chg:sel:<주>, chg:reason:<주>:<칸.칸>, chg:submit:<주>:<칸.칸>, chg:ok:<주>:<칸>, chg:cancel:<주>
 const REASON_MAX = 80
@@ -115,24 +115,20 @@ export async function submitPartyChange(interaction: DiscordInteraction, event: 
   const reason = partyModalText(interaction, 'reason').slice(0, REASON_MAX)
   if (!options.length || !reason) return partyNotice('시간과 사유를 다시 적어 주세요.')
 
-  let doc = await patchWeek(ctx.doc, { change: { requesterId: ctx.userId, reason, options, ok: {}, messageId: null } })
-  const message = await sendDiscordMessage(ctx.party.channelId, changeMessage(ctx.party, doc))
-  doc = await patchWeek(doc, { 'change.messageId': message.id })
+  const doc = await patchWeek(ctx.doc, { change: { requesterId: ctx.userId, reason, options, ok: {} } })
+  await postWeek(ctx.party, doc, 'change', changeMessage(ctx.party, doc))
   // 요청은 채널에 올라갔으므로, 시간을 고르던 개인 메시지는 지운다
   event.waitUntil(deleteDiscordReply(interaction))
   return { type: RESPONSE.deferredUpdate }
 }
 
-const closedChange = (content: string) => ({ content, embeds: [], components: [], allowed_mentions: { parse: [] } })
-
-// 요청한 사람 말고 모두가 가능하다고 한 시간으로 바꾸고 새로 공지한다
+// 요청한 사람 말고 모두가 가능하다고 한 시간으로 바꾸고 새로 공지한다. 예전 공지·30분 전 알림·변경 요청은 지운다
 async function applyChange(party: PartyDoc, doc: WeekDoc, slot: number) {
   const updated = await patchWeek(doc, { confirmed: slot, change: null }, ['done.remindBoss'])
-  await sendDiscordMessage(party.channelId, noticeMessage(party, updated, true))
-  return closedChange(`✅ 보스 시간이 **${slotLabel(doc.week, slot)}**로 바뀌었어요.`)
+  await postWeek(party, updated, 'notice', noticeMessage(party, updated, true), ['remindBoss', 'change'])
 }
 
-export async function okPartyChange(interaction: DiscordInteraction) {
+export async function okPartyChange(interaction: DiscordInteraction, event: H3Event) {
   const ctx = await changeContext(interaction)
   if (!ctx) return partyNotice(PARTY_NOT_MEMBER)
   const change = ctx.doc?.change
@@ -144,14 +140,19 @@ export async function okPartyChange(interaction: DiscordInteraction) {
   const ok = before.includes(ctx.userId) ? before.filter(id => id !== ctx.userId) : [...before, ctx.userId]
   const doc = await patchWeek(ctx.doc, { [`change.ok.${slot}`]: ok })
   const everyone = ctx.party.members.every(m => m.userId === change.requesterId || ok.includes(m.userId))
-  return { type: RESPONSE.updateMessage, data: everyone ? await applyChange(ctx.party, doc, slot) : changeMessage(ctx.party, doc) }
+  if (!everyone) return { type: RESPONSE.updateMessage, data: changeMessage(ctx.party, doc) }
+  // 누른 메시지(변경 요청)를 지워야 해서, 먼저 받았다고만 답하고 뒤에서 바꾼다
+  event.waitUntil(applyChange(ctx.party, doc, slot).catch(error => console.error('[leda] 일정 변경 실패', String(error?.message ?? error))))
+  return { type: RESPONSE.deferredUpdate }
 }
 
-export async function cancelPartyChange(interaction: DiscordInteraction) {
+export async function cancelPartyChange(interaction: DiscordInteraction, event: H3Event) {
   const ctx = await changeContext(interaction)
   if (!ctx) return partyNotice(PARTY_NOT_MEMBER)
   if (!ctx.doc?.change) return partyNotice('이 요청은 끝났어요.')
   if (ctx.userId !== ctx.doc.change.requesterId && ctx.userId !== ctx.party.leaderId) return partyNotice('요청한 사람과 파티장만 취소할 수 있어요.')
-  await patchWeek(ctx.doc, { change: null })
-  return { type: RESPONSE.updateMessage, data: closedChange(`변경 요청이 취소됐어요. 보스 시간은 그대로 **${slotLabel(ctx.doc.week, ctx.doc.confirmed!)}**이에요.`) }
+  const doc = await patchWeek(ctx.doc, { change: null })
+  // 일정은 그대로라 요청 메시지만 지운다
+  event.waitUntil(clearPosts(ctx.party, doc, ['change']).catch(() => {}))
+  return { type: RESPONSE.deferredUpdate }
 }

@@ -6,7 +6,7 @@ import { useBotCollections } from './db'
 import { deleteDiscordReply } from './api'
 import { PARTY_COLOR, PARTY_EPHEMERAL, PARTY_NOT_MEMBER, RESPONSE, partyNotice, partyOfInteraction, type DiscordInteraction } from './party'
 import { partyOfBotUser } from './webAuth'
-import { WEEK_STEPS, confirmWeek, partyWeek, patchWeek, runWeekStep, slotStart, slotLabel, weekConflicts, weekRanking, weekStepTime } from './week'
+import { WEEK_STEPS, clearPosts, confirmWeek, partyWeek, patchWeek, runWeekStep, slotStart, slotLabel, weekConflicts, weekRanking, weekStepTime } from './week'
 
 // 버튼 id: lead:confirm:<주>, lead:pick:<칸>:<주>
 const STEP_LABELS: Record<WeekStep, string> = {
@@ -65,6 +65,8 @@ async function restartCustomWeek(party: PartyDoc, doc: WeekDoc, deadline: string
   const now = new Date()
   const steps = Object.fromEntries(Object.entries(CUSTOM_OFFSETS).map(([step, offset]) => [step, new Date(end.getTime() + offset)]))
   const { weeks } = await useBotCollections()
+  // 다시 시작하는 주에 이미 올라간 알림·투표·공지는 지운다
+  await clearPosts(party, doc, 'all')
   await weeks.deleteOne({ _id: doc._id })
   let fresh = await patchWeek(await partyWeek(party._id, doc.week), { custom: { steps: { ...steps, announce: now }, fromDay } })
   // 미제출 태그 시각이 이미 지났으면 건너뛴다

@@ -18,6 +18,8 @@ export interface PartyDoc {
   name: string
   leaderId: string
   members: PartyMember[]
+  // 채널에 고정해 둔 명단 메시지
+  rosterMessageId?: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -43,8 +45,10 @@ interface WeekChange {
   options: number[]
   // 후보 칸 → 가능하다고 누른 사람
   ok: Record<string, string[]>
-  messageId: string | null
 }
+
+// 그 주에 채널에 올린 메시지의 종류. 단계가 넘어가면 끝난 종류를 지운다
+export type WeekPostKind = 'announce' | 'remindSubmit' | 'empty' | 'vote' | 'askConfirm' | 'notice' | 'remindBoss' | 'change'
 
 export interface WeekDoc {
   _id: ObjectId
@@ -60,6 +64,8 @@ export interface WeekDoc {
   // 그 주만 다르게 잡은 일정: 단계 시각을 바꾸고, fromDay(목=0)부터의 요일만 받는다
   custom: { steps: Partial<Record<WeekStep, Date>>, fromDay: number } | null
   change: WeekChange | null
+  // 이 기능 전에 만든 주에는 없다
+  posts?: { id: string, kind: WeekPostKind }[]
   updatedAt: Date
 }
 
@@ -72,6 +78,9 @@ interface SplitDoc {
   payerId: string
   feeRate: number
   memberIds: string[]
+  // 채널에 올린 결과 메시지. 하루 뒤 지우고 null로 바꾼다
+  channelId: string
+  messageId: string | null
   createdBy: string
   createdAt: Date
 }

@@ -3,7 +3,7 @@ import { PARTY_SPLIT_FEES, partySplit } from '#shared/calc/partySplit'
 import type { PartySplitRequest } from '#shared/types'
 import type { PartyDoc } from './db'
 import { useBotCollections } from './db'
-import { sendDiscordMessage } from './api'
+import { deleteDiscordMessage, sendDiscordMessage } from './api'
 import { partyCharacter } from './party'
 import { partyCard } from './week'
 
@@ -39,8 +39,21 @@ export async function postPartySplit(party: PartyDoc, userId: string, body: Part
     ...lines,
   ].join('\n')
   const card = partyCard('💰 분배금', description, memberIds)
-  await sendDiscordMessage(party.channelId, { ...card, embeds: [{ ...card.embeds[0], footer: { text: '판매 수수료, 보낼 때 수수료, 소재·유행 값을 모두 똑같이 나눴어요' } }] })
+  const message = await sendDiscordMessage(party.channelId, { ...card, embeds: [{ ...card.embeds[0], footer: { text: '수수료와 소재·유행 값을 모두 똑같이 나눴어요 · 하루 뒤 자동으로 지워져요' } }] })
 
   const { splits } = await useBotCollections()
-  await splits.insertOne({ _id: new ObjectId(), partyId: party._id, sale: sale!, cost: cost!, sellerId: sellerId!, payerId: payer, feeRate: feeRate!, memberIds, createdBy: userId, createdAt: new Date() })
+  await splits.insertOne({ _id: new ObjectId(), partyId: party._id, sale: sale!, cost: cost!, sellerId: sellerId!, payerId: payer, feeRate: feeRate!, memberIds, channelId: party.channelId, messageId: message.id, createdBy: userId, createdAt: new Date() })
+}
+
+const SPLIT_KEEP_MS = 24 * 60 * 60 * 1000
+
+// 올린 지 하루 지난 분배금 결과를 채널에서 지운다. 계산 기록은 남긴다
+export async function expireSplits(now = new Date()): Promise<number> {
+  const { splits } = await useBotCollections()
+  const old = await splits.find({ messageId: { $ne: null }, createdAt: { $lt: new Date(now.getTime() - SPLIT_KEEP_MS) } }).toArray()
+  for (const split of old) {
+    await deleteDiscordMessage(split.channelId, split.messageId!).catch(() => {})
+    await splits.updateOne({ _id: split._id }, { $set: { messageId: null } })
+  }
+  return old.length
 }
