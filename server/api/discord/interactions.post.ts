@@ -1,5 +1,6 @@
 import { verifyDiscordSignature } from '../../utils/discord/verify'
-import { PARTY_CHARACTER, PARTY_REFRESH, RESPONSE, askPartyCharacter, connectParty, partyNotice, refreshParty, savePartyCharacter, type DiscordInteraction } from '../../utils/discord/party'
+import { PARTY_CHARACTER, PARTY_REFRESH, PARTY_TIME, RESPONSE, askPartyCharacter, connectParty, partyNotice, refreshParty, savePartyCharacter, type DiscordInteraction } from '../../utils/discord/party'
+import { openPartyTime } from '../../utils/discord/time'
 
 const INTERACTION = { ping: 1, command: 2, component: 3, modalSubmit: 5 } as const
 
@@ -20,6 +21,7 @@ export default defineEventHandler(async (event) => {
     if (interaction.type === INTERACTION.command && interaction.data?.name === '파티') return await connectParty(interaction)
     if (interaction.type === INTERACTION.component && interaction.data?.custom_id === PARTY_CHARACTER) return await askPartyCharacter(interaction)
     if (interaction.type === INTERACTION.component && interaction.data?.custom_id === PARTY_REFRESH) return await refreshParty(interaction)
+    if (interaction.type === INTERACTION.component && interaction.data?.custom_id === PARTY_TIME) return await openPartyTime(event, interaction)
     if (interaction.type === INTERACTION.modalSubmit && interaction.data?.custom_id === PARTY_CHARACTER) return await savePartyCharacter(interaction)
     return partyNotice('아직 없는 기능이에요.')
   }

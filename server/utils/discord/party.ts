@@ -8,10 +8,11 @@ const EPHEMERAL = 64
 const BRAND_COLOR = 0xF2851E
 const CHARACTER_MAX = 12
 const NOT_IN_CHANNEL = '서버 채널에서만 쓸 수 있어요.'
-const NOT_MEMBER = '이 파티 명단에 없어요. 파티장에게 명단 새로고침을 부탁해 주세요.'
+export const PARTY_NOT_MEMBER = '이 파티 명단에 없어요. 파티장에게 명단 새로고침을 부탁해 주세요.'
 
 export const PARTY_CHARACTER = 'party:character'
 export const PARTY_REFRESH = 'party:refresh'
+export const PARTY_TIME = 'time:open'
 
 export interface DiscordInteraction {
   type: number
@@ -26,8 +27,9 @@ export interface DiscordInteraction {
   }
 }
 
-export function partyNotice(content: string) {
-  return { type: RESPONSE.message, data: { content, flags: EPHEMERAL, allowed_mentions: { parse: [] } } }
+// 누른 사람에게만 보이는 답
+export function partyNotice(content: string, components: unknown[] = []) {
+  return { type: RESPONSE.message, data: { content, components, flags: EPHEMERAL, allowed_mentions: { parse: [] } } }
 }
 
 // 파티 채널에 걸어 두는 명단 메시지. 캐릭터를 바꾸거나 명단을 새로 받을 때마다 이 메시지를 고쳐 쓴다
@@ -42,6 +44,7 @@ function rosterMessage(party: PartyDoc) {
     components: [{
       type: 1,
       components: [
+        { type: 2, style: 3, label: '보스 시간 적기', custom_id: PARTY_TIME },
         { type: 2, style: 1, label: '내 캐릭터 이름', custom_id: PARTY_CHARACTER },
         { type: 2, style: 2, label: '명단 새로고침', custom_id: PARTY_REFRESH },
       ],
@@ -91,7 +94,7 @@ export async function askPartyCharacter(interaction: DiscordInteraction) {
   const { parties } = await useBotCollections()
   const party = await parties.findOne({ channelId: interaction.channel_id })
   const mine = party?.members.find(m => m.userId === interaction.member?.user.id)
-  if (!mine) return partyNotice(NOT_MEMBER)
+  if (!mine) return partyNotice(PARTY_NOT_MEMBER)
   return {
     type: RESPONSE.modal,
     data: {
@@ -122,6 +125,6 @@ export async function savePartyCharacter(interaction: DiscordInteraction) {
     { $set: { 'members.$.character': character, updatedAt: new Date() } },
     { returnDocument: 'after' },
   )
-  if (!updated) return partyNotice(NOT_MEMBER)
+  if (!updated) return partyNotice(PARTY_NOT_MEMBER)
   return { type: RESPONSE.updateMessage, data: rosterMessage(updated) }
 }
