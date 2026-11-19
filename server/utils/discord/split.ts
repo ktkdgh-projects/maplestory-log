@@ -1,26 +1,16 @@
 import { ObjectId } from 'mongodb'
-import type { H3Event } from 'h3'
 import { PARTY_SPLIT_FEES, partySplit } from '#shared/calc/partySplit'
 import type { PartySplitRequest } from '#shared/types'
 import type { PartyDoc } from './db'
 import { useBotCollections } from './db'
 import { sendDiscordMessage } from './api'
-import { signPartyLink } from './link'
-import { PARTY_NOT_MEMBER, partyCharacter, partyNotice, partyOfInteraction, type DiscordInteraction } from './party'
-import { partyCard, partyTargetWeek } from './week'
+import { partyCharacter } from './party'
+import { partyCard } from './week'
 
 const SALE_MAX = 1e13
 const meso = (value: number) => value.toLocaleString('ko-KR')
 
 // 분배금은 웹 화면에서 숫자를 넣어 미리 보고, 채널에는 정리된 결과만 올린다
-export async function openPartySplit(interaction: DiscordInteraction, event: H3Event) {
-  const found = await partyOfInteraction(interaction)
-  if (!found) return partyNotice(PARTY_NOT_MEMBER)
-  const token = signPartyLink({ userId: found.userId, partyId: found.party._id.toHexString(), week: partyTargetWeek() })
-  const { origin } = getRequestURL(event, { xForwardedHost: true, xForwardedProto: true })
-  return partyNotice('나만 쓰는 링크예요.', [{ type: 1, components: [{ type: 2, style: 5, label: '분배금 계산 열기', url: `${origin}/party/split?t=${token}` }] }])
-}
-
 export async function postPartySplit(party: PartyDoc, userId: string, body: Partial<PartySplitRequest>) {
   const bad = (message: string) => createError({ statusCode: 400, message })
   const { sale, cost, feeRate, sellerId, payerId } = body

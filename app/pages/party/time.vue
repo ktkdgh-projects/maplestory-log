@@ -5,8 +5,7 @@ import { PARTY_SLOT_COUNT, PARTY_SLOTS_PER_DAY, partyDayRanges } from '#shared/d
 definePageMeta({ layout: false })
 useHead({
   title: '보스 시간 적기 · 레다봇',
-  // 주소에 개인 링크 토큰이 있어서 검색에 안 잡히고 다른 사이트로 새지 않게 한다
-  meta: [{ name: 'robots', content: 'noindex' }, { name: 'referrer', content: 'no-referrer' }],
+  meta: [{ name: 'robots', content: 'noindex' }],
 })
 
 // 세 칸(6시간)씩 묶어 시간대 이름을 붙인다
@@ -20,9 +19,7 @@ const PRESETS = [
   { label: '매일 22~24시', days: [0, 1, 2, 3, 4, 5, 6], from: 11, to: 12 },
 ]
 
-const token = useRoute().query.t
-const { data, error } = await useFetch<PartyTimeResponse>('/api/discord/time', { query: { t: token } })
-const openError = computed(() => (error.value?.data as { message?: string } | undefined)?.message ?? '디스코드에서 버튼을 다시 눌러 주세요.')
+const { partyId, data, openError } = await usePartyPage<PartyTimeResponse>('/api/discord/time')
 
 const toPicked = (slots: number[]) => Array.from({ length: PARTY_SLOT_COUNT }, (_, i) => slots.includes(i))
 const picked = ref(toPicked(data.value?.slots ?? []))
@@ -93,7 +90,7 @@ async function submit() {
   failed.value = ''
   try {
     const sent = slots.value
-    data.value = await $fetch<PartyTimeResponse>('/api/discord/time', { method: 'PUT', body: { t: token, slots: sent } })
+    data.value = await $fetch<PartyTimeResponse>('/api/discord/time', { method: 'PUT', body: { p: partyId, slots: sent } })
     savedSlots.value = sent
   }
   catch (e) {
@@ -125,7 +122,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnsaved))
         <p class="brand">레다봇 · {{ data.partyName }}</p>
         <div class="title">
           <h1>보스 되는 시간을 칠해 주세요</h1>
-          <NuxtLink v-if="data.leader" class="btn ghost compact" :to="{ path: '/party/lead', query: { t: token as string } }">파티장 화면</NuxtLink>
+          <NuxtLink v-if="data.leader" class="btn ghost compact" :to="{ path: '/party/lead', query: { p: partyId } }">파티장 화면</NuxtLink>
         </div>
         <p class="sub">{{ formatDayWeek(data.week) }} ~ {{ formatDayWeek(addDays(data.week, 6)) }}</p>
       </header>

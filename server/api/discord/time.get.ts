@@ -1,10 +1,11 @@
-import { readPartyLink } from '../../utils/discord/link'
 import { botRateLimit } from '../../utils/discord/db'
 import { partyTime } from '../../utils/discord/time'
+import { partyOfBotUser } from '../../utils/discord/webAuth'
+import { partyTargetWeek } from '../../utils/discord/week'
 
 export default defineEventHandler(async (event) => {
-  const link = readPartyLink(getQuery(event).t)
-  await botRateLimit('time-get', link.userId, 120, 60)
+  const { party, userId } = await partyOfBotUser(event, getQuery(event).p)
+  await botRateLimit('time-get', userId, 120, 60)
   setHeader(event, 'cache-control', 'private, no-store')
-  return partyTime(link)
+  return partyTime(party, userId, partyTargetWeek())
 })

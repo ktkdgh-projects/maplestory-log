@@ -1,11 +1,9 @@
 import type { H3Event } from 'h3'
 import { verifyDiscordSignature } from '../../utils/discord/verify'
-import { PARTY_CHARACTER, PARTY_LEADER, PARTY_REFRESH, PARTY_SPLIT, PARTY_TIME, RESPONSE, askPartyCharacter, connectParty, partyNotice, refreshParty, savePartyCharacter, type DiscordInteraction } from '../../utils/discord/party'
-import { openPartyTime } from '../../utils/discord/time'
+import { PARTY_CHARACTER, PARTY_OLD_PAGES, PARTY_REFRESH, RESPONSE, askPartyCharacter, connectParty, openOldPartyPage, partyNotice, refreshParty, savePartyCharacter, type DiscordInteraction } from '../../utils/discord/party'
 import { castPartyVote } from '../../utils/discord/week'
-import { openLeaderMenu, runLeaderAction } from '../../utils/discord/leader'
+import { runLeaderAction } from '../../utils/discord/leader'
 import { askPartyChangeReason, cancelPartyChange, okPartyChange, openPartyChange, pickPartyChange, submitPartyChange } from '../../utils/discord/change'
-import { openPartySplit } from '../../utils/discord/split'
 
 const INTERACTION = { ping: 1, command: 2, component: 3, modalSubmit: 5 } as const
 type Handler = (interaction: DiscordInteraction, event: H3Event) => unknown
@@ -14,9 +12,7 @@ type Handler = (interaction: DiscordInteraction, event: H3Event) => unknown
 const COMPONENTS: [string, Handler][] = [
   [PARTY_CHARACTER, askPartyCharacter],
   [PARTY_REFRESH, refreshParty],
-  [PARTY_TIME, (interaction, event) => openPartyTime(event, interaction)],
-  [PARTY_SPLIT, openPartySplit],
-  [PARTY_LEADER, openLeaderMenu],
+  ...Object.keys(PARTY_OLD_PAGES).map((id): [string, Handler] => [id, openOldPartyPage]),
   ['lead:', runLeaderAction],
   ['vote:', castPartyVote],
   ['chg:open:', openPartyChange],
@@ -46,7 +42,7 @@ export default defineEventHandler(async (event) => {
 
   const id = interaction.data?.custom_id ?? ''
   try {
-    if (interaction.type === INTERACTION.command && interaction.data?.name === '파티') return await connectParty(interaction)
+    if (interaction.type === INTERACTION.command && interaction.data?.name === '파티') return await connectParty(interaction, event)
     const routes = interaction.type === INTERACTION.component ? COMPONENTS : interaction.type === INTERACTION.modalSubmit ? MODALS : []
     const handler = routes.find(([prefix]) => id.startsWith(prefix))?.[1]
     return handler ? await handler(interaction, event) : partyNotice('아직 없는 기능이에요.')

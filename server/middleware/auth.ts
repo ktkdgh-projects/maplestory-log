@@ -1,10 +1,11 @@
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+const BOT_SIGNED_PATHS = ['/api/discord/interactions', '/api/discord/tick']
 
 export default defineEventHandler(async (event) => {
   // 정적 파일은 건너뛰되, API는 경로가 .xxx로 끝나도 Origin 검사와 세션을 거치게 한다
   if (event.path.startsWith('/_nuxt/') || (!event.path.startsWith('/api/') && /\.\w+$/.test(event.path.split('?')[0]!))) return
-  // 레다봇 요청은 디스코드 서명으로만 확인하고 메이플로그 로그인 쿠키는 읽지 않는다
-  if (event.path.startsWith('/api/discord/')) return
+  // 디스코드가 보내는 요청과 정기 호출은 서명·비밀값으로 따로 확인한다
+  if (BOT_SIGNED_PATHS.some(path => event.path.startsWith(path))) return
 
   // SameSite=Lax 쿠키에 더해, 쓰기 요청은 다른 사이트에서 온 것을 막는다
   if (event.path.startsWith('/api/') && UNSAFE_METHODS.has(event.method)) {
@@ -15,6 +16,9 @@ export default defineEventHandler(async (event) => {
       : !fetchSite || fetchSite === 'same-origin'
     if (!sameOrigin) throw createError({ statusCode: 403, message: '허용되지 않은 요청이에요.' })
   }
+
+  // 레다봇 화면은 디스코드 로그인으로 따로 확인하므로 메이플로그 로그인 쿠키를 읽지 않는다
+  if (event.path.startsWith('/api/discord/')) return
 
   // SSR 내부 API 호출의 Set-Cookie는 버려져서 페이지 요청에서도 세션을 읽어야 토큰 교체 쿠키가 간다
   await loadSession(event)

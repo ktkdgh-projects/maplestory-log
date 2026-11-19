@@ -4,16 +4,13 @@ import type { PartyLeadAction, PartyLeadResponse, PartyWeekStep } from '#shared/
 definePageMeta({ layout: false })
 useHead({
   title: '파티장 화면 · 레다봇',
-  // 주소에 개인 링크 토큰이 있어서 검색에 안 잡히고 다른 사이트로 새지 않게 한다
-  meta: [{ name: 'robots', content: 'noindex' }, { name: 'referrer', content: 'no-referrer' }],
+  meta: [{ name: 'robots', content: 'noindex' }],
 })
 
 // 채널에서 누가 투표하면 이만큼 뒤에 화면에도 보인다
 const REFRESH_MS = 5000
 
-const token = useRoute().query.t
-const { data, error, refresh } = await useFetch<PartyLeadResponse>('/api/discord/lead', { query: { t: token } })
-const openError = computed(() => (error.value?.data as { message?: string } | undefined)?.message ?? '디스코드에서 버튼을 다시 눌러 주세요.')
+const { partyId, data, refresh, openError } = await usePartyPage<PartyLeadResponse>('/api/discord/lead')
 
 const busy = ref(false)
 const message = ref('')
@@ -24,7 +21,7 @@ async function act(action: PartyLeadAction) {
   busy.value = true
   failed.value = false
   try {
-    data.value = await $fetch<PartyLeadResponse>('/api/discord/lead', { method: 'POST', body: { t: token, ...action } })
+    data.value = await $fetch<PartyLeadResponse>('/api/discord/lead', { method: 'POST', body: { p: partyId, ...action } })
     message.value = data.value.note
     picked.value = null
   }
@@ -80,7 +77,7 @@ const autos = (keys: PartyWeekStep[]) => keys.map(stepTime)
         <p class="brand">레다봇 · {{ data.partyName }}</p>
         <div class="title">
           <h1>파티장 화면</h1>
-          <NuxtLink class="btn ghost compact" :to="{ path: '/party/time', query: { t: token as string } }">내 시간표</NuxtLink>
+          <NuxtLink class="btn ghost compact" :to="{ path: '/party/time', query: { p: partyId } }">내 시간표</NuxtLink>
         </div>
         <p class="sub">{{ formatDayWeek(data.week) }} ~ {{ formatDayWeek(addDays(data.week, 6)) }} · 버튼을 누르면 파티 채널에 올라가요</p>
       </header>

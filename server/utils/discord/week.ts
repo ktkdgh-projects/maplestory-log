@@ -4,7 +4,8 @@ import { PARTY_SLOTS_PER_DAY, PARTY_SLOT_COUNT } from '#shared/data/party'
 import type { PartyDoc, WeekCandidate, WeekDoc, WeekStep } from './db'
 import { useBotCollections } from './db'
 import { editDiscordMessage, sendDiscordMessage } from './api'
-import { PARTY_COLOR, PARTY_NOT_MEMBER, PARTY_TIME, RESPONSE, partyNotice, partyOfInteraction, partyTag, type DiscordInteraction } from './party'
+import { botPageUrl, botSiteUrl } from './webAuth'
+import { PARTY_COLOR, PARTY_NOT_MEMBER, RESPONSE, partyNotice, partyOfInteraction, partyTag, type DiscordInteraction } from './party'
 
 export const WEEK_STEPS: WeekStep[] = ['announce', 'remindSubmit', 'startVote', 'askConfirm', 'autoConfirm', 'notice', 'remindBoss']
 const CANDIDATE_MAX = 10
@@ -130,7 +131,8 @@ export async function weekConflicts(party: PartyDoc, week: string): Promise<Set<
 }
 
 const tags = (userIds: string[]) => userIds.map(partyTag).join(' ')
-const timeButton = { type: 1, components: [{ type: 2, style: 3, label: '보스 시간 적기', custom_id: PARTY_TIME }] }
+// 사이트 주소 설정이 없으면 링크를 만들 수 없으니 버튼 없이 올린다
+const timeButtons = (party: PartyDoc) => (botSiteUrl() ? [{ type: 1, components: [{ type: 2, style: 5, label: '보스 시간 적기', url: botPageUrl('time', party._id) }] }] : [])
 const stamp = (date: Date, style: 'f' | 'R') => `<t:${Math.floor(date.getTime() / 1000)}:${style}>`
 
 // 채널에 올리는 메시지는 모두 같은 모양으로 쓴다: 태그 한 줄 + 제목 있는 카드
@@ -188,13 +190,13 @@ export async function runWeekStep(party: PartyDoc, doc: WeekDoc, step: WeekStep)
   const range = `${weekDayLabel(doc.week, 0)} ~ ${weekDayLabel(doc.week, 6)}`
 
   if (step === 'announce') {
-    await send(partyCard('🗓️ 보스 시간을 적어 주세요', `**${range}** 중 되는 시간을 적어 주세요.\n마감 ${stamp(weekStepTime(doc, 'startVote')!, 'f')}`, ids, [timeButton]))
+    await send(partyCard('🗓️ 보스 시간을 적어 주세요', `**${range}** 중 되는 시간을 적어 주세요.\n마감 ${stamp(weekStepTime(doc, 'startVote')!, 'f')}`, ids, timeButtons(party)))
   }
   else if (step === 'remindSubmit' && doc.phase === 'collect') {
     const { availability } = await useBotCollections()
     const submitted = new Set((await availability.find({ userId: { $in: ids }, week: doc.week }, { projection: { userId: 1 } }).toArray()).map(d => d.userId))
     const missing = ids.filter(id => !submitted.has(id))
-    if (missing.length) await send(partyCard('⏰ 아직 보스 시간을 안 적었어요', `**${range}** · 마감 ${stamp(weekStepTime(doc, 'startVote')!, 'R')}`, missing, [timeButton]))
+    if (missing.length) await send(partyCard('⏰ 아직 보스 시간을 안 적었어요', `**${range}** · 마감 ${stamp(weekStepTime(doc, 'startVote')!, 'R')}`, missing, timeButtons(party)))
   }
   else if (step === 'startVote' && doc.phase === 'collect') {
     const candidates = await weekCandidates(party, doc.week)
@@ -228,8 +230,8 @@ export async function runWeekStep(party: PartyDoc, doc: WeekDoc, step: WeekStep)
   return patchWeek(doc, { [`done.${step}`]: new Date() })
 }
 
-// 그 시각에 진행 중인 주: 가장 최근 월요일 0시에 알림이 나간 주의 목요일
-function cycleWeek(now: Date): string {
+// 그 시각에 진행 중인 주: 가장 최근 월요일 0시에 알림이 나간 주의 목요일. 목~일에는 이번 주 보스, 월~수에는 다가오는 목요일
+export function partyCycleWeek(now = new Date()): string {
   const today = kstDateOf(now)
   return addDays(today, -((kstWeekday(today) + 6) % 7) + 3)
 }
@@ -240,7 +242,7 @@ export async function tickParties(now = new Date()): Promise<number> {
   let ran = 0
   for (const party of await parties.find().toArray()) {
     try {
-      await partyWeek(party._id, cycleWeek(now))
+      await partyWeek(party._id, partyCycleWeek(now))
       for (let doc of await weeks.find({ partyId: party._id, week: { $gte: addDays(kstDateOf(now), -7) } }).toArray()) {
         for (const step of WEEK_STEPS) {
           const at = weekStepTime(doc, step)

@@ -3,11 +3,11 @@ import type { PartyLeadAction, PartyLeadResponse } from '#shared/types'
 import type { PartyDoc, WeekDoc, WeekStep } from './db'
 import { useBotCollections } from './db'
 import { deleteDiscordReply } from './api'
-import { signPartyLink } from './link'
 import { PARTY_COLOR, PARTY_EPHEMERAL, PARTY_NOT_MEMBER, RESPONSE, partyNotice, partyOfInteraction, type DiscordInteraction } from './party'
-import { WEEK_STEPS, confirmWeek, partyTargetWeek, partyWeek, runWeekStep, slotLabel, weekConflicts, weekRanking, weekStepTime } from './week'
+import { partyOfBotUser } from './webAuth'
+import { WEEK_STEPS, confirmWeek, partyWeek, runWeekStep, slotLabel, weekConflicts, weekRanking, weekStepTime } from './week'
 
-// 버튼 id: lead:menu, lead:confirm:<주>, lead:pick:<칸>:<주>
+// 버튼 id: lead:confirm:<주>, lead:pick:<칸>:<주>
 const STEP_LABELS: Record<WeekStep, string> = {
   announce: '시간 적기 알림',
   remindSubmit: '미제출자 태그',
@@ -18,6 +18,13 @@ const STEP_LABELS: Record<WeekStep, string> = {
   remindBoss: '30분 전 알림',
 }
 const LEADER_ONLY = '파티장만 쓸 수 있어요.'
+
+// 파티장 화면(웹)은 로그인한 사람이 그 파티의 파티장일 때만 쓴다
+export async function requirePartyLeader(event: H3Event, partyId: unknown) {
+  const found = await partyOfBotUser(event, partyId)
+  if (found.userId !== found.party.leaderId) throw createError({ statusCode: 403, message: LEADER_ONLY })
+  return found
+}
 
 // 파티장 화면(웹)에 보여 줄 이번 주 상태
 export async function leaderState(party: PartyDoc, doc: WeekDoc, note = ''): Promise<PartyLeadResponse> {
@@ -54,16 +61,6 @@ export async function leaderAct(party: PartyDoc, doc: WeekDoc, { action, step, s
     return { doc: await confirmWeek(party, doc, slot), note: `${slotLabel(doc.week, slot)}로 확정했어요. 목요일 0시에 공지돼요.` }
   }
   throw bad('없는 동작이에요.')
-}
-
-// 파티장 화면은 웹에 둔다. 채널에는 모두가 보는 메시지만 쌓이게 하려는 것
-export async function openLeaderMenu(interaction: DiscordInteraction, event: H3Event) {
-  const found = await partyOfInteraction(interaction)
-  if (!found) return partyNotice(PARTY_NOT_MEMBER)
-  if (found.userId !== found.party.leaderId) return partyNotice(LEADER_ONLY)
-  const token = signPartyLink({ userId: found.userId, partyId: found.party._id.toHexString(), week: partyTargetWeek() })
-  const { origin } = getRequestURL(event, { xForwardedHost: true, xForwardedProto: true })
-  return partyNotice('파티장만 쓰는 링크예요.', [{ type: 1, components: [{ type: 2, style: 5, label: '파티장 화면 열기', url: `${origin}/party/lead?t=${token}` }] }])
 }
 
 // 채널의 "결과 보고 확정" 버튼: 투표 결과를 보고 그 자리에서 고른다. 파티원의 다른 일정과 겹치는 시간은 고를 수 없다

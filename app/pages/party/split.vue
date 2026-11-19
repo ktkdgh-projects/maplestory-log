@@ -5,8 +5,7 @@ import { PARTY_SPLIT_FEES, partySplit } from '#shared/calc/partySplit'
 definePageMeta({ layout: false })
 useHead({
   title: '분배금 계산 · 레다봇',
-  // 주소에 개인 링크 토큰이 있어서 검색에 안 잡히고 다른 사이트로 새지 않게 한다
-  meta: [{ name: 'robots', content: 'noindex' }, { name: 'referrer', content: 'no-referrer' }],
+  meta: [{ name: 'robots', content: 'noindex' }],
 })
 
 const SALE_MAX = 1e13
@@ -15,9 +14,7 @@ const FEE_LABELS: Record<number, string> = { 0.05: '5%', 0.03: '3% (MVP)', 0: '0
 const SALE_STEPS = [1e9, 1e8, 1e7, 1e6]
 const COST_STEPS = [1e7, 1e6, 1e5]
 
-const token = useRoute().query.t
-const { data, error } = await useFetch<PartySplitInfo>('/api/discord/split', { query: { t: token } })
-const openError = computed(() => (error.value?.data as { message?: string } | undefined)?.message ?? '디스코드에서 버튼을 다시 눌러 주세요.')
+const { partyId, data, openError } = await usePartyPage<PartySplitInfo>('/api/discord/split')
 
 const sale = ref(0)
 const cost = ref(0)
@@ -72,7 +69,7 @@ async function post() {
   sending.value = true
   failed.value = false
   try {
-    await $fetch('/api/discord/split', { method: 'POST', body: { t: token, ...request.value } })
+    await $fetch('/api/discord/split', { method: 'POST', body: { p: partyId, ...request.value } })
     message.value = '파티 채널에 올렸어요'
   }
   catch (e) {

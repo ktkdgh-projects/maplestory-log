@@ -65,6 +65,10 @@ export default defineNuxtConfig({
     discordAppId: '',
     discordPublicKey: '',
     discordBotToken: '',
+    // 레다봇 화면의 디스코드 로그인에 쓴다
+    discordClientSecret: '',
+    // 채널 메시지의 화면 링크에 넣을 사이트 주소(예: https://maplestory-log.vercel.app)
+    discordSiteUrl: '',
     discordDbName: '',
     // 정해진 시각 알림을 돌리는 /api/discord/tick 을 부를 때 쓰는 비밀값
     discordTickSecret: '',

@@ -16,6 +16,8 @@ if (!token || !dbName || dbName === 'leda') {
 // 정해진 시각 알림은 운영에서는 밖의 정기 호출이 깨우고, 여기서는 15초마다 직접 깨운다
 const TICK_MS = 15_000
 process.env.NUXT_DISCORD_TICK_SECRET = randomBytes(24).toString('hex')
+// 디스코드 로그인 뒤 돌아올 주소는 포털에 등록한 것과 같아야 해서, 켤 때마다 바뀌는 터널 대신 localhost를 쓴다
+process.env.NUXT_DISCORD_SITE_URL ??= `http://localhost:${PORT}`
 
 const children = []
 const run = (cmd, args, opts = {}) => {

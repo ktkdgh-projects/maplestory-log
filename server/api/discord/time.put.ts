@@ -1,25 +1,27 @@
 import { PARTY_SLOT_COUNT } from '#shared/data/party'
-import { readPartyLink } from '../../utils/discord/link'
 import { botRateLimit, useBotCollections } from '../../utils/discord/db'
-import { partyOfLink, partyTime } from '../../utils/discord/time'
+import { partyTime } from '../../utils/discord/time'
+import { partyOfBotUser } from '../../utils/discord/webAuth'
+import { partyTargetWeek } from '../../utils/discord/week'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{ t?: unknown, slots?: unknown }>(event)
-  const link = readPartyLink(body?.t)
-  await botRateLimit('time-put', link.userId, 60, 60)
-  const party = await partyOfLink(link)
+  const body = await readBody<{ p?: unknown, slots?: unknown }>(event)
+  const { party, userId } = await partyOfBotUser(event, body?.p)
+  await botRateLimit('time-put', userId, 60, 60)
+
+  const week = partyTargetWeek()
   const { availability, weeks } = await useBotCollections()
-  const week = await weeks.findOne({ partyId: party._id, week: link.week }, { projection: { phase: 1 } })
-  if (week && week.phase !== 'collect') throw createError({ statusCode: 409, message: '마감됐어요. 투표가 시작돼서 더는 고칠 수 없어요.' })
+  const weekDoc = await weeks.findOne({ partyId: party._id, week }, { projection: { phase: 1 } })
+  if (weekDoc && weekDoc.phase !== 'collect') throw createError({ statusCode: 409, message: '마감됐어요. 투표가 시작돼서 더는 고칠 수 없어요.' })
 
   const slots = body?.slots
   if (!Array.isArray(slots) || slots.length > PARTY_SLOT_COUNT || slots.some(s => !Number.isInteger(s) || s < 0 || s >= PARTY_SLOT_COUNT)) {
     throw createError({ statusCode: 400, message: '시간을 다시 골라 주세요.' })
   }
   await availability.updateOne(
-    { userId: link.userId, week: link.week },
+    { userId, week },
     { $set: { slots: [...new Set(slots as number[])].sort((a, b) => a - b), updatedAt: new Date() } },
     { upsert: true },
   )
-  return partyTime(link)
+  return partyTime(party, userId, week)
 })
