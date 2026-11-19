@@ -3,9 +3,9 @@ import { useBotCollections } from './db'
 import { channelViewers } from './api'
 
 // 디스코드 응답·컴포넌트 번호 (https://discord.com/developers/docs/interactions/receiving-and-responding)
-export const RESPONSE = { pong: 1, message: 4, updateMessage: 7, modal: 9 } as const
-const EPHEMERAL = 64
-const BRAND_COLOR = 0xF2851E
+export const RESPONSE = { pong: 1, message: 4, deferredUpdate: 6, updateMessage: 7, modal: 9 } as const
+export const PARTY_EPHEMERAL = 64
+export const PARTY_COLOR = 0xF2851E
 const CHARACTER_MAX = 12
 const NOT_IN_CHANNEL = '서버 채널에서만 쓸 수 있어요.'
 export const PARTY_NOT_MEMBER = '이 파티 명단에 없어요. 파티장에게 명단 새로고침을 부탁해 주세요.'
@@ -13,15 +13,24 @@ export const PARTY_NOT_MEMBER = '이 파티 명단에 없어요. 파티장에게
 export const PARTY_CHARACTER = 'party:character'
 export const PARTY_REFRESH = 'party:refresh'
 export const PARTY_TIME = 'time:open'
+export const PARTY_SPLIT = 'split:open'
+export const PARTY_LEADER = 'lead:menu'
 
 export interface DiscordInteraction {
   type: number
+  // 응답한 뒤에도 15분 동안 이 답을 고치거나 덧붙일 때 쓴다
+  application_id?: string
+  token?: string
   guild_id?: string
   channel_id?: string
   member?: { user: { id: string } }
+  // flags에 64가 있으면 누른 사람에게만 보이는 메시지
+  message?: { id: string, flags?: number }
   data?: {
     name?: string
     custom_id?: string
+    // 선택 메뉴에서 고른 값
+    values?: string[]
     options?: { name: string, type: number, value?: string, options?: { name: string, value?: string }[] }[]
     components?: { components?: { custom_id: string, value: string }[], component?: { custom_id: string, value: string } }[]
   }
@@ -29,7 +38,25 @@ export interface DiscordInteraction {
 
 // 누른 사람에게만 보이는 답
 export function partyNotice(content: string, components: unknown[] = []) {
-  return { type: RESPONSE.message, data: { content, components, flags: EPHEMERAL, allowed_mentions: { parse: [] } } }
+  return { type: RESPONSE.message, data: { content, components, flags: PARTY_EPHEMERAL, allowed_mentions: { parse: [] } } }
+}
+
+// 버튼·명령을 누른 사람이 이 채널 파티의 파티원일 때만 파티를 돌려준다
+export async function partyOfInteraction(interaction: DiscordInteraction) {
+  const userId = interaction.member?.user.id
+  const { parties } = await useBotCollections()
+  const party = userId ? await parties.findOne({ channelId: interaction.channel_id, 'members.userId': userId }) : null
+  return party && userId ? { party, userId } : null
+}
+
+export const partyCharacter = (party: PartyDoc, userId: string) => party.members.find(m => m.userId === userId)?.character ?? '?'
+
+export const partyTag = (userId: string) => `<@${userId}>`
+
+// 모달에서 적어 낸 글 칸 하나
+export function partyModalText(interaction: DiscordInteraction, customId: string): string {
+  const rows = interaction.data?.components ?? []
+  return rows.flatMap(r => r.components ?? (r.component ? [r.component] : [])).find(c => c.custom_id === customId)?.value.trim() ?? ''
 }
 
 // 파티 채널에 걸어 두는 명단 메시지. 캐릭터를 바꾸거나 명단을 새로 받을 때마다 이 메시지를 고쳐 쓴다
@@ -37,16 +64,18 @@ function rosterMessage(party: PartyDoc) {
   return {
     embeds: [{
       title: `${party.name} 파티`,
-      description: party.members.map(m => `• <@${m.userId}> · ${m.character}`).join('\n') || '이 채널을 볼 수 있는 사람이 없어요.',
-      color: BRAND_COLOR,
+      description: party.members.map(m => `• <@${m.userId}> · ${m.character}${m.userId === party.leaderId ? ' 👑' : ''}`).join('\n') || '이 채널을 볼 수 있는 사람이 없어요.',
+      color: PARTY_COLOR,
       footer: { text: `파티원 ${party.members.length}명 · 채널을 볼 수 있는 사람이 파티원이에요` },
     }],
     components: [{
       type: 1,
       components: [
         { type: 2, style: 3, label: '보스 시간 적기', custom_id: PARTY_TIME },
-        { type: 2, style: 1, label: '내 캐릭터 이름', custom_id: PARTY_CHARACTER },
+        { type: 2, style: 1, label: '분배금', custom_id: PARTY_SPLIT },
+        { type: 2, style: 2, label: '내 캐릭터 이름', custom_id: PARTY_CHARACTER },
         { type: 2, style: 2, label: '명단 새로고침', custom_id: PARTY_REFRESH },
+        { type: 2, style: 2, label: '파티장 메뉴', custom_id: PARTY_LEADER },
       ],
     }],
     allowed_mentions: { parse: [] },
@@ -60,6 +89,7 @@ async function syncedMembers(guildId: string, channelId: string, current: PartyM
   return viewers.map(v => current.find(m => m.userId === v.userId) ?? { userId: v.userId, character: v.displayName.slice(0, CHARACTER_MAX), joinedAt: now })
 }
 
+// 파티를 연결한 사람이 파티장이 된다
 export async function connectParty(interaction: DiscordInteraction) {
   const name = interaction.data?.options?.[0]?.options?.find(o => o.name === '이름')?.value?.trim()
   if (!interaction.guild_id || !interaction.channel_id || !interaction.member) return partyNotice(NOT_IN_CHANNEL)
@@ -91,10 +121,8 @@ export async function refreshParty(interaction: DiscordInteraction) {
 }
 
 export async function askPartyCharacter(interaction: DiscordInteraction) {
-  const { parties } = await useBotCollections()
-  const party = await parties.findOne({ channelId: interaction.channel_id })
-  const mine = party?.members.find(m => m.userId === interaction.member?.user.id)
-  if (!mine) return partyNotice(PARTY_NOT_MEMBER)
+  const found = await partyOfInteraction(interaction)
+  if (!found) return partyNotice(PARTY_NOT_MEMBER)
   return {
     type: RESPONSE.modal,
     data: {
@@ -102,20 +130,14 @@ export async function askPartyCharacter(interaction: DiscordInteraction) {
       title: '내 캐릭터 이름',
       components: [{
         type: 1,
-        components: [{ type: 4, custom_id: 'character', label: '이 파티에서 쓰는 캐릭터 이름', style: 1, min_length: 2, max_length: CHARACTER_MAX, required: true, value: mine.character }],
+        components: [{ type: 4, custom_id: 'character', label: '이 파티에서 쓰는 캐릭터 이름', style: 1, min_length: 2, max_length: CHARACTER_MAX, required: true, value: partyCharacter(found.party, found.userId) }],
       }],
     },
   }
 }
 
-function submittedCharacter(interaction: DiscordInteraction) {
-  const rows = interaction.data?.components ?? []
-  const field = rows.flatMap(r => r.components ?? (r.component ? [r.component] : [])).find(c => c.custom_id === 'character')
-  return field?.value.trim() ?? ''
-}
-
 export async function savePartyCharacter(interaction: DiscordInteraction) {
-  const character = submittedCharacter(interaction)
+  const character = partyModalText(interaction, 'character')
   if (!interaction.channel_id || !interaction.member) return partyNotice(NOT_IN_CHANNEL)
   if (!character || character.length > CHARACTER_MAX) return partyNotice('캐릭터 이름을 다시 적어 주세요.')
 

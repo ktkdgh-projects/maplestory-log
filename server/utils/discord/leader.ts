@@ -1,0 +1,105 @@
+import type { H3Event } from 'h3'
+import type { PartyLeadAction, PartyLeadResponse } from '#shared/types'
+import type { PartyDoc, WeekDoc, WeekStep } from './db'
+import { useBotCollections } from './db'
+import { deleteDiscordReply } from './api'
+import { signPartyLink } from './link'
+import { PARTY_COLOR, PARTY_EPHEMERAL, PARTY_NOT_MEMBER, RESPONSE, partyNotice, partyOfInteraction, type DiscordInteraction } from './party'
+import { WEEK_STEPS, confirmWeek, partyTargetWeek, partyWeek, runWeekStep, slotLabel, weekConflicts, weekRanking, weekStepTime } from './week'
+
+// 버튼 id: lead:menu, lead:confirm:<주>, lead:pick:<칸>:<주>
+const STEP_LABELS: Record<WeekStep, string> = {
+  announce: '시간 적기 알림',
+  remindSubmit: '미제출자 태그',
+  startVote: '마감하고 투표 시작',
+  askConfirm: '투표 마감',
+  autoConfirm: '자동 확정',
+  notice: '보스 시간 공지',
+  remindBoss: '30분 전 알림',
+}
+const LEADER_ONLY = '파티장만 쓸 수 있어요.'
+
+// 파티장 화면(웹)에 보여 줄 이번 주 상태
+export async function leaderState(party: PartyDoc, doc: WeekDoc, note = ''): Promise<PartyLeadResponse> {
+  const { availability } = await useBotCollections()
+  const [submitted, conflicts] = await Promise.all([
+    availability.find({ userId: { $in: party.members.map(m => m.userId) }, week: doc.week }, { projection: { userId: 1 } }).toArray(),
+    weekConflicts(party, doc.week),
+  ])
+  const submittedIds = new Set(submitted.map(d => d.userId))
+  return {
+    week: doc.week,
+    partyName: party.name,
+    note,
+    phase: doc.phase,
+    members: party.members.map(m => ({ character: m.character, submitted: submittedIds.has(m.userId), voted: doc.votes[m.userId] !== undefined })),
+    candidates: weekRanking(doc).map(c => ({ slot: c.slot, label: slotLabel(doc.week, c.slot), votes: c.votes, missing: c.missing, conflict: conflicts.has(c.slot) })),
+    confirmed: doc.confirmed === null ? null : { slot: doc.confirmed, label: slotLabel(doc.week, doc.confirmed) },
+    steps: WEEK_STEPS.map(step => ({ key: step, label: STEP_LABELS[step], at: weekStepTime(doc, step)?.toISOString() ?? null, done: !!doc.done[step] })),
+    changeOpen: !!doc.change,
+  }
+}
+
+// 파티장이 누른 동작 하나를 처리하고, 바뀐 주와 알려 줄 말을 돌려준다
+export async function leaderAct(party: PartyDoc, doc: WeekDoc, { action, step, slot }: PartyLeadAction): Promise<{ doc: WeekDoc, note: string }> {
+  const bad = (message: string) => createError({ statusCode: 400, message })
+  if (action === 'run') {
+    if (!step || !WEEK_STEPS.includes(step)) throw bad('없는 단계예요.')
+    const updated = await runWeekStep(party, doc, step)
+    const failed = step === 'startVote' && updated.phase !== 'vote'
+    return { doc: updated, note: failed ? '모두 되는 시간이 없어서 투표를 열지 못했어요.' : `${STEP_LABELS[step]}: 채널에 올렸어요.` }
+  }
+  if (action === 'pick') {
+    if (slot === undefined || !doc.candidates.some(c => c.slot === slot) || (await weekConflicts(party, doc.week)).has(slot)) throw bad('고를 수 없는 시간이에요.')
+    return { doc: await confirmWeek(party, doc, slot), note: `${slotLabel(doc.week, slot)}로 확정했어요. 목요일 0시에 공지돼요.` }
+  }
+  throw bad('없는 동작이에요.')
+}
+
+// 파티장 화면은 웹에 둔다. 채널에는 모두가 보는 메시지만 쌓이게 하려는 것
+export async function openLeaderMenu(interaction: DiscordInteraction, event: H3Event) {
+  const found = await partyOfInteraction(interaction)
+  if (!found) return partyNotice(PARTY_NOT_MEMBER)
+  if (found.userId !== found.party.leaderId) return partyNotice(LEADER_ONLY)
+  const token = signPartyLink({ userId: found.userId, partyId: found.party._id.toHexString(), week: partyTargetWeek() })
+  const { origin } = getRequestURL(event, { xForwardedHost: true, xForwardedProto: true })
+  return partyNotice('파티장만 쓰는 링크예요.', [{ type: 1, components: [{ type: 2, style: 5, label: '파티장 화면 열기', url: `${origin}/party/lead?t=${token}` }] }])
+}
+
+// 채널의 "결과 보고 확정" 버튼: 투표 결과를 보고 그 자리에서 고른다. 파티원의 다른 일정과 겹치는 시간은 고를 수 없다
+async function confirmPanel(party: PartyDoc, doc: WeekDoc) {
+  const conflicts = await weekConflicts(party, doc.week)
+  const ranking = weekRanking(doc)
+  const lines = ranking.map((c, i) => `${i + 1}위 · **${slotLabel(doc.week, c.slot)}** · ${c.votes}표${c.missing ? ' · 한 명 안 됨' : ''}${conflicts.has(c.slot) ? ' · 파티원 일정과 겹쳐요' : ''}`)
+  const picks = ranking.map(c => ({ type: 2, style: c.slot === doc.confirmed ? 3 : 1, label: slotLabel(doc.week, c.slot), custom_id: `lead:pick:${c.slot}:${doc.week}`, disabled: conflicts.has(c.slot) }))
+  return {
+    embeds: [{
+      title: `투표 결과 · ${Object.keys(doc.votes).length} / ${party.members.length}명 투표`,
+      description: `${lines.join('\n')}\n\n확정할 시간을 눌러 주세요.`,
+      color: PARTY_COLOR,
+    }],
+    components: [picks.slice(0, 5), picks.slice(5)].filter(row => row.length).map(components => ({ type: 1, components })),
+    flags: PARTY_EPHEMERAL,
+    allowed_mentions: { parse: [] },
+  }
+}
+
+export async function runLeaderAction(interaction: DiscordInteraction, event: H3Event) {
+  const found = await partyOfInteraction(interaction)
+  if (!found) return partyNotice(PARTY_NOT_MEMBER)
+  if (found.userId !== found.party.leaderId) return partyNotice(LEADER_ONLY)
+
+  const parts = interaction.data!.custom_id!.split(':')
+  const doc = await partyWeek(found.party._id, parts.at(-1)!)
+  if (parts[1] === 'confirm') {
+    if (!doc.candidates.length) return partyNotice('아직 투표 후보가 없어요.')
+    return { type: RESPONSE.message, data: await confirmPanel(found.party, doc) }
+  }
+  if (parts[1] === 'pick') {
+    await leaderAct(found.party, doc, { action: 'pick', slot: Number(parts[2]) })
+    // 확정은 채널의 투표 메시지에 표시되므로, 나만 보이던 결과 창은 지운다
+    event.waitUntil(deleteDiscordReply(interaction))
+    return { type: RESPONSE.deferredUpdate }
+  }
+  return partyNotice('아직 없는 기능이에요.')
+}

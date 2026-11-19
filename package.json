@@ -8,7 +8,8 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "typecheck": "nuxt typecheck",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "dev:bot": "node --env-file=.env --env-file=.env.bot-test scripts/bot-dev.mjs"
   },
   "dependencies": {
     "mongodb": "^7.7.0",

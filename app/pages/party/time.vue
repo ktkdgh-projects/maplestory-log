@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PartyTimeResponse } from '#shared/types'
-import { PARTY_SLOT_COUNT, PARTY_SLOTS_PER_DAY } from '#shared/data/party'
+import { PARTY_SLOT_COUNT, PARTY_SLOTS_PER_DAY, partyDayRanges } from '#shared/data/party'
 
 definePageMeta({ layout: false })
 useHead({
@@ -9,11 +9,19 @@ useHead({
   meta: [{ name: 'robots', content: 'noindex' }, { name: 'referrer', content: 'no-referrer' }],
 })
 
-const HOURS = Array.from({ length: PARTY_SLOTS_PER_DAY }, (_, i) => String(i * 2).padStart(2, '0'))
+// 세 칸(6시간)씩 묶어 시간대 이름을 붙인다
+const BANDS = ['새벽', '오전', '오후', '저녁']
+const BAND_SIZE = PARTY_SLOTS_PER_DAY / BANDS.length
+const ROWS = Array.from({ length: PARTY_SLOTS_PER_DAY }, (_, s) => ({ s, hour: s * 2, band: s % BAND_SIZE === 0 ? BANDS[s / BAND_SIZE]! : '' }))
+// 요일 번호는 목요일부터 센다: 목0 금1 토2 일3 월4 화5 수6
+const PRESETS = [
+  { label: '평일 20~24시', days: [0, 1, 4, 5, 6], from: 10, to: 12 },
+  { label: '주말 12~24시', days: [2, 3], from: 6, to: 12 },
+  { label: '매일 22~24시', days: [0, 1, 2, 3, 4, 5, 6], from: 11, to: 12 },
+]
 
 const token = useRoute().query.t
 const { data, error } = await useFetch<PartyTimeResponse>('/api/discord/time', { query: { t: token } })
-
 const openError = computed(() => (error.value?.data as { message?: string } | undefined)?.message ?? '디스코드에서 버튼을 다시 눌러 주세요.')
 
 const toPicked = (slots: number[]) => Array.from({ length: PARTY_SLOT_COUNT }, (_, i) => slots.includes(i))
@@ -22,17 +30,22 @@ const savedSlots = ref(data.value?.slots ?? [])
 const saving = ref(false)
 const failed = ref('')
 
+const cell = (day: number, s: number) => day * PARTY_SLOTS_PER_DAY + s
 const days = computed(() => Array.from({ length: 7 }, (_, d) => {
   const date = addDays(data.value!.week, d)
-  return { label: WEEKDAYS[kstWeekday(date)]!, day: Number(date.slice(8)), start: d * PARTY_SLOTS_PER_DAY }
+  const weekday = kstWeekday(date)
+  return { d, label: WEEKDAYS[weekday]!, date: Number(date.slice(8)), weekend: weekday === 0 || weekday === 6 }
 }))
 const slots = computed(() => picked.value.flatMap((on, i) => (on ? [i] : [])))
 const dirty = computed(() => slots.value.join() !== savedSlots.value.join())
-const othersAll = (i: number) => !!data.value && data.value.othersSubmitted > 0 && data.value.othersCounts[i] === data.value.othersSubmitted
+const summary = computed(() => days.value.map(day => ({ ...day, text: partyDayRanges(slots.value, day.d) })).filter(day => day.text))
+// 한 번도 안 냈으면 고른 시간이 없어도 "이번 주는 안 돼요"로 제출할 수 있다
+const canSubmit = computed(() => !data.value?.closed && (dirty.value || !data.value?.saved))
 const status = computed(() => {
   if (failed.value) return failed.value
-  if (dirty.value) return '저장하지 않은 변경이 있어요'
-  return data.value?.saved ? '저장했어요. 마감 전까지 언제든 고칠 수 있어요' : '가능한 시간을 끌어서 칠해 주세요'
+  if (data.value?.closed) return '마감됐어요. 투표가 시작돼서 더는 고칠 수 없어요'
+  if (dirty.value) return data.value?.saved ? '고친 내용을 아직 제출하지 않았어요' : '다 칠했으면 제출을 눌러 주세요'
+  return data.value?.saved ? '제출했어요. 마감 전까지 고칠 수 있어요' : '되는 시간을 칠하고 제출을 눌러 주세요'
 })
 
 // 처음 누른 칸의 반대 상태로, 끌고 지나간 칸을 모두 칠한다
@@ -61,73 +74,110 @@ function toggleByKey(e: MouseEvent, i: number) {
   if (e.detail === 0) picked.value[i] = !picked.value[i]
 }
 
+// 여러 칸을 한 번에 칠하고, 이미 다 칠해져 있으면 지운다
+function toggleCells(cells: number[]) {
+  const fill = !cells.every(i => picked.value[i])
+  for (const i of cells) picked.value[i] = fill
+}
+const dayCells = (d: number) => ROWS.map(row => cell(d, row.s))
+const timeCells = (s: number) => days.value.map(day => cell(day.d, s))
+const presetCells = (preset: typeof PRESETS[number]) => preset.days.flatMap(d => ROWS.filter(row => row.s >= preset.from && row.s < preset.to).map(row => cell(d, row.s)))
+const presetOn = (preset: typeof PRESETS[number]) => presetCells(preset).every(i => picked.value[i])
+
 function loadLastWeek() {
   picked.value = toPicked(data.value!.lastWeekSlots)
 }
 
-async function save() {
+async function submit() {
   saving.value = true
   failed.value = ''
   try {
-    data.value = await $fetch<PartyTimeResponse>('/api/discord/time', { method: 'PUT', body: { t: token, slots: slots.value } })
-    savedSlots.value = data.value.slots
+    const sent = slots.value
+    data.value = await $fetch<PartyTimeResponse>('/api/discord/time', { method: 'PUT', body: { t: token, slots: sent } })
+    savedSlots.value = sent
   }
   catch (e) {
-    failed.value = (e as { data?: { message?: string } }).data?.message ?? '저장하지 못했어요. 다시 눌러 주세요.'
+    failed.value = (e as { data?: { message?: string } }).data?.message ?? '제출하지 못했어요. 다시 눌러 주세요.'
   }
   finally {
     saving.value = false
   }
 }
+
+// 제출하지 않은 채 창을 닫으려 하면 브라우저가 한 번 물어본다
+function warnUnsaved(e: BeforeUnloadEvent) {
+  if (dirty.value) e.preventDefault()
+}
+onMounted(() => window.addEventListener('beforeunload', warnUnsaved))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', warnUnsaved))
 </script>
 
 <template>
   <main class="page">
-    <p class="brand">레다봇</p>
-
-    <section v-if="!data" class="card empty">
+    <section v-if="!data" class="card">
+      <p class="brand">레다봇</p>
       <h1>링크를 열 수 없어요</h1>
-      <p>{{ openError }}</p>
+      <p class="sub">{{ openError }}</p>
     </section>
 
     <template v-else>
       <header class="head">
-        <h1>{{ data.partyName }} 보스 시간</h1>
-        <p>{{ formatDayWeek(data.week) }} ~ {{ formatDayWeek(addDays(data.week, 6)) }} · 한 칸은 2시간</p>
+        <p class="brand">레다봇 · {{ data.partyName }}</p>
+        <div class="title">
+          <h1>보스 되는 시간을 칠해 주세요</h1>
+          <NuxtLink v-if="data.leader" class="btn ghost compact" :to="{ path: '/party/lead', query: { t: token as string } }">파티장 화면</NuxtLink>
+        </div>
+        <p class="sub">{{ formatDayWeek(data.week) }} ~ {{ formatDayWeek(addDays(data.week, 6)) }}</p>
       </header>
 
       <section class="card">
+        <div class="quick">
+          <button v-for="preset in PRESETS" :key="preset.label" type="button" class="chip" :class="{ on: presetOn(preset) }" :aria-pressed="presetOn(preset)" @click="toggleCells(presetCells(preset))">{{ preset.label }}</button>
+          <button type="button" class="chip" :disabled="!data.lastWeekSlots.length" @click="loadLastWeek">지난주 그대로</button>
+        </div>
+
         <div class="grid" @pointerdown="startPaint" @pointermove="movePaint" @pointerup="endPaint" @pointercancel="endPaint">
           <span />
-          <span v-for="h in HOURS" :key="h" class="hour">{{ h }}</span>
-          <template v-for="d in days" :key="d.start">
-            <span class="day"><b>{{ d.label }}</b>{{ d.day }}</span>
+          <button v-for="day in days" :key="day.d" type="button" class="day" :class="{ weekend: day.weekend }" :aria-label="`${day.label}요일 하루 종일`" @click="toggleCells(dayCells(day.d))">
+            <b>{{ day.label }}</b>{{ day.date }}
+          </button>
+          <template v-for="row in ROWS" :key="row.s">
+            <button type="button" class="time" :class="{ band: row.band }" :aria-label="`매일 ${row.hour}시부터 2시간`" @click="toggleCells(timeCells(row.s))">
+              <small>{{ row.band }}</small>{{ row.hour }}시
+            </button>
             <button
-              v-for="(h, s) in HOURS"
-              :key="s"
+              v-for="day in days"
+              :key="day.d"
               type="button"
               class="cell"
-              :class="{ on: picked[d.start + s], all: picked[d.start + s] && othersAll(d.start + s), hint: !picked[d.start + s] && othersAll(d.start + s) }"
-              :data-i="d.start + s"
-              :aria-pressed="picked[d.start + s]"
-              :aria-label="`${d.label}요일 ${h}시부터 2시간`"
-              @click="toggleByKey($event, d.start + s)"
+              :class="{
+                on: picked[cell(day.d, row.s)],
+                up: row.s > 0 && picked[cell(day.d, row.s - 1)],
+                down: row.s < PARTY_SLOTS_PER_DAY - 1 && picked[cell(day.d, row.s + 1)],
+                band: row.band,
+                weekend: day.weekend,
+              }"
+              :data-i="cell(day.d, row.s)"
+              :aria-pressed="picked[cell(day.d, row.s)]"
+              :aria-label="`${day.label}요일 ${row.hour}시부터 2시간`"
+              @click="toggleByKey($event, cell(day.d, row.s))"
             />
           </template>
         </div>
-        <ul class="legend">
-          <li><i class="on" />내가 가능</li>
-          <li><i class="all" />낸 사람 모두 가능</li>
-          <li><i class="hint" />다른 파티원은 다 되는 시간</li>
+        <p class="hint">한 칸은 2시간이에요. 끌어서 칠하고, 요일이나 시간을 누르면 한 줄이 칠해져요.</p>
+      </section>
+
+      <section class="card">
+        <h2>고른 시간</h2>
+        <ul v-if="summary.length" class="summary">
+          <li v-for="day in summary" :key="day.d"><b :class="{ weekend: day.weekend }">{{ day.label }} {{ day.date }}일</b>{{ day.text }}</li>
         </ul>
+        <p v-else class="sub">아직 고른 시간이 없어요.</p>
       </section>
 
       <section class="bar">
-        <p class="status" :class="{ bad: failed, warn: !failed && dirty }" role="status">{{ status }}</p>
-        <div class="actions">
-          <button type="button" class="btn ghost compact" :disabled="!data.lastWeekSlots.length" @click="loadLastWeek">지난주 불러오기</button>
-          <button type="button" class="btn" :disabled="saving || !dirty" @click="save">저장</button>
-        </div>
+        <p class="status" :class="{ bad: failed, warn: !failed && dirty, done: !failed && !dirty && data.saved }" role="status">{{ status }}</p>
+        <button type="button" class="btn" :disabled="saving || !canSubmit" @click="submit">{{ data.saved && !dirty ? '제출 완료' : '제출' }}</button>
       </section>
 
       <section class="card">
@@ -144,29 +194,39 @@ async function save() {
 
 <style scoped>
 .page {
-  max-width: 720px;
+  max-width: 560px;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 20px 16px 40px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 .brand {
-  margin: 0;
+  margin: 0 0 4px;
   color: var(--gold);
   font-family: var(--f-title);
   font-size: 15px;
 }
-.head h1,
-.empty h1 {
+.title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+h1 {
   margin: 0;
   font-family: var(--f-title);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 400;
 }
-.head p,
-.empty p {
+h2 {
+  margin: 0;
+  font-family: var(--f-title);
+  font-size: 17px;
+  font-weight: 400;
+}
+.sub {
   margin: 4px 0 0;
   color: var(--sub);
   font-size: 14px;
@@ -177,122 +237,166 @@ async function save() {
   border: 1px solid var(--win-line);
   border-radius: 10px;
 }
-.card h2 {
-  margin: 0 0 10px;
-  font-family: var(--f-title);
-  font-size: 17px;
-  font-weight: 400;
+
+.quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.chip {
+  min-height: 34px;
+  padding: 0 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.chip.on {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--on-gold);
+}
+.chip:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: 34px repeat(12, minmax(0, 1fr));
-  gap: 3px;
+  grid-template-columns: 46px repeat(7, minmax(0, 1fr));
+  gap: 0 4px;
   touch-action: none;
   user-select: none;
 }
-.hour {
+.day,
+.time {
+  padding: 0;
+  background: none;
+  border: 0;
   color: var(--sub);
-  font-family: var(--f-pixel);
-  font-size: 10px;
-  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
 }
 .day {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  color: var(--sub);
+  align-items: center;
+  padding-bottom: 6px;
   font-size: 11px;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 .day b {
   color: var(--text);
-  font-size: 14px;
+  font-size: 15px;
+}
+.day.weekend b,
+.summary b.weekend {
+  color: var(--gold);
+}
+.time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: 34px;
+  font-size: 12px;
+  line-height: 1.1;
+}
+.time small {
+  min-height: 11px;
+  color: var(--gold);
+  font-size: 10px;
 }
 .cell {
-  height: 36px;
+  height: 34px;
   padding: 0;
   background: var(--field);
-  border: 1px solid var(--panel-line);
-  border-radius: 4px;
+  border: 0;
+  border-top: 1px solid var(--panel-line);
   cursor: pointer;
 }
-.cell.hint {
-  border: 2px dashed var(--gain);
+.cell.weekend {
+  background: color-mix(in srgb, var(--gold) 7%, var(--field));
+}
+.cell.band {
+  border-top-color: var(--tip-line);
 }
 .cell.on {
   background: var(--gold);
-  border-color: var(--gold);
+  border-top-color: var(--gold);
+  border-radius: 6px;
 }
-.cell.all {
-  background: var(--gain);
-  border-color: var(--gain);
+.cell.on.up {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top-color: color-mix(in srgb, var(--on-gold) 18%, var(--gold));
 }
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+.cell.on.down {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.hint {
   margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
   color: var(--sub);
   font-size: 13px;
-}
-.legend i {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  margin-right: 6px;
-  border-radius: 3px;
-  vertical-align: -1px;
-}
-.legend .on {
-  background: var(--gold);
-}
-.legend .all {
-  background: var(--gain);
-}
-.legend .hint {
-  border: 2px dashed var(--gain);
 }
 
 .bar {
   position: sticky;
-  bottom: 0;
+  bottom: 12px;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 12px;
+  padding: 10px 10px 10px 14px;
   background: var(--panel);
-  border: 1px solid var(--panel-line);
+  border: 1px solid var(--tip-line);
   border-radius: 10px;
+}
+.bar .btn {
+  flex: none;
+  min-width: 96px;
+}
+.bar .btn:disabled {
+  cursor: default;
 }
 .status {
   margin: 0;
-  min-height: 20px;
   color: var(--sub);
   font-size: 14px;
 }
 .status.warn {
   color: var(--gold);
 }
+.status.done {
+  color: var(--gain);
+}
 .status.bad {
   color: var(--loss);
 }
-.actions {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
+.summary {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.summary b {
+  display: inline-block;
+  min-width: 64px;
+  font-weight: 700;
 }
 
 .members {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0;
+  margin: 10px 0 0;
   padding: 0;
   list-style: none;
 }
