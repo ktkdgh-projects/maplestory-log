@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PartyTimeResponse } from '#shared/types'
-import { PARTY_SLOT_COUNT, PARTY_SLOTS_PER_DAY, partyDayRanges } from '#shared/data/party'
+import { PARTY_SLOT_COUNT, PARTY_SLOTS_PER_DAY, partyDayRanges, partyWeekDays } from '#shared/data/party'
 
 definePageMeta({ layout: false })
 useHead({
@@ -28,11 +28,7 @@ const saving = ref(false)
 const failed = ref('')
 
 const cell = (day: number, s: number) => day * PARTY_SLOTS_PER_DAY + s
-const days = computed(() => Array.from({ length: 7 }, (_, d) => {
-  const date = addDays(data.value!.week, d)
-  const weekday = kstWeekday(date)
-  return { d, label: WEEKDAYS[weekday]!, date: Number(date.slice(8)), weekend: weekday === 0 || weekday === 6, off: d < data.value!.fromDay }
-}))
+const days = computed(() => partyWeekDays(data.value!.week, data.value!.fromDay))
 const slots = computed(() => picked.value.flatMap((on, i) => (on ? [i] : [])))
 const dirty = computed(() => slots.value.join() !== savedSlots.value.join())
 const summary = computed(() => days.value.map(day => ({ ...day, text: partyDayRanges(slots.value, day.d) })).filter(day => day.text))

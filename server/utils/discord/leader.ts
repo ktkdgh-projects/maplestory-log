@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import type { PartyLeadAction, PartyLeadResponse } from '#shared/types'
-import { PARTY_SLOT_COUNT } from '#shared/data/party'
+import { PARTY_SLOT_COUNT, PARTY_SLOTS_PER_DAY } from '#shared/data/party'
 import type { PartyDoc, WeekDoc, WeekStep } from './db'
 import { useBotCollections } from './db'
 import { deleteDiscordReply } from './api'
@@ -18,8 +18,6 @@ const STEP_LABELS: Record<WeekStep, string> = {
   notice: '보스 시간 공지',
   remindBoss: '30분 전 알림',
 }
-// 공지가 올라가는 때를 "목요일 0시"처럼 적는다
-const noticeDay = (doc: WeekDoc) => new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', weekday: 'long', hour: 'numeric', hour12: false }).format(weekStepTime(doc, 'notice')!)
 const LEADER_ONLY = '파티장만 쓸 수 있어요.'
 
 // 파티장 화면(웹)은 로그인한 사람이 그 파티의 파티장일 때만 쓴다
@@ -33,16 +31,18 @@ export async function requirePartyLeader(event: H3Event, partyId: unknown) {
 export async function leaderState(party: PartyDoc, doc: WeekDoc, note = ''): Promise<PartyLeadResponse> {
   const { availability } = await useBotCollections()
   const [submitted, conflicts] = await Promise.all([
-    availability.find({ userId: { $in: party.members.map(m => m.userId) }, week: doc.week }, { projection: { userId: 1 } }).toArray(),
+    availability.find({ userId: { $in: party.members.map(m => m.userId) }, week: doc.week }, { projection: { userId: 1, slots: 1 } }).toArray(),
     weekConflicts(party, doc.week),
   ])
-  const submittedIds = new Set(submitted.map(d => d.userId))
+  // 이번 주만 일부 요일을 받을 때는 그 전 요일에 적어 둔 시간을 빼고 보여 준다
+  const firstSlot = (doc.custom?.fromDay ?? 0) * PARTY_SLOTS_PER_DAY
+  const slotsOf = new Map(submitted.map(d => [d.userId, d.slots.filter(slot => slot >= firstSlot)]))
   return {
     week: doc.week,
     partyName: party.name,
     note,
     phase: doc.phase,
-    members: party.members.map(m => ({ character: m.character, submitted: submittedIds.has(m.userId), voted: doc.votes[m.userId] !== undefined })),
+    members: party.members.map(m => ({ character: m.character, submitted: slotsOf.has(m.userId), voted: doc.votes[m.userId] !== undefined, slots: slotsOf.get(m.userId) ?? null })),
     candidates: weekRanking(doc).map(c => ({ slot: c.slot, label: slotLabel(doc.week, c.slot), votes: c.votes, missing: c.missing, conflict: conflicts.has(c.slot) })),
     confirmed: doc.confirmed === null ? null : { slot: doc.confirmed, label: slotLabel(doc.week, doc.confirmed) },
     steps: WEEK_STEPS.map(step => ({ key: step, label: STEP_LABELS[step], at: weekStepTime(doc, step)?.toISOString() ?? null, done: !!doc.done[step] })),
@@ -52,7 +52,7 @@ export async function leaderState(party: PartyDoc, doc: WeekDoc, note = ''): Pro
 }
 
 const HOUR_MS = 60 * 60 * 1000
-// 이번 주만 다르게: 마감 3시간 전 미제출 태그 → 마감에 투표 → 3시간 뒤 투표 마감 → 6시간 뒤 공지(평소 수 18시 마감과 같은 간격)
+// 이번 주만 다르게: 마감 3시간 전 미제출 태그 → 마감에 투표 → 3시간 뒤 투표 마감(평소와 같은 간격). 6시간 뒤 공지는 확정 때 못 올렸을 때만 쓴다
 const CUSTOM_OFFSETS: Partial<Record<WeekStep, number>> = { remindSubmit: -3 * HOUR_MS, startVote: 0, askConfirm: 3 * HOUR_MS, autoConfirm: 5 * HOUR_MS + 50 * 60 * 1000, notice: 6 * HOUR_MS }
 
 // 그 주의 진행을 처음으로 되돌리고, 고른 마감과 요일로 지금 알림을 올린다. 이미 적어 둔 시간은 남는다
@@ -86,7 +86,7 @@ export async function leaderAct(party: PartyDoc, doc: WeekDoc, { action, step, s
   }
   if (action === 'pick') {
     if (slot === undefined || !doc.candidates.some(c => c.slot === slot) || (await weekConflicts(party, doc.week)).has(slot)) throw bad('고를 수 없는 시간이에요.')
-    return { doc: await confirmWeek(party, doc, slot), note: `${slotLabel(doc.week, slot)}로 확정했어요. ${noticeDay(doc)}에 공지돼요.` }
+    return { doc: await confirmWeek(party, doc, slot), note: `${slotLabel(doc.week, slot)}로 확정하고 채널에 공지했어요.` }
   }
   throw bad('없는 동작이에요.')
 }
@@ -121,9 +121,10 @@ export async function runLeaderAction(interaction: DiscordInteraction, event: H3
     return { type: RESPONSE.message, data: await confirmPanel(found.party, doc) }
   }
   if (parts[1] === 'pick') {
-    await leaderAct(found.party, doc, { action: 'pick', slot: Number(parts[2]) })
-    // 확정은 채널의 투표 메시지에 표시되므로, 나만 보이던 결과 창은 지운다
-    event.waitUntil(deleteDiscordReply(interaction))
+    // 공지까지 올리면 디스코드 응답 제한 3초를 넘길 수 있어서 뒤에서 확정하고, 나만 보이던 결과 창은 지운다
+    event.waitUntil(leaderAct(found.party, doc, { action: 'pick', slot: Number(parts[2]) })
+      .catch(error => console.error('[leda] 확정 실패', String(error?.message ?? error)))
+      .then(() => deleteDiscordReply(interaction)))
     return { type: RESPONSE.deferredUpdate }
   }
   return partyNotice('아직 없는 기능이에요.')

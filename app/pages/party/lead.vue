@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PartyLeadAction, PartyLeadResponse, PartyWeekStep } from '#shared/types'
+import { PARTY_SLOT_COUNT, PARTY_SLOTS_PER_DAY, partyWeekDays } from '#shared/data/party'
 
 definePageMeta({ layout: false })
 useHead({
@@ -78,6 +79,27 @@ const stepTime = (key: PartyWeekStep) => {
   return { ...step, text }
 }
 const autos = (keys: PartyWeekStep[]) => keys.map(stepTime)
+
+// 파티원이 적은 시간표: 모두 겹쳐 보거나(null) 한 사람만 본다
+const viewer = ref<number | null>(null)
+const tableDays = computed(() => partyWeekDays(data.value!.week, data.value!.customFromDay ?? 0))
+// 2시간 칸마다 한 줄, 그 안에 요일별 칸
+const tableRows = computed(() => {
+  const everyone = viewer.value === null
+  const shown = everyone ? data.value!.members : [data.value!.members[viewer.value!]]
+  const total = everyone ? submitted.value : 1
+  const counts = Array.from({ length: PARTY_SLOT_COUNT }, () => 0)
+  for (const member of shown) for (const slot of member?.slots ?? []) counts[slot]!++
+  return Array.from({ length: PARTY_SLOTS_PER_DAY }, (_, s) => ({
+    hour: s * 2,
+    cells: tableDays.value.map((day) => {
+      const count = counts[day.d * PARTY_SLOTS_PER_DAY + s]!
+      const full = count > 0 && count === total
+      // 모두 되는 칸이 도드라지게, 일부만 되는 칸은 옅게 칠한다
+      return { d: day.d, off: day.off, full, heat: `${full || !total ? 0 : count / total * 55}%`, text: everyone && count ? count : '' }
+    }),
+  }))
+})
 </script>
 
 <template>
@@ -117,6 +139,23 @@ const autos = (keys: PartyWeekStep[]) => keys.map(stepTime)
         <ul class="autos">
           <li v-for="s in autos(['announce', 'remindSubmit'])" :key="s.key" :class="{ done: s.done }">{{ s.label }} · {{ s.text }}</li>
         </ul>
+      </section>
+
+      <section class="card">
+        <h2>파티원이 적은 시간</h2>
+        <p class="sub">숫자는 되는 사람 수, 진한 칸은 낸 사람 모두 되는 시간이에요.</p>
+        <div class="chips who">
+          <button type="button" class="pick" :class="{ on: viewer === null }" :aria-pressed="viewer === null" @click="viewer = null">모두</button>
+          <button v-for="(m, i) in data.members" :key="i" type="button" class="pick" :class="{ on: viewer === i }" :aria-pressed="viewer === i" :disabled="!m.slots" @click="viewer = i">{{ m.character }}</button>
+        </div>
+        <div class="table">
+          <span />
+          <span v-for="day in tableDays" :key="day.d" class="tday" :class="{ weekend: day.weekend, off: day.off }"><b>{{ day.label }}</b>{{ day.date }}</span>
+          <template v-for="row in tableRows" :key="row.hour">
+            <span class="thour">{{ row.hour }}시</span>
+            <span v-for="c in row.cells" :key="c.d" class="tcell" :class="{ full: c.full, off: c.off }" :style="{ '--heat': c.heat }">{{ c.text }}</span>
+          </template>
+        </div>
       </section>
 
       <section class="card stage" :class="stages.vote">
@@ -175,13 +214,13 @@ const autos = (keys: PartyWeekStep[]) => keys.map(stepTime)
           <button type="button" class="btn ghost compact" :disabled="busy || !data.confirmed" @click="run('remindBoss')">30분 전 알림</button>
         </div>
         <ul class="autos">
-          <li v-for="s in autos(['notice', 'remindBoss'])" :key="s.key" :class="{ done: s.done }">{{ s.label }} · {{ s.text }}</li>
+          <li v-for="s in autos(['notice', 'remindBoss'])" :key="s.key" :class="{ done: s.done }">{{ s.label }} · {{ s.key === 'notice' ? '확정하면 바로' : s.text }}</li>
         </ul>
       </section>
 
       <section class="card">
         <h2>이번 주만 다르게 잡기</h2>
-        <p class="sub">이번 주 진행을 처음으로 되돌리고, 고른 요일과 마감으로 지금 알림을 올려요. 마감 3시간 전 미제출 태그, 마감에 투표 시작, 3시간 뒤 투표 마감, 6시간 뒤 공지예요.<template v-if="data.customFromDay !== null"> 지금은 따로 잡은 일정으로 진행 중이에요.</template></p>
+        <p class="sub">이번 주 진행을 처음으로 되돌리고, 고른 요일과 마감으로 지금 알림을 올려요. 마감 3시간 전 미제출 태그, 마감에 투표 시작, 3시간 뒤 투표 마감이고 확정하면 바로 공지돼요.<template v-if="data.customFromDay !== null"> 지금은 따로 잡은 일정으로 진행 중이에요.</template></p>
         <div class="field">
           <span>이 요일부터 받기</span>
           <div class="chips">
@@ -449,6 +488,57 @@ h2 {
   background: var(--gold);
   border-color: var(--gold);
   color: var(--on-gold);
+}
+.pick:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.who {
+  margin-top: 10px;
+}
+.table {
+  display: grid;
+  grid-template-columns: 34px repeat(7, minmax(0, 1fr));
+  gap: 2px 4px;
+  margin-top: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tday {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 4px;
+  color: var(--sub);
+  font-size: 11px;
+  line-height: 1.25;
+}
+.tday b {
+  color: var(--text);
+  font-size: 14px;
+}
+.tday.weekend b {
+  color: var(--gold);
+}
+.thour {
+  color: var(--sub);
+  font-size: 11px;
+  line-height: 24px;
+}
+.tcell {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  background: color-mix(in srgb, var(--gold) var(--heat, 0%), var(--field));
+  border-radius: 4px;
+  font-size: 12px;
+}
+.tcell.full {
+  background: var(--gold);
+  color: var(--on-gold);
+}
+.tday.off,
+.tcell.off {
+  opacity: 0.3;
 }
 .actions .btn:disabled {
   cursor: default;

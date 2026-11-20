@@ -18,7 +18,8 @@ export interface PartyLeadResponse {
   // 방금 한 동작의 결과
   note: string
   phase: PartyWeekPhase
-  members: { character: string, submitted: boolean, voted: boolean }[]
+  // slots는 그 사람이 적어 낸 시간, 안 냈으면 null
+  members: { character: string, submitted: boolean, voted: boolean, slots: number[] | null }[]
   // 표가 많은 순서
   candidates: { slot: number, label: string, votes: number, missing: number, conflict: boolean }[]
   confirmed: { slot: number, label: string } | null

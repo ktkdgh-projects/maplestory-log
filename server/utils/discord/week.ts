@@ -18,7 +18,7 @@ const BOSS_REMIND_MS = 30 * 60 * 1000
 const STALE_MS = 3 * 60 * 60 * 1000
 
 // 단계 기본 시각: [그 주 목요일에서 며칠 전, 시, 분] (한국 시간)
-// 월 0시 알림 → 수 15시 미제출 태그 → 수 18시 마감·투표 → 수 21시 투표 마감 → 목 0시 공지
+// 월 0시 알림 → 수 15시 미제출 태그 → 수 18시 마감·투표 → 수 21시 투표 마감. 목 0시 공지는 확정 때 못 올렸을 때만 쓴다
 const STEP_AT: Record<Exclude<WeekStep, 'remindBoss'>, [number, number, number]> = {
   announce: [-3, 0, 0],
   remindSubmit: [-1, 15, 0],
@@ -153,8 +153,8 @@ export function partyCard(title: string, description: string, mention: string[] 
 function voteMessage(party: PartyDoc, doc: WeekDoc) {
   const closed = doc.phase !== 'vote'
   const ids = party.members.map(m => m.userId)
-  const footer = doc.phase === 'decide' ? '투표가 끝났어요. 파티장이 결과를 보고 확정해요' : closed ? '투표가 끝났어요' : '가장 좋은 시간 하나를 눌러 주세요. 다시 누르면 바뀌어요'
-  const lines = weekRanking(doc).map((c, i) => `${i + 1}위 · **${slotLabel(doc.week, c.slot)}** · ${c.votes}표${c.missing ? ' · 한 명 안 됨' : ''}${closed && c.slot === doc.confirmed ? ' ← 확정' : ''}`)
+  const footer = closed ? '투표가 끝났어요. 파티장이 결과를 보고 확정해요' : '가장 좋은 시간 하나를 눌러 주세요. 다시 누르면 바뀌어요'
+  const lines = weekRanking(doc).map((c, i) => `${i + 1}위 · **${slotLabel(doc.week, c.slot)}** · ${c.votes}표${c.missing ? ' · 한 명 안 됨' : ''}`)
   const voters = party.members.map(m => `${doc.votes[m.userId] !== undefined ? '✅' : '⬜'} ${m.character}`).join('  ')
   const buttons = doc.candidates.map(c => ({ type: 2, style: 1, label: slotLabel(doc.week, c.slot), custom_id: `vote:${doc.week}:${c.slot}` }))
   return {
@@ -179,9 +179,11 @@ async function refreshVoteMessage(party: PartyDoc, doc: WeekDoc) {
 
 export function noticeMessage(party: PartyDoc, doc: WeekDoc, changed = false) {
   const slot = doc.confirmed!
+  // 확정하면 투표 메시지가 지워지므로, 표를 받은 시간만 공지에 남긴다
+  const voted = weekRanking(doc).filter(c => c.votes > 0).map(c => `${slotLabel(doc.week, c.slot)} · ${c.votes}표${c.slot === slot ? ' ← 확정' : ''}`)
   return partyCard(
     changed ? '🔁 보스 시간이 바뀌었어요' : '📢 이번 주 보스 시간',
-    `## ${slotLabel(doc.week, slot)}\n${stamp(slotStart(doc.week, slot), 'R')}`,
+    `## ${slotLabel(doc.week, slot)}\n${stamp(slotStart(doc.week, slot), 'R')}${voted.length ? `\n\n**투표 결과**\n${voted.join('\n')}` : ''}`,
     party.members.map(m => m.userId),
     [{ type: 1, components: [{ type: 2, style: 2, label: '일정 변경 요청', custom_id: `chg:open:${doc.week}` }] }],
   )
@@ -211,10 +213,13 @@ export async function postWeek(party: PartyDoc, doc: WeekDoc, kind: WeekPostKind
   return { doc: updated!, id: message.id }
 }
 
+// 확정하면 기다리지 않고 바로 공지한다. 이미 공지한 주를 다른 시간으로 다시 확정하면 바뀌었다고 알린다
 export async function confirmWeek(party: PartyDoc, doc: WeekDoc, slot: number): Promise<WeekDoc> {
-  const confirmed = await patchWeek(doc, { 'phase': 'confirmed', 'confirmed': slot, 'done.autoConfirm': new Date() }, ['done.remindBoss'])
-  await refreshVoteMessage(party, confirmed)
-  return clearPosts(party, confirmed, ['askConfirm'])
+  const changed = !!doc.done.notice && doc.confirmed !== null && doc.confirmed !== slot
+  const confirmed = await patchWeek(doc, { 'phase': 'confirmed', 'confirmed': slot, 'change': null, 'done.autoConfirm': new Date() }, ['done.remindBoss'])
+  const posted = await postWeek(party, confirmed, 'notice', noticeMessage(party, confirmed, changed), ['vote', 'askConfirm', 'remindBoss', 'change'])
+  // 공지를 올리지 못하면 표시가 남지 않아서, 공지 단계 시각에 다시 올린다
+  return patchWeek(posted.doc, { 'done.notice': new Date() })
 }
 
 // 한 단계를 돌리고 했다고 표시한다. 정해진 시각에도, 파티장이 손으로 눌러도 여기로 온다
