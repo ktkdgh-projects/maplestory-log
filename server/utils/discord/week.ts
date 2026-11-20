@@ -14,6 +14,7 @@ const CANDIDATES_PER_DAY = 3
 // 같은 조건이면 이 칸(20시)에 가까운 시간을 먼저 올린다
 const PRIME_SLOT = 10
 const BOSS_REMIND_MS = 30 * 60 * 1000
+const SLOT_MS = 2 * 60 * 60 * 1000
 // 봇이 꺼져 있었거나 주중에 연결한 파티는 이보다 오래 지난 단계를 뒤늦게 올리지 않는다
 const STALE_MS = 3 * 60 * 60 * 1000
 
@@ -299,6 +300,11 @@ export async function tickParties(now = new Date()): Promise<number> {
           if (!at || at > now || doc.done[step]) continue
           doc = now.getTime() - at.getTime() > STALE_MS ? await patchWeek(doc, { [`done.${step}`]: now }) : await runWeekStep(party, doc, step)
           ran++
+        }
+        // 보스 시간이 끝나면(20~22시면 22시) 공지와 30분 전 알림, 남은 변경 요청을 지운다
+        if (doc.confirmed !== null && slotStart(doc.week, doc.confirmed).getTime() + SLOT_MS <= now.getTime()) {
+          doc = await clearPosts(party, doc, ['notice', 'remindBoss', 'change'])
+          if (doc.change) await patchWeek(doc, { change: null })
         }
       }
     }
